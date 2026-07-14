@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.vercel
+data
+.DS_Store
+*.zip
+*.log
+projeto-extensao/
+.claude/

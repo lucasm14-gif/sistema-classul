@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    --kanban-primary: #25D366;
+    /* WhatsApp Green */
+    --kanban-primary-dark: #128C7E;
+    --kanban-text: #111b21;
+    --kanban-text-secondary: #8696a0;
+    --font-family: 'Outfit', sans-serif;
+}
+
+/* Reset for our extension elements to prevent inheriting weird WhatsApp styles */
+#wa-kanban-root * {
+    box-sizing: border-box;
+    font-family: var(--font-family);
+}
+
+/* Header Button Injection */
+.kanban-header-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: #54656f;
+    cursor: pointer;
+    margin-right: 8px;
+    transition: background 0.2s;
+}
+
+.kanban-header-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: #111b21;
+}

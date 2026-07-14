@@ -1,0 +1,17 @@
+services:
+  classul:
+    build: .
+    container_name: classul
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - API_TOKEN=${API_TOKEN:-classul-mude-esta-senha}
+      - EVOLUTION_URL=${EVOLUTION_URL:-}
+      - EVOLUTION_APIKEY=${EVOLUTION_APIKEY:-}
+      - EVOLUTION_INSTANCE=${EVOLUTION_INSTANCE:-}
+    volumes:
+      - classul-data:/app/data
+
+volumes:
+  classul-data:
