@@ -38,41 +38,45 @@ export default function App() {
 
   return (
     <ToastProvider>
-      <div className="min-h-screen bg-slate-100 flex flex-col">
-        <header className="bg-slate-900 text-white px-6 py-3 flex items-center justify-between shadow-lg">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-emerald-500 flex items-center justify-center font-black text-lg">
-              C
+      <div className="min-h-screen flex flex-col">
+        <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-xl border-b border-black/5">
+          <div className="px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <img src="/logo.png" alt="Classul" className="w-11 h-11 object-contain shrink-0" />
+              <div className="hidden sm:block leading-tight">
+                <h1 className="font-extrabold tracking-tight text-brand-950 text-lg">Classul</h1>
+                <p className="text-[11px] font-semibold text-slate-400 -mt-0.5">Gestão de Pedidos</p>
+              </div>
             </div>
-            <div>
-              <h1 className="font-bold text-lg leading-tight">Classul</h1>
-              <p className="text-xs text-slate-400 leading-tight">Gestão de Pedidos</p>
-            </div>
-          </div>
-          <nav className="flex items-center gap-1">
-            {TABS.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                onClick={() => setTab(id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  tab === id ? 'bg-slate-700 text-white' : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                <Icon size={16} />
-                <span className="hidden sm:inline">{label}</span>
-              </button>
-            ))}
+
+            <nav className="flex items-center gap-1 bg-black/[0.04] rounded-full p-1">
+              {TABS.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  onClick={() => setTab(id)}
+                  className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full text-sm font-bold transition-all ${
+                    tab === id
+                      ? 'bg-white text-brand-800 shadow-sm'
+                      : 'text-slate-500 hover:text-brand-900'
+                  }`}
+                >
+                  <Icon size={16} strokeWidth={2.5} />
+                  <span className="hidden md:inline">{label}</span>
+                </button>
+              ))}
+            </nav>
+
             <button
               onClick={() => {
                 clearToken();
                 setAuthed(false);
               }}
               title="Sair"
-              className="ml-2 p-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+              className="p-2.5 rounded-full text-slate-400 hover:text-flame-600 hover:bg-flame-50 transition-colors"
             >
-              <LogOut size={16} />
+              <LogOut size={17} />
             </button>
-          </nav>
+          </div>
         </header>
 
         <main className="flex-1 overflow-hidden">

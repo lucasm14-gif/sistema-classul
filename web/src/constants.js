@@ -1,8 +1,8 @@
 export const COLUMNS = [
-  { id: 'novo', title: 'Novo Pedido', color: 'bg-blue-500', badge: 'bg-blue-100 text-blue-700' },
-  { id: 'producao', title: 'Em Produção', color: 'bg-amber-500', badge: 'bg-amber-100 text-amber-700' },
-  { id: 'pronto', title: 'Pronto', color: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-700', whatsapp: true },
-  { id: 'entregue', title: 'Enviado / Entregue', color: 'bg-slate-500', badge: 'bg-slate-200 text-slate-700', whatsapp: true }
+  { id: 'novo', title: 'Novo Pedido', color: 'bg-sky-500', badge: 'bg-sky-100 text-sky-700' },
+  { id: 'producao', title: 'Em Produção', color: 'bg-sun-400', badge: 'bg-sun-100 text-yellow-700' },
+  { id: 'pronto', title: 'Pronto', color: 'bg-brand-500', badge: 'bg-brand-100 text-brand-700', whatsapp: true },
+  { id: 'entregue', title: 'Enviado / Entregue', color: 'bg-slate-400', badge: 'bg-slate-200 text-slate-600', whatsapp: true }
 ];
 
 export const PRODUCT_TYPES = ['Maquina', 'Jota', 'Sublimação'];

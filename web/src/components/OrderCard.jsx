@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Phone } from 'lucide-react';
+import { Calendar, MessageCircle } from 'lucide-react';
 import { CASE_COLOR_DOT, formatBRL, formatDateBR, isOverdue } from '../constants';
 
 export default function OrderCard({ order, dragging, onClick }) {
@@ -8,40 +8,44 @@ export default function OrderCard({ order, dragging, onClick }) {
   return (
     <div
       onClick={onClick}
-      className={`bg-white rounded-lg p-3 shadow-sm border border-slate-200 cursor-pointer hover:shadow-md transition-shadow select-none ${
-        dragging ? 'shadow-xl ring-2 ring-emerald-400 rotate-1' : ''
+      className={`group bg-white rounded-2xl p-3.5 border border-black/5 cursor-pointer select-none transition-all duration-200 hover:shadow-lg hover:shadow-black/5 hover:-translate-y-0.5 hover:border-brand-300 ${
+        dragging ? 'shadow-2xl shadow-brand-900/20 ring-2 ring-brand-400 rotate-2 scale-[1.03]' : 'shadow-sm'
       }`}
     >
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs font-black text-slate-400 tracking-wide">{order.order_number}</span>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[11px] font-extrabold text-brand-600 tracking-wider">{order.order_number}</span>
         <div className="flex items-center gap-1.5">
           {order.case_color && (
             <span
               title={`Estojo ${order.case_color}`}
-              className={`w-3 h-3 rounded-full border border-white shadow ${CASE_COLOR_DOT[order.case_color] || 'bg-slate-300'}`}
+              className={`w-3 h-3 rounded-full ring-2 ring-white shadow ${CASE_COLOR_DOT[order.case_color] || 'bg-slate-300'}`}
             />
           )}
           {order.product_type && (
-            <span className="text-[10px] font-bold uppercase bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
+            <span className="text-[9px] font-extrabold uppercase tracking-wide bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full">
               {order.product_type}
             </span>
           )}
         </div>
       </div>
 
-      <p className="font-semibold text-sm text-slate-800 leading-snug mb-1.5">{order.customer_name}</p>
+      <p className="font-bold text-sm text-brand-950 leading-snug mb-1">{order.customer_name}</p>
 
       {order.description && (
-        <p className="text-xs text-slate-500 line-clamp-2 mb-2">{order.description}</p>
+        <p className="text-xs text-slate-500 line-clamp-2 mb-2.5 leading-relaxed">{order.description}</p>
       )}
 
-      <div className="flex items-center gap-3 text-xs text-slate-500">
+      <div className="flex items-center gap-3 text-xs">
         {order.due_date && (
-          <span className={`flex items-center gap-1 ${overdue ? 'text-red-600 font-bold' : ''}`}>
-            <Calendar size={12} /> {formatDateBR(order.due_date)}
+          <span
+            className={`flex items-center gap-1 font-semibold ${
+              overdue ? 'text-flame-600 bg-flame-50 px-2 py-0.5 rounded-full' : 'text-slate-400'
+            }`}
+          >
+            <Calendar size={11} /> {formatDateBR(order.due_date)}
           </span>
         )}
-        {order.value && <span className="font-semibold text-emerald-700">{formatBRL(order.value)}</span>}
+        {order.value && <span className="font-extrabold text-brand-700">{formatBRL(order.value)}</span>}
         {order.phone && (
           <a
             href={`https://wa.me/${order.phone}`}
@@ -49,9 +53,9 @@ export default function OrderCard({ order, dragging, onClick }) {
             rel="noreferrer"
             onClick={(e) => e.stopPropagation()}
             title="Abrir conversa no WhatsApp"
-            className="ml-auto text-emerald-600 hover:text-emerald-800"
+            className="ml-auto p-1.5 -m-1 rounded-full text-brand-500 opacity-60 group-hover:opacity-100 hover:bg-brand-50 transition-all"
           >
-            <Phone size={13} />
+            <MessageCircle size={14} />
           </a>
         )}
       </div>

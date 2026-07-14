@@ -11,19 +11,20 @@ import {
   ChevronRight,
   MessageCircle
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { api } from '../api';
 import { COLUMNS, formatBRL, formatDateBR, parseBRL } from '../constants';
 import { useToast } from './Toast';
 
-const label = 'block text-[11px] font-bold text-slate-500 uppercase mb-1.5';
+const label = 'block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2';
 const input =
-  'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100';
+  'w-full border-2 border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-medium outline-none transition-colors focus:border-brand-500 bg-white';
 
 const STATUS_BADGE = {
-  novo: 'bg-blue-100 text-blue-700',
-  producao: 'bg-amber-100 text-amber-700',
-  pronto: 'bg-emerald-100 text-emerald-700',
-  entregue: 'bg-slate-200 text-slate-700'
+  novo: 'bg-sky-100 text-sky-700',
+  producao: 'bg-sun-100 text-yellow-700',
+  pronto: 'bg-brand-100 text-brand-700',
+  entregue: 'bg-slate-200 text-slate-600'
 };
 
 function formatPhoneBR(phone) {
@@ -88,36 +89,45 @@ function ClientModal({ client, onClose, onSaved, onDeleted, onAuthError }) {
 
   const total = (orders || []).reduce((sum, o) => sum + parseBRL(o.value), 0);
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 flex items-center justify-center p-4"
+      className="fixed inset-0 bg-brand-950/60 backdrop-blur-sm z-40 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden"
+        className="bg-white rounded-[1.75rem] shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden animate-fade-up"
       >
-        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <div className="px-6 py-5 flex items-center justify-between border-b border-black/5">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center font-bold">
+            <div className="w-11 h-11 rounded-full bg-brand-500 text-white flex items-center justify-center font-extrabold text-lg shadow-md shadow-brand-500/30">
               {(form.name || '?').charAt(0).toUpperCase()}
             </div>
             <div>
-              <h2 className="font-bold leading-tight">{isNew ? 'Novo Cliente' : form.name}</h2>
+              <h2 className="font-extrabold tracking-tight text-brand-950 leading-tight">
+                {isNew ? 'Novo Cliente' : form.name}
+              </h2>
               {!isNew && orders && (
-                <p className="text-xs text-slate-300 leading-tight">
+                <p className="text-xs font-semibold text-slate-400 leading-tight">
                   {orders.length} pedido{orders.length !== 1 ? 's' : ''}
-                  {total > 0 && <> · total {formatBRL(String(total).replace('.', ','))}</>}
+                  {total > 0 && (
+                    <>
+                      {' '}· total <span className="text-brand-700">{formatBRL(String(total).replace('.', ','))}</span>
+                    </>
+                  )}
                 </p>
               )}
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
-            <X size={20} />
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full text-slate-400 hover:text-brand-950 hover:bg-black/5 transition-colors"
+          >
+            <X size={19} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 bg-slate-50 grid grid-cols-2 gap-4">
+        <div className="flex-1 overflow-y-auto p-6 bg-[#F7F8F3] grid grid-cols-2 gap-4">
           <div className="col-span-2 sm:col-span-1">
             <label className={label}>Nome *</label>
             <input className={input} value={form.name || ''} onChange={set('name')} placeholder="Nome do cliente" />
@@ -148,9 +158,9 @@ function ClientModal({ client, onClose, onSaved, onDeleted, onAuthError }) {
             <div className="col-span-2">
               <label className={label}>Histórico de pedidos</label>
               {!orders ? (
-                <p className="text-xs text-slate-400">Carregando…</p>
+                <p className="text-xs font-medium text-slate-400">Carregando…</p>
               ) : orders.length === 0 ? (
-                <p className="text-xs text-slate-400">
+                <p className="text-xs font-medium text-slate-400">
                   Nenhum pedido vinculado ainda. Pedidos novos com o telefone deste cliente entram aqui sozinhos.
                 </p>
               ) : (
@@ -158,15 +168,15 @@ function ClientModal({ client, onClose, onSaved, onDeleted, onAuthError }) {
                   {orders.map((o) => (
                     <li
                       key={o.id}
-                      className="bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-xs flex items-center gap-3"
+                      className="bg-white border border-black/5 rounded-xl px-3.5 py-3 text-xs flex items-center gap-3 shadow-sm"
                     >
-                      <span className="font-black text-slate-400">{o.order_number}</span>
-                      <span className="flex-1 min-w-0 truncate text-slate-600">
+                      <span className="font-extrabold text-brand-600">{o.order_number}</span>
+                      <span className="flex-1 min-w-0 truncate text-slate-500 font-medium">
                         {[o.product_type, o.description].filter(Boolean).join(' · ') || 'Sem descrição'}
                       </span>
-                      {o.value && <span className="font-semibold text-emerald-700">{formatBRL(o.value)}</span>}
-                      {o.due_date && <span className="text-slate-400">{formatDateBR(o.due_date)}</span>}
-                      <span className={`px-2 py-0.5 rounded-full font-bold ${STATUS_BADGE[o.status] || ''}`}>
+                      {o.value && <span className="font-extrabold text-brand-700">{formatBRL(o.value)}</span>}
+                      {o.due_date && <span className="text-slate-400 font-medium">{formatDateBR(o.due_date)}</span>}
+                      <span className={`px-2.5 py-0.5 rounded-full font-extrabold ${STATUS_BADGE[o.status] || ''}`}>
                         {COLUMNS.find((c) => c.id === o.status)?.title || o.status}
                       </span>
                     </li>
@@ -177,28 +187,28 @@ function ClientModal({ client, onClose, onSaved, onDeleted, onAuthError }) {
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-200 flex items-center gap-2">
+        <div className="px-6 py-4 border-t border-black/5 flex items-center gap-2 bg-white">
           {!isNew && (
             <button
               onClick={remove}
               title="Excluir cliente"
-              className="p-2.5 rounded-lg text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200"
+              className="p-2.5 rounded-full text-flame-600 hover:bg-flame-50 transition-colors"
             >
               <Trash2 size={16} />
             </button>
           )}
-          {error && <p className="text-sm text-red-600 ml-2">{error}</p>}
+          {error && <p className="text-sm font-semibold text-flame-600 ml-2">{error}</p>}
           <div className="ml-auto flex gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2.5 rounded-lg text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200"
+              className="px-5 py-2.5 rounded-full text-sm font-bold text-slate-500 hover:bg-black/5 transition-colors"
             >
               Cancelar
             </button>
             <button
               onClick={save}
               disabled={saving}
-              className="px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 flex items-center gap-2 disabled:opacity-60"
+              className="px-6 py-2.5 rounded-full text-sm font-extrabold text-white bg-brand-600 hover:bg-brand-700 flex items-center gap-2 shadow-lg shadow-brand-600/25 transition-all hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0"
             >
               {saving ? <LoaderCircle size={16} className="animate-spin" /> : <Save size={16} />}
               {isNew ? 'Criar Cliente' : 'Salvar'}
@@ -206,7 +216,8 @@ function ClientModal({ client, onClose, onSaved, onDeleted, onAuthError }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -236,58 +247,65 @@ export default function Clients({ onAuthError }) {
     ? clients.filter(
         (c) =>
           c.name.toLowerCase().includes(term) ||
-          (c.phone || '').includes(term.replace(/\D/g, '') || ' ') ||
+          (c.phone || '').includes(term.replace(/\D/g, '') || ' ') ||
           (c.company || '').toLowerCase().includes(term)
       )
     : clients;
 
   return (
-    <div className="p-6 max-w-4xl mx-auto h-full overflow-y-auto">
+    <div className="p-4 sm:p-6 max-w-4xl mx-auto h-full overflow-y-auto animate-fade-up">
+      <div className="mb-4">
+        <h2 className="text-xl font-extrabold tracking-tight text-brand-950">Clientes</h2>
+        <p className="text-xs font-medium text-slate-400">
+          Criados automaticamente a cada pedido novo — ou cadastre manualmente.
+        </p>
+      </div>
+
       <div className="flex items-center gap-3 mb-4">
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por nome, telefone ou empresa..."
-            className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-3 py-2.5 text-sm outline-none focus:border-emerald-500 shadow-sm"
+            className="w-full bg-white border border-black/5 rounded-full pl-9 pr-4 py-2.5 text-sm font-medium outline-none transition-colors focus:border-brand-400 shadow-sm"
           />
         </div>
         <button
           onClick={() => setModal('new')}
-          className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-lg shadow-sm"
+          className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-extrabold px-5 py-2.5 rounded-full shadow-lg shadow-brand-600/25 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-brand-600/30"
         >
-          <Plus size={16} /> Novo Cliente
+          <Plus size={16} strokeWidth={3} /> Novo Cliente
         </button>
       </div>
 
       {loading ? (
-        <p className="text-sm text-slate-400">Carregando…</p>
+        <p className="text-sm font-medium text-slate-400">Carregando…</p>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16">
-          <p className="text-sm text-slate-400 mb-1">
+        <div className="text-center py-20 bg-black/[0.02] border border-dashed border-black/10 rounded-3xl">
+          <p className="text-sm font-bold text-slate-400 mb-1">
             {clients.length === 0 ? 'Nenhum cliente cadastrado ainda.' : 'Nenhum cliente encontrado.'}
           </p>
           {clients.length === 0 && (
-            <p className="text-xs text-slate-400">
-              Clientes são criados automaticamente quando você cria pedidos — ou cadastre manualmente.
+            <p className="text-xs font-medium text-slate-400">
+              Clientes são criados automaticamente quando você cria pedidos.
             </p>
           )}
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 divide-y divide-slate-100">
+        <div className="bg-white rounded-3xl shadow-sm border border-black/5 divide-y divide-black/5 overflow-hidden">
           {filtered.map((client) => (
             <div
               key={client.id}
               onClick={() => setModal(client)}
-              className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
+              className="flex items-center gap-4 px-5 py-3.5 cursor-pointer hover:bg-brand-50/50 transition-colors group"
             >
-              <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0">
+              <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-extrabold shrink-0 group-hover:bg-brand-500 group-hover:text-white transition-colors">
                 {client.name.charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm text-slate-800 truncate">{client.name}</p>
-                <p className="text-xs text-slate-400 truncate flex items-center gap-2">
+                <p className="font-bold text-sm text-brand-950 truncate">{client.name}</p>
+                <p className="text-xs font-medium text-slate-400 truncate flex items-center gap-2.5">
                   {client.phone && (
                     <span className="flex items-center gap-1">
                       <Phone size={11} /> {formatPhoneBR(client.phone)}
@@ -300,7 +318,7 @@ export default function Clients({ onAuthError }) {
                   )}
                 </p>
               </div>
-              <span className="text-xs font-bold px-2 py-1 rounded-full bg-slate-100 text-slate-600">
+              <span className="text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-black/[0.04] text-slate-500">
                 {client.orders_count} pedido{client.orders_count !== 1 ? 's' : ''}
               </span>
               {client.phone && (
@@ -310,12 +328,12 @@ export default function Clients({ onAuthError }) {
                   rel="noreferrer"
                   onClick={(e) => e.stopPropagation()}
                   title="Abrir conversa no WhatsApp"
-                  className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50"
+                  className="p-2 rounded-full text-brand-600 hover:bg-brand-100 transition-colors"
                 >
                   <MessageCircle size={16} />
                 </a>
               )}
-              <ChevronRight size={16} className="text-slate-300" />
+              <ChevronRight size={16} className="text-slate-300 group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all" />
             </div>
           ))}
         </div>

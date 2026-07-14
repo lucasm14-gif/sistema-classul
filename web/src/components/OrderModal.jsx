@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   LoaderCircle,
@@ -114,10 +115,10 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
           key={opt}
           type="button"
           onClick={() => onSelect(selected === opt ? '' : opt)}
-          className={`text-xs font-semibold rounded-lg border px-2 py-2 transition-colors ${
+          className={`text-xs font-bold rounded-xl border-2 px-2 py-2.5 transition-all ${
             selected === opt
-              ? colorMap?.[opt] || 'bg-slate-900 text-white border-slate-900'
-              : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'
+              ? colorMap?.[opt] || 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-600/20'
+              : 'bg-white text-slate-500 border-slate-200 hover:border-brand-300'
           }`}
         >
           {opt}
@@ -126,34 +127,40 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
     </div>
   );
 
-  const label = 'block text-[11px] font-bold text-slate-500 uppercase mb-1.5';
+  const label = 'block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2';
   const input =
-    'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100';
+    'w-full border-2 border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-medium outline-none transition-colors focus:border-brand-500 bg-white';
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 flex items-center justify-center p-4"
+      className="fixed inset-0 bg-brand-950/60 backdrop-blur-sm z-40 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden"
+        className="bg-white rounded-[1.75rem] shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden animate-fade-up"
       >
-        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
-          <h2 className="font-bold">
-            {isNew ? 'Novo Pedido' : `Pedido ${order.order_number}`}
-            {!isNew && (
-              <span className="ml-3 text-xs font-medium text-slate-300">
-                {COLUMNS.find((c) => c.id === order.status)?.title}
-              </span>
-            )}
-          </h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
-            <X size={20} />
+        <div className="px-6 py-5 flex items-center justify-between border-b border-black/5">
+          <div className="flex items-center gap-3">
+            <img src="/logo.png" alt="" className="w-9 h-9 object-contain" />
+            <h2 className="font-extrabold tracking-tight text-brand-950">
+              {isNew ? 'Novo Pedido' : `Pedido ${order.order_number}`}
+              {!isNew && (
+                <span className="ml-3 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  {COLUMNS.find((c) => c.id === order.status)?.title}
+                </span>
+              )}
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full text-slate-400 hover:text-brand-950 hover:bg-black/5 transition-colors"
+          >
+            <X size={19} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 bg-slate-50 grid grid-cols-2 gap-4">
+        <div className="flex-1 overflow-y-auto p-6 bg-[#F7F8F3] grid grid-cols-2 gap-4">
           <div className="col-span-2 sm:col-span-1">
             <label className={label}>Nome do Cliente *</label>
             <input
@@ -190,9 +197,9 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
           <div className="col-span-2 sm:col-span-1">
             <label className={label}>Estojo</label>
             {choice(CASE_COLORS, form.case_color, (v) => setForm((f) => ({ ...f, case_color: v })), {
-              Preto: 'bg-slate-900 text-white border-slate-900',
-              Azul: 'bg-blue-100 text-blue-700 border-blue-400',
-              Vermelho: 'bg-red-100 text-red-700 border-red-400'
+              Preto: 'bg-brand-950 text-white border-brand-950 shadow-md',
+              Azul: 'bg-sky-100 text-sky-700 border-sky-400',
+              Vermelho: 'bg-flame-100 text-flame-700 border-flame-500'
             })}
           </div>
           <div className="col-span-2">
@@ -209,24 +216,26 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
             <div className="col-span-2">
               <label className={label}>Mensagens WhatsApp enviadas</label>
               {messages.length === 0 ? (
-                <p className="text-xs text-slate-400">Nenhuma mensagem enviada ainda.</p>
+                <p className="text-xs font-medium text-slate-400">Nenhuma mensagem enviada ainda.</p>
               ) : (
                 <ul className="space-y-2">
                   {messages.map((m) => (
-                    <li key={m.id} className="bg-white border border-slate-200 rounded-lg p-3 text-xs">
-                      <div className="flex items-center gap-2 mb-1">
+                    <li key={m.id} className="bg-white border border-black/5 rounded-xl p-3.5 text-xs shadow-sm">
+                      <div className="flex items-center gap-2 mb-1.5">
                         {m.success ? (
-                          <CheckCircle2 size={14} className="text-emerald-600" />
+                          <CheckCircle2 size={14} className="text-brand-600" />
                         ) : (
-                          <XCircle size={14} className="text-red-600" />
+                          <XCircle size={14} className="text-flame-600" />
                         )}
-                        <span className="font-bold uppercase text-slate-600">{m.status_trigger}</span>
-                        <span className="text-slate-400 ml-auto">{formatDateTime(m.created_at)}</span>
+                        <span className="font-extrabold uppercase tracking-wide text-brand-900">
+                          {m.status_trigger}
+                        </span>
+                        <span className="text-slate-400 font-medium ml-auto">{formatDateTime(m.created_at)}</span>
                       </div>
                       {m.success ? (
-                        <p className="text-slate-500 line-clamp-2 whitespace-pre-line">{m.body}</p>
+                        <p className="text-slate-500 line-clamp-2 whitespace-pre-line leading-relaxed">{m.body}</p>
                       ) : (
-                        <p className="text-red-600">{m.error}</p>
+                        <p className="text-flame-600 font-medium">{m.error}</p>
                       )}
                     </li>
                   ))}
@@ -235,7 +244,7 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
               {(order.status === 'pronto' || order.status === 'entregue') && (
                 <button
                   onClick={() => onResend(order, order.status)}
-                  className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900"
+                  className="mt-3 flex items-center gap-1.5 text-xs font-extrabold text-brand-700 hover:text-brand-900 transition-colors"
                 >
                   <Send size={13} /> Reenviar mensagem da etapa atual
                 </button>
@@ -244,37 +253,37 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-200 flex items-center gap-2">
+        <div className="px-6 py-4 border-t border-black/5 flex items-center gap-2 bg-white">
           {!isNew && (
             <>
               <button
                 onClick={remove}
                 title="Excluir pedido"
-                className="p-2.5 rounded-lg text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200"
+                className="p-2.5 rounded-full text-flame-600 hover:bg-flame-50 transition-colors"
               >
                 <Trash2 size={16} />
               </button>
               <button
                 onClick={archive}
                 title="Arquivar pedido"
-                className="p-2.5 rounded-lg text-slate-500 hover:bg-slate-100 border border-transparent hover:border-slate-200"
+                className="p-2.5 rounded-full text-slate-400 hover:bg-black/5 hover:text-brand-950 transition-colors"
               >
                 <Archive size={16} />
               </button>
             </>
           )}
-          {error && <p className="text-sm text-red-600 ml-2">{error}</p>}
+          {error && <p className="text-sm font-semibold text-flame-600 ml-2">{error}</p>}
           <div className="ml-auto flex gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2.5 rounded-lg text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200"
+              className="px-5 py-2.5 rounded-full text-sm font-bold text-slate-500 hover:bg-black/5 transition-colors"
             >
               Cancelar
             </button>
             <button
               onClick={save}
               disabled={saving}
-              className="px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 flex items-center gap-2 disabled:opacity-60"
+              className="px-6 py-2.5 rounded-full text-sm font-extrabold text-white bg-brand-600 hover:bg-brand-700 flex items-center gap-2 shadow-lg shadow-brand-600/25 transition-all hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0"
             >
               {saving ? <LoaderCircle size={16} className="animate-spin" /> : <Save size={16} />}
               {isNew ? 'Criar Pedido' : 'Salvar'}
@@ -282,6 +291,7 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

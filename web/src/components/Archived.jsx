@@ -45,37 +45,44 @@ export default function Archived({ onAuthError }) {
   };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h2 className="font-bold text-slate-800 mb-4">Pedidos arquivados</h2>
+    <div className="p-4 sm:p-6 max-w-4xl mx-auto animate-fade-up">
+      <div className="mb-4">
+        <h2 className="text-xl font-extrabold tracking-tight text-brand-950">Pedidos arquivados</h2>
+        <p className="text-xs font-medium text-slate-400">Fora do quadro, mas guardados no histórico.</p>
+      </div>
       {loading ? (
-        <p className="text-sm text-slate-400">Carregando…</p>
+        <p className="text-sm font-medium text-slate-400">Carregando…</p>
       ) : orders.length === 0 ? (
-        <p className="text-sm text-slate-400">Nenhum pedido arquivado.</p>
+        <div className="text-center py-20 bg-black/[0.02] border border-dashed border-black/10 rounded-3xl">
+          <p className="text-sm font-bold text-slate-400">Nenhum pedido arquivado.</p>
+        </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 divide-y divide-slate-100">
+        <div className="bg-white rounded-3xl shadow-sm border border-black/5 divide-y divide-black/5 overflow-hidden">
           {orders.map((order) => (
-            <div key={order.id} className="flex items-center gap-4 px-4 py-3 text-sm">
-              <span className="font-black text-slate-400 text-xs w-14">{order.order_number}</span>
+            <div key={order.id} className="flex items-center gap-4 px-5 py-3.5 text-sm">
+              <span className="font-extrabold text-brand-600 text-xs w-14">{order.order_number}</span>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-slate-800 truncate">{order.customer_name}</p>
-                <p className="text-xs text-slate-400 truncate">
+                <p className="font-bold text-brand-950 truncate">{order.customer_name}</p>
+                <p className="text-xs font-medium text-slate-400 truncate">
                   {[order.product_type, order.value && formatBRL(order.value), order.due_date && formatDateBR(order.due_date)]
                     .filter(Boolean)
                     .join(' · ')}
                 </p>
               </div>
-              <span className="text-xs text-slate-500">{COLUMNS.find((c) => c.id === order.status)?.title}</span>
+              <span className="text-xs font-semibold text-slate-400">
+                {COLUMNS.find((c) => c.id === order.status)?.title}
+              </span>
               <button
                 onClick={() => restore(order)}
                 title="Restaurar para o quadro"
-                className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50"
+                className="p-2 rounded-full text-brand-600 hover:bg-brand-50 transition-colors"
               >
                 <RotateCcw size={16} />
               </button>
               <button
                 onClick={() => remove(order)}
                 title="Excluir definitivamente"
-                className="p-2 rounded-lg text-red-500 hover:bg-red-50"
+                className="p-2 rounded-full text-flame-500 hover:bg-flame-50 transition-colors"
               >
                 <Trash2 size={16} />
               </button>

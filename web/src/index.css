@@ -1,5 +1,72 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* Verde da logo Classul */
+  --color-brand-50: #f2faec;
+  --color-brand-100: #e3f5d3;
+  --color-brand-200: #c8eaac;
+  --color-brand-300: #a4da7b;
+  --color-brand-400: #82c953;
+  --color-brand-500: #62bb46;
+  --color-brand-600: #4a9c33;
+  --color-brand-700: #3a7a2a;
+  --color-brand-800: #316225;
+  --color-brand-900: #2a5222;
+  --color-brand-950: #12290e;
+
+  /* Vermelho da logo */
+  --color-flame-50: #fef2f2;
+  --color-flame-100: #fee2e1;
+  --color-flame-500: #ee3b33;
+  --color-flame-600: #d92a22;
+  --color-flame-700: #b71f19;
+
+  /* Amarelo da logo */
+  --color-sun-100: #fff9c2;
+  --color-sun-300: #ffe94d;
+  --color-sun-400: #ffd600;
+  --color-sun-500: #eabf00;
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: #f4f6ef;
+  color: #1c2417;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: #c8eaac;
+  color: #12290e;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(18, 41, 14, 0.15);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(18, 41, 14, 0.3);
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 }

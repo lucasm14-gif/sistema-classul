@@ -8,9 +8,9 @@ export function useToast() {
 }
 
 const STYLES = {
-  success: { bg: 'bg-emerald-600', Icon: CheckCircle2 },
-  error: { bg: 'bg-red-600', Icon: AlertTriangle },
-  info: { bg: 'bg-slate-700', Icon: Info }
+  success: { bg: 'bg-brand-600', Icon: CheckCircle2 },
+  error: { bg: 'bg-flame-600', Icon: AlertTriangle },
+  info: { bg: 'bg-brand-950', Icon: Info }
 };
 
 export function ToastProvider({ children }) {
@@ -31,7 +31,7 @@ export function ToastProvider({ children }) {
           return (
             <div
               key={id}
-              className={`${bg} text-white px-4 py-3 rounded-xl shadow-xl flex items-start gap-3 text-sm animate-[slideIn_.25s_ease-out]`}
+              className={`${bg} text-white px-4 py-3 rounded-2xl shadow-2xl flex items-start gap-3 text-sm font-semibold animate-[slideIn_.25s_ease-out]`}
             >
               <Icon size={18} className="shrink-0 mt-0.5" />
               <span className="whitespace-pre-line">{message}</span>
