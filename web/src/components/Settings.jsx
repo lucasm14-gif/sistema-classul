@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { LoaderCircle, Save, Plug, Send, List } from 'lucide-react';
+import { LoaderCircle, Save, Plug, Send, List, HardDrive, CheckCircle2, XCircle } from 'lucide-react';
 import { api } from '../api';
 import { useToast } from './Toast';
 
@@ -14,11 +14,14 @@ export default function Settings({ onAuthError }) {
   const [loadingInstances, setLoadingInstances] = useState(false);
   const [testNumber, setTestNumber] = useState('');
   const [testing, setTesting] = useState(false);
+  const [driveStatus, setDriveStatus] = useState(null);
+  const [connecting, setConnecting] = useState(false);
   const toast = useToast();
 
   const load = useCallback(async () => {
     try {
       setForm(await api.getSettings());
+      setDriveStatus(await api.googleStatus());
     } catch (err) {
       if (!onAuthError(err)) toast(err.message, 'error');
     }
@@ -78,6 +81,18 @@ export default function Settings({ onAuthError }) {
       if (!onAuthError(err)) toast(err.message, 'error', 8000);
     } finally {
       setTesting(false);
+    }
+  };
+
+  const connectDrive = async () => {
+    setConnecting(true);
+    try {
+      await api.saveSettings(form); // garante que Client ID/Secret digitados sejam usados
+      const { url } = await api.googleAuthUrl();
+      window.location.href = url;
+    } catch (err) {
+      if (!onAuthError(err)) toast(err.message, 'error', 8000);
+      setConnecting(false);
     }
   };
 
@@ -157,6 +172,64 @@ export default function Settings({ onAuthError }) {
             {testing ? <LoaderCircle size={15} className="animate-spin" /> : <Send size={15} />}
             Enviar teste
           </button>
+        </div>
+      </section>
+
+      {/* Google Drive */}
+      <section className="bg-white rounded-3xl shadow-sm border border-black/5 p-6 sm:p-7">
+        <h3 className="font-extrabold tracking-tight text-brand-950 mb-1 flex items-center gap-2">
+          <span className="w-8 h-8 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center">
+            <HardDrive size={15} />
+          </span>
+          Google Drive (arquivos dos pedidos)
+          {driveStatus &&
+            (driveStatus.connected ? (
+              <span className="ml-auto flex items-center gap-1 text-xs font-extrabold text-brand-700 bg-brand-50 px-3 py-1 rounded-full">
+                <CheckCircle2 size={13} /> Conectado
+              </span>
+            ) : (
+              <span className="ml-auto flex items-center gap-1 text-xs font-extrabold text-slate-400 bg-black/[0.04] px-3 py-1 rounded-full">
+                <XCircle size={13} /> Não conectado
+              </span>
+            ))}
+        </h3>
+        <p className="text-xs font-medium text-slate-400 mb-5">
+          Cada pedido ganha uma pasta própria dentro de "Classul - Pedidos" no seu Drive. Crie as credenciais em
+          console.cloud.google.com (o passo a passo está no README) e cole aqui.
+        </p>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label className={label}>Client ID</label>
+            <input
+              className={input}
+              value={form.google_client_id || ''}
+              onChange={set('google_client_id')}
+              placeholder="xxxxx.apps.googleusercontent.com"
+            />
+          </div>
+          <div>
+            <label className={label}>Client Secret</label>
+            <input
+              className={input}
+              type="password"
+              value={form.google_client_secret || ''}
+              onChange={set('google_client_secret')}
+              placeholder="GOCSPX-..."
+            />
+          </div>
+        </div>
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            onClick={connectDrive}
+            disabled={connecting}
+            className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-extrabold px-5 py-2.5 rounded-full shadow-lg shadow-brand-600/25 transition-all hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0"
+          >
+            {connecting ? <LoaderCircle size={15} className="animate-spin" /> : <HardDrive size={15} />}
+            {driveStatus?.connected ? 'Reconectar Google Drive' : 'Conectar Google Drive'}
+          </button>
+          <p className="text-[11px] font-medium text-slate-400">
+            Você será levado ao Google para autorizar — use a conta que vai guardar os arquivos.
+          </p>
         </div>
       </section>
 

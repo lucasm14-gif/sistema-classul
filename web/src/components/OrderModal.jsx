@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -8,7 +8,10 @@ import {
   Archive,
   Send,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Paperclip,
+  FileText,
+  ExternalLink
 } from 'lucide-react';
 import { api } from '../api';
 import { CASE_COLORS, PRODUCT_TYPES, COLUMNS } from '../constants';
@@ -16,6 +19,13 @@ import { CASE_COLORS, PRODUCT_TYPES, COLUMNS } from '../constants';
 const formatDateTime = (value) => {
   const d = new Date(value);
   return isNaN(d) ? value : d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+};
+
+const formatBytes = (bytes) => {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 };
 
 const emptyForm = {
@@ -35,12 +45,18 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
   const [error, setError] = useState('');
   const [messages, setMessages] = useState([]);
   const [clients, setClients] = useState([]);
+  const [attachments, setAttachments] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (!order) return;
     api
       .getOrder(order.id)
-      .then((full) => setMessages(full.messages || []))
+      .then((full) => {
+        setMessages(full.messages || []);
+        setAttachments(full.attachments || []);
+      })
       .catch((err) => onAuthError(err));
   }, [order, onAuthError]);
 
@@ -103,6 +119,45 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
     try {
       await api.archiveOrder(order.id, true);
       onArchived(order);
+    } catch (err) {
+      if (!onAuthError(err)) setError(err.message);
+    }
+  };
+
+  const uploadFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploading(true);
+    setError('');
+    try {
+      const { uploadUrl } = await api.createUploadSession(order.id, {
+        name: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        size: file.size
+      });
+      // envia o arquivo direto do navegador para o Google Drive
+      const up = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file
+      });
+      if (!up.ok) throw new Error(`Falha no envio para o Google Drive (${up.status}).`);
+      const uploaded = await up.json();
+      const attachment = await api.registerAttachment(order.id, uploaded.id);
+      setAttachments((prev) => [attachment, ...prev]);
+    } catch (err) {
+      if (!onAuthError(err)) setError(err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeAttachment = async (attachment) => {
+    if (!confirm(`Excluir o arquivo "${attachment.name}" do Google Drive?`)) return;
+    try {
+      await api.deleteAttachment(attachment.id);
+      setAttachments((prev) => prev.filter((a) => a.id !== attachment.id));
     } catch (err) {
       if (!onAuthError(err)) setError(err.message);
     }
@@ -211,6 +266,59 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
               placeholder="Detalhes do pedido..."
             />
           </div>
+
+          {!isNew && (
+            <div className="col-span-2">
+              <div className="flex items-center justify-between mb-2">
+                <label className={`${label} mb-0`}>Arquivos do pedido (Google Drive)</label>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="flex items-center gap-1.5 text-xs font-extrabold text-brand-700 hover:text-brand-900 transition-colors disabled:opacity-60"
+                >
+                  {uploading ? <LoaderCircle size={13} className="animate-spin" /> : <Paperclip size={13} />}
+                  {uploading ? 'Enviando…' : 'Anexar arquivo'}
+                </button>
+                <input ref={fileInputRef} type="file" className="hidden" onChange={uploadFile} />
+              </div>
+              {attachments.length === 0 ? (
+                <p className="text-xs font-medium text-slate-400">
+                  Nenhum arquivo ainda. Os anexos ficam numa pasta do pedido no seu Google Drive.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {attachments.map((a) => (
+                    <li
+                      key={a.id}
+                      className="bg-white border border-black/5 rounded-xl px-3.5 py-2.5 text-xs flex items-center gap-3 shadow-sm"
+                    >
+                      <FileText size={15} className="text-brand-600 shrink-0" />
+                      <span className="flex-1 min-w-0 truncate font-bold text-brand-950">{a.name}</span>
+                      {a.size && <span className="text-slate-400 font-medium shrink-0">{formatBytes(a.size)}</span>}
+                      {a.web_view_link && (
+                        <a
+                          href={a.web_view_link}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Abrir no Google Drive"
+                          className="p-1.5 rounded-full text-brand-600 hover:bg-brand-50 transition-colors shrink-0"
+                        >
+                          <ExternalLink size={14} />
+                        </a>
+                      )}
+                      <button
+                        onClick={() => removeAttachment(a)}
+                        title="Excluir arquivo"
+                        className="p-1.5 rounded-full text-flame-500 hover:bg-flame-50 transition-colors shrink-0"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
 
           {!isNew && (
             <div className="col-span-2">

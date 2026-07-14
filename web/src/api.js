@@ -47,6 +47,13 @@ export const api = {
   createClient: (data) => request('/api/clients', { method: 'POST', body: JSON.stringify(data) }),
   updateClient: (id, data) => request(`/api/clients/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteClient: (id) => request(`/api/clients/${id}`, { method: 'DELETE' }),
+  googleStatus: () => request('/api/google/status'),
+  googleAuthUrl: () => request('/api/google/auth-url'),
+  createUploadSession: (orderId, meta) =>
+    request(`/api/orders/${orderId}/attachments/session`, { method: 'POST', body: JSON.stringify(meta) }),
+  registerAttachment: (orderId, fileId) =>
+    request(`/api/orders/${orderId}/attachments`, { method: 'POST', body: JSON.stringify({ file_id: fileId }) }),
+  deleteAttachment: (id) => request(`/api/attachments/${id}`, { method: 'DELETE' }),
   getSettings: () => request('/api/settings'),
   saveSettings: (data) => request('/api/settings', { method: 'PUT', body: JSON.stringify(data) }),
   listInstances: () => request('/api/evolution/instances'),

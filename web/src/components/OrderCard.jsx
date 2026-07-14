@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, MessageCircle } from 'lucide-react';
+import { Calendar, MessageCircle, Paperclip } from 'lucide-react';
 import { CASE_COLOR_DOT, formatBRL, formatDateBR, isOverdue } from '../constants';
 
 export default function OrderCard({ order, dragging, onClick }) {
@@ -46,6 +46,11 @@ export default function OrderCard({ order, dragging, onClick }) {
           </span>
         )}
         {order.value && <span className="font-extrabold text-brand-700">{formatBRL(order.value)}</span>}
+        {order.attachments_count > 0 && (
+          <span className="flex items-center gap-0.5 font-bold text-slate-400" title={`${order.attachments_count} arquivo(s)`}>
+            <Paperclip size={11} /> {order.attachments_count}
+          </span>
+        )}
         {order.phone && (
           <a
             href={`https://wa.me/${order.phone}`}

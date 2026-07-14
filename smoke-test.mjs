@@ -138,5 +138,28 @@ check('editar cliente', (await r.json()).email === 'fulano@acme.com');
 r = await fetch(`${B}/clients/${manual.id}`, { method: 'DELETE', headers: H });
 check('excluir cliente', (await r.json()).ok === true);
 
+// ---------- Google Drive / anexos ----------
+
+r = await fetch(`${B}/google/status`, { headers: H });
+const gs = await r.json();
+check('drive status (não configurado)', gs.configured === false && gs.connected === false);
+
+r = await fetch(`${B}/google/auth-url`, { headers: H });
+check('auth-url exige credenciais', r.status === 400);
+
+r = await fetch(`${B}/orders/${o2.id}/attachments/session`, {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({ name: 'arte-final.png', mimeType: 'image/png', size: 1234 })
+});
+check('upload exige Drive conectado', r.status === 400 && /Google Drive/.test((await r.json()).error || ''));
+
+r = await fetch(`${B}/orders/${o2.id}`, { headers: H });
+const withAtt = await r.json();
+check('pedido devolve lista de anexos', Array.isArray(withAtt.attachments) && withAtt.attachments.length === 0);
+
+r = await fetch(`${B}/orders`, { headers: H });
+check('lista de pedidos tem attachments_count', (await r.json()).every((o) => 'attachments_count' in o));
+
 server.close();
 console.log('\nFim dos testes.');

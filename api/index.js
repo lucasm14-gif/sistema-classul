@@ -8,12 +8,61 @@ import {
   normalizePhone,
   formatOrderNumber
 } from '../lib/whatsapp.js';
+import {
+  oauthState,
+  buildAuthUrl,
+  exchangeCode,
+  createUploadSession,
+  getFileMeta,
+  deleteFile
+} from '../lib/google.js';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 app.get('/api/health', (req, res) => res.json({ ok: true, service: 'classul' }));
+
+function baseUrl(req) {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  return `${proto}://${host}`;
+}
+
+// Callback do OAuth do Google — o navegador chega aqui redirecionado pelo Google,
+// sem Bearer token; a validação é feita pelo parâmetro state.
+app.get('/api/google/callback', async (req, res) => {
+  const page = (title, body, ok) =>
+    res.send(
+      `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${title}</title></head>` +
+        `<body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:90vh;background:#12290e;color:#fff;text-align:center">` +
+        `<div><h1 style="color:${ok ? '#82c953' : '#ee3b33'}">${title}</h1><p>${body}</p></div>` +
+        (ok ? `<script>setTimeout(()=>{location.href='/'} ,2500)</script>` : '') +
+        `</body></html>`
+    );
+  try {
+    await ensureSchema();
+    const { code, state, error } = req.query;
+    if (error) return page('Conexão cancelada', String(error), false);
+    if (state !== oauthState()) return page('Estado inválido', 'Tente conectar novamente pelo sistema.', false);
+    const tokens = await exchangeCode(String(code), `${baseUrl(req)}/api/google/callback`);
+    if (tokens.refresh_token) {
+      await setSettings({ google_refresh_token: tokens.refresh_token });
+    } else {
+      const current = await getSettings();
+      if (!current.google_refresh_token) {
+        return page(
+          'Quase lá',
+          'O Google não devolveu o token de acesso permanente. Remova o acesso do app em myaccount.google.com/permissions e clique em Conectar de novo.',
+          false
+        );
+      }
+    }
+    page('Google Drive conectado! ✅', 'Voltando para o sistema…', true);
+  } catch (err) {
+    page('Erro na conexão', err.message, false);
+  }
+});
 
 app.use('/api', async (req, res, next) => {
   const header = req.headers.authorization || '';
@@ -86,7 +135,9 @@ const h = (fn) => (req, res) =>
 app.get('/api/orders', h(async (req, res) => {
   const archived = req.query.archived === '1' ? 1 : 0;
   const { rows } = await q('SELECT * FROM orders WHERE archived = $1 ORDER BY created_at ASC, id ASC', [archived]);
-  res.json(rows.map(serializeOrder));
+  const { rows: counts } = await q('SELECT order_id, COUNT(*) AS n FROM attachments GROUP BY order_id');
+  const countMap = new Map(counts.map((r) => [r.order_id, Number(r.n)]));
+  res.json(rows.map((r) => ({ ...serializeOrder(r), attachments_count: countMap.get(r.id) || 0 })));
 }));
 
 app.get('/api/orders/:id', h(async (req, res) => {
@@ -96,7 +147,11 @@ app.get('/api/orders/:id', h(async (req, res) => {
     'SELECT * FROM message_log WHERE order_id = $1 ORDER BY created_at DESC, id DESC',
     [order.id]
   );
-  res.json({ ...serializeOrder(order), messages });
+  const { rows: attachments } = await q(
+    'SELECT * FROM attachments WHERE order_id = $1 ORDER BY created_at DESC, id DESC',
+    [order.id]
+  );
+  res.json({ ...serializeOrder(order), messages, attachments });
 }));
 
 app.post('/api/orders', h(async (req, res) => {
@@ -192,7 +247,70 @@ app.delete('/api/orders/:id', h(async (req, res) => {
   const order = await getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Pedido não encontrado.' });
   await q('DELETE FROM message_log WHERE order_id = $1', [order.id]);
+  await q('DELETE FROM attachments WHERE order_id = $1', [order.id]);
   await q('DELETE FROM orders WHERE id = $1', [order.id]);
+  res.json({ ok: true });
+}));
+
+// ---------- Google Drive / Anexos ----------
+
+app.get('/api/google/status', h(async (req, res) => {
+  const s = await getSettings();
+  res.json({
+    configured: Boolean(s.google_client_id && s.google_client_secret),
+    connected: Boolean(s.google_refresh_token),
+    folder_id: s.google_folder_id || null
+  });
+}));
+
+app.get('/api/google/auth-url', h(async (req, res) => {
+  const s = await getSettings();
+  if (!s.google_client_id || !s.google_client_secret) {
+    return res.status(400).json({ error: 'Preencha o Client ID e o Client Secret do Google e salve antes de conectar.' });
+  }
+  res.json({ url: buildAuthUrl(s.google_client_id, `${baseUrl(req)}/api/google/callback`) });
+}));
+
+// Inicia o upload: cria a pasta do pedido (se preciso) e devolve a URL
+// para o navegador mandar o arquivo direto ao Google Drive.
+app.post('/api/orders/:id/attachments/session', h(async (req, res) => {
+  const order = await getOrder(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Pedido não encontrado.' });
+  const { name, mimeType, size } = req.body || {};
+  if (!name) return res.status(400).json({ error: 'Informe o nome do arquivo.' });
+  try {
+    const uploadUrl = await createUploadSession(order, { name, mimeType, size }, req.headers.origin);
+    res.json({ uploadUrl });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+}));
+
+// Registra o arquivo depois que o navegador terminou o upload.
+app.post('/api/orders/:id/attachments', h(async (req, res) => {
+  const order = await getOrder(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Pedido não encontrado.' });
+  const fileId = req.body?.file_id;
+  if (!fileId) return res.status(400).json({ error: 'Informe o file_id do Drive.' });
+  const meta = await getFileMeta(fileId);
+  const { rows } = await q(
+    `INSERT INTO attachments (order_id, drive_file_id, name, mime_type, size, web_view_link)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [order.id, meta.id, meta.name, meta.mimeType || null, meta.size ? Number(meta.size) : null, meta.webViewLink || null]
+  );
+  res.status(201).json(rows[0]);
+}));
+
+app.delete('/api/attachments/:id', h(async (req, res) => {
+  const { rows } = await q('SELECT * FROM attachments WHERE id = $1', [req.params.id]);
+  const attachment = rows[0];
+  if (!attachment) return res.status(404).json({ error: 'Anexo não encontrado.' });
+  try {
+    await deleteFile(attachment.drive_file_id);
+  } catch (err) {
+    console.error('Falha ao excluir do Drive (removendo só o registro):', err.message);
+  }
+  await q('DELETE FROM attachments WHERE id = $1', [attachment.id]);
   res.json({ ok: true });
 }));
 

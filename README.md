@@ -100,6 +100,23 @@ A Evolution API é um servidor que controla um WhatsApp conectado (como o WhatsA
 
 ⚠️ Importante: a instância precisa estar com status **conectado** (QR code escaneado com o número que vai enviar as mensagens). Use a tela de Configurações → **Enviar teste** para validar tudo antes de usar no dia a dia.
 
+## Google Drive — arquivos por pedido
+
+Cada pedido pode ter arquivos anexados (arte, foto da placa, comprovante…). Eles são enviados **direto do navegador para o seu Google Drive**, organizados em `Classul - Pedidos / Pedido #0001 - Cliente / …`.
+
+**Configuração (uma única vez, ~5 minutos):**
+
+1. Acesse [console.cloud.google.com](https://console.cloud.google.com) com a conta Google que vai guardar os arquivos → crie um projeto (ex: "Classul").
+2. **APIs e serviços → Biblioteca** → procure **Google Drive API** → **Ativar**.
+3. **APIs e serviços → Tela de permissão OAuth**: tipo **Externo**, nome "Classul", seu e-mail nos contatos → salvar. Depois, em **Público-alvo**, clique em **Publicar aplicativo** (evita que a conexão expire a cada 7 dias; o aviso de "app não verificado" na hora de conectar é normal, clique em "Avançado → Acessar").
+4. **APIs e serviços → Credenciais → Criar credenciais → ID do cliente OAuth**:
+   - Tipo: **Aplicativo da Web**
+   - URIs de redirecionamento autorizados: `https://sistema-classul.vercel.app/api/google/callback`
+   - Copie o **Client ID** e o **Client Secret**.
+5. No sistema: **Configurações → Google Drive** → cole Client ID e Secret → **Conectar Google Drive** → autorize com a conta desejada. Pronto.
+
+O upload usa o escopo `drive.file`: o sistema só enxerga e mexe nos arquivos/pastas que ele mesmo criou — sem acesso ao resto do seu Drive.
+
 ## Extensão do Chrome
 
 ```bash
