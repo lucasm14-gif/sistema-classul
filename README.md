@@ -43,7 +43,7 @@ Entre com a senha definida em `API_TOKEN` no `server/.env`.
 
 ## Deploy na Vercel (recomendado)
 
-O projeto já está preparado: `vercel.json` + `api/index.js` (funções serverless) + build do `web/`. Na Vercel o banco é **Postgres** (Neon, grátis), criado pelo próprio painel.
+O projeto já está preparado: `vercel.json` + `api/index.js` (funções serverless) + build do `web/`. O banco é **Postgres no Supabase** (já criado, com tabelas e configurações da Evolution gravadas — a connection string está no arquivo `.env` local, que não vai para o git).
 
 **Passo a passo:**
 
@@ -56,19 +56,17 @@ O projeto já está preparado: `vercel.json` + `api/index.js` (funções serverl
 
 2. **Importe na Vercel** — [vercel.com/new](https://vercel.com/new) → **Import** no repositório. Não mude nada nas configurações de build (a Vercel lê o `vercel.json`). Pode clicar em **Deploy** — o primeiro deploy sobe sem banco mesmo.
 
-3. **Crie o banco** — no projeto da Vercel: aba **Storage** → **Create Database** → **Neon (Postgres)** → conecte ao projeto. Isso cria a variável `DATABASE_URL` automaticamente.
-
-4. **Configure as variáveis** — **Settings → Environment Variables**, adicione:
+3. **Configure as variáveis** — **Settings → Environment Variables**, adicione:
    | Nome | Valor |
    |---|---|
+   | `DATABASE_URL` | a connection string do Supabase (está no `.env` local) |
    | `API_TOKEN` | uma senha forte da sua escolha (é a senha de login do sistema) |
-   | `EVOLUTION_URL` | `https://evolution.scalemidia.com.br` |
-   | `EVOLUTION_APIKEY` | sua API key da Evolution |
-   | `EVOLUTION_INSTANCE` | `classul Notion` |
 
-5. **Redeploy** — aba **Deployments** → menu `⋯` do último deploy → **Redeploy** (para aplicar banco + variáveis).
+   As configurações da Evolution API (URL, chave, instância) já estão gravadas no banco e podem ser alteradas na tela Configurações do sistema.
 
-6. Pronto: o sistema fica em `https://seu-projeto.vercel.app`. Use essa URL + o `API_TOKEN` no login do sistema e nas Opções da extensão.
+4. **Redeploy** — aba **Deployments** → menu `⋯` do último deploy → **Redeploy** (para aplicar as variáveis).
+
+5. Pronto: o sistema fica em `https://seu-projeto.vercel.app`. Use essa URL + o `API_TOKEN` no login do sistema e nas Opções da extensão.
 
 Para testar a API localmente sem banco externo: `npm install && node smoke-test.mjs`.
 
