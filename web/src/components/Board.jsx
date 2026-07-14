@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { Plus, MessageCircle, RefreshCw } from 'lucide-react';
+import { Plus, MessageCircle, RefreshCw, Search } from 'lucide-react';
 import { api } from '../api';
 import { COLUMNS } from '../constants';
 import OrderCard from './OrderCard';
@@ -11,6 +11,7 @@ export default function Board({ onAuthError }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null); // null | 'new' | order object
+  const [search, setSearch] = useState('');
   const toast = useToast();
 
   const load = useCallback(async () => {
@@ -88,13 +89,21 @@ export default function Board({ onAuthError }) {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="px-6 pt-4 pb-2 flex items-center justify-between">
-        <p className="text-sm text-slate-500">
-          Arraste os cards entre as colunas. Ao chegar em{' '}
-          <span className="font-semibold text-emerald-600">Pronto</span> e{' '}
+      <div className="px-6 pt-4 pb-2 flex items-center justify-between gap-3">
+        <p className="text-sm text-slate-500 hidden lg:block">
+          Ao chegar em <span className="font-semibold text-emerald-600">Pronto</span> e{' '}
           <span className="font-semibold text-slate-600">Entregue</span>, o cliente recebe WhatsApp
           automático <MessageCircle size={14} className="inline -mt-0.5" />.
         </p>
+        <div className="relative flex-1 max-w-xs">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar pedido ou cliente..."
+            className="w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-2 text-sm outline-none focus:border-emerald-500 shadow-sm"
+          />
+        </div>
         <div className="flex gap-2">
           <button
             onClick={load}
@@ -116,7 +125,17 @@ export default function Board({ onAuthError }) {
         <div className="flex-1 overflow-x-auto px-6 pb-6 pt-2">
           <div className="grid grid-cols-4 gap-4 min-w-[900px] h-full">
             {COLUMNS.map((col) => {
-              const cards = orders.filter((o) => o.status === col.id);
+              const term = search.trim().toLowerCase();
+              const visible = term
+                ? orders.filter(
+                    (o) =>
+                      o.customer_name.toLowerCase().includes(term) ||
+                      o.order_number.includes(term) ||
+                      String(o.id) === term.replace(/\D/g, '') ||
+                      (o.description || '').toLowerCase().includes(term)
+                  )
+                : orders;
+              const cards = visible.filter((o) => o.status === col.id);
               return (
                 <div key={col.id} className="flex flex-col bg-slate-200/60 rounded-xl max-h-full">
                   <div className="flex items-center gap-2 px-3 py-3">

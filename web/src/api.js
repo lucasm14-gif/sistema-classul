@@ -41,6 +41,12 @@ export const api = {
   archiveOrder: (id, archived) =>
     request(`/api/orders/${id}/archive`, { method: 'PATCH', body: JSON.stringify({ archived }) }),
   deleteOrder: (id) => request(`/api/orders/${id}`, { method: 'DELETE' }),
+  listClients: (search = '') =>
+    request(`/api/clients${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+  getClient: (id) => request(`/api/clients/${id}`),
+  createClient: (data) => request('/api/clients', { method: 'POST', body: JSON.stringify(data) }),
+  updateClient: (id, data) => request(`/api/clients/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteClient: (id) => request(`/api/clients/${id}`, { method: 'DELETE' }),
   getSettings: () => request('/api/settings'),
   saveSettings: (data) => request('/api/settings', { method: 'PUT', body: JSON.stringify(data) }),
   listInstances: () => request('/api/evolution/instances'),

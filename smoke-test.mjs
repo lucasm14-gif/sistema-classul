@@ -97,5 +97,46 @@ check('listar arquivados', list.length === 1);
 r = await fetch(`${B}/orders/1`, { method: 'DELETE', headers: H });
 check('excluir', (await r.json()).ok === true);
 
+// ---------- Clientes ----------
+
+r = await fetch(`${B}/clients`, { headers: H });
+let clientsList = await r.json();
+check(
+  'cliente auto-criado pelo pedido',
+  clientsList.length === 1 && clientsList[0].name === 'João da Silva' && clientsList[0].phone === '5551999998888',
+  clientsList.map((c) => c.name).join(', ')
+);
+
+// novo pedido com o mesmo telefone → vincula ao cliente existente
+r = await fetch(`${B}/orders`, {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({ customer_name: 'Joao (obra nova)', phone: '51 99999-8888' })
+});
+const o2 = await r.json();
+check('pedido vinculado ao cliente existente pelo telefone', o2.client_id === clientsList[0].id);
+
+r = await fetch(`${B}/clients/${clientsList[0].id}`, { headers: H });
+const detail = await r.json();
+check('histórico de pedidos do cliente', detail.orders.length === 1 && detail.orders[0].id === o2.id);
+
+// CRUD manual de cliente
+r = await fetch(`${B}/clients`, {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({ name: 'Fulano Teste', phone: '(51) 98888-7777', company: 'ACME' })
+});
+const manual = await r.json();
+check('criar cliente manual (telefone normalizado)', r.status === 201 && manual.phone === '5551988887777');
+
+r = await fetch(`${B}/clients?search=acme`, { headers: H });
+check('busca de cliente por empresa', (await r.json()).length === 1);
+
+r = await fetch(`${B}/clients/${manual.id}`, { method: 'PUT', headers: H, body: JSON.stringify({ email: 'fulano@acme.com' }) });
+check('editar cliente', (await r.json()).email === 'fulano@acme.com');
+
+r = await fetch(`${B}/clients/${manual.id}`, { method: 'DELETE', headers: H });
+check('excluir cliente', (await r.json()).ok === true);
+
 server.close();
 console.log('\nFim dos testes.');

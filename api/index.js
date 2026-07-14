@@ -43,6 +43,37 @@ async function getOrder(id) {
   return rows[0] || null;
 }
 
+async function getClient(id) {
+  const { rows } = await q('SELECT * FROM clients WHERE id = $1', [id]);
+  return rows[0] || null;
+}
+
+// Vincula o pedido a um cliente existente (por telefone, depois por nome)
+// ou cria o cliente automaticamente.
+async function findOrCreateClient(name, phone) {
+  const cleanName = String(name || '').trim();
+  const normPhone = normalizePhone(phone);
+
+  if (normPhone) {
+    const { rows } = await q('SELECT * FROM clients WHERE phone = $1 ORDER BY id ASC LIMIT 1', [normPhone]);
+    if (rows.length) return rows[0];
+  }
+  if (cleanName) {
+    const { rows } = await q('SELECT * FROM clients WHERE LOWER(name) = LOWER($1) ORDER BY id ASC LIMIT 1', [cleanName]);
+    if (rows.length) {
+      // aproveita o pedido para completar o telefone do cliente
+      if (normPhone && !rows[0].phone) {
+        await q('UPDATE clients SET phone = $1, updated_at = now() WHERE id = $2', [normPhone, rows[0].id]);
+        rows[0].phone = normPhone;
+      }
+      return rows[0];
+    }
+  }
+  if (!cleanName) return null;
+  const { rows } = await q('INSERT INTO clients (name, phone) VALUES ($1, $2) RETURNING *', [cleanName, normPhone]);
+  return rows[0];
+}
+
 // Handler async com tratamento de erro centralizado.
 const h = (fn) => (req, res) =>
   Promise.resolve(fn(req, res)).catch((err) => {
@@ -74,9 +105,21 @@ app.post('/api/orders', h(async (req, res) => {
     return res.status(400).json({ error: 'O nome do cliente é obrigatório.' });
   }
   const status = STATUSES.includes(data.status) ? data.status : 'novo';
+
+  // Vincula/cria o cliente automaticamente (ou usa o client_id informado)
+  let clientId = null;
+  if (data.client_id) {
+    const client = await getClient(data.client_id);
+    if (client) clientId = client.id;
+  }
+  if (!clientId) {
+    const client = await findOrCreateClient(data.customer_name, data.phone);
+    if (client) clientId = client.id;
+  }
+
   const { rows } = await q(
-    `INSERT INTO orders (customer_name, phone, description, product_type, case_color, value, due_date, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+    `INSERT INTO orders (customer_name, phone, description, product_type, case_color, value, due_date, status, client_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
     [
       String(data.customer_name).trim(),
       normalizePhone(data.phone) || (data.phone ? String(data.phone) : null),
@@ -85,7 +128,8 @@ app.post('/api/orders', h(async (req, res) => {
       data.case_color || null,
       data.value || null,
       data.due_date || null,
-      status
+      status,
+      clientId
     ]
   );
   res.status(201).json(serializeOrder(rows[0]));
@@ -149,6 +193,87 @@ app.delete('/api/orders/:id', h(async (req, res) => {
   if (!order) return res.status(404).json({ error: 'Pedido não encontrado.' });
   await q('DELETE FROM message_log WHERE order_id = $1', [order.id]);
   await q('DELETE FROM orders WHERE id = $1', [order.id]);
+  res.json({ ok: true });
+}));
+
+// ---------- Clientes ----------
+
+const CLIENT_FIELDS = ['name', 'phone', 'email', 'company', 'notes'];
+
+app.get('/api/clients', h(async (req, res) => {
+  const search = String(req.query.search || '').trim().toLowerCase();
+  const params = [];
+  let where = '';
+  if (search) {
+    params.push(`%${search}%`);
+    where = `WHERE LOWER(c.name) LIKE $1 OR c.phone LIKE $1 OR LOWER(COALESCE(c.company, '')) LIKE $1`;
+  }
+  const { rows } = await q(`SELECT c.* FROM clients c ${where} ORDER BY LOWER(c.name) ASC`, params);
+  const { rows: counts } = await q(
+    'SELECT client_id, COUNT(*) AS n FROM orders WHERE client_id IS NOT NULL GROUP BY client_id'
+  );
+  const countMap = new Map(counts.map((r) => [r.client_id, Number(r.n)]));
+  res.json(rows.map((r) => ({ ...r, orders_count: countMap.get(r.id) || 0 })));
+}));
+
+app.get('/api/clients/:id', h(async (req, res) => {
+  const client = await getClient(req.params.id);
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+  const { rows: orders } = await q(
+    'SELECT * FROM orders WHERE client_id = $1 ORDER BY created_at DESC, id DESC',
+    [client.id]
+  );
+  res.json({ ...client, orders: orders.map(serializeOrder) });
+}));
+
+app.post('/api/clients', h(async (req, res) => {
+  const data = req.body || {};
+  if (!data.name || !String(data.name).trim()) {
+    return res.status(400).json({ error: 'O nome do cliente é obrigatório.' });
+  }
+  const { rows } = await q(
+    'INSERT INTO clients (name, phone, email, company, notes) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+    [
+      String(data.name).trim(),
+      normalizePhone(data.phone) || (data.phone ? String(data.phone) : null),
+      data.email || null,
+      data.company || null,
+      data.notes || null
+    ]
+  );
+  res.status(201).json(rows[0]);
+}));
+
+app.put('/api/clients/:id', h(async (req, res) => {
+  const client = await getClient(req.params.id);
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+  const data = req.body || {};
+  const updates = {};
+  for (const field of CLIENT_FIELDS) {
+    if (field in data) updates[field] = data[field] === '' ? null : data[field];
+  }
+  if ('name' in updates && !updates.name) {
+    return res.status(400).json({ error: 'O nome do cliente é obrigatório.' });
+  }
+  if ('phone' in updates && updates.phone) {
+    updates.phone = normalizePhone(updates.phone) || String(updates.phone);
+  }
+  const fields = Object.keys(updates);
+  if (fields.length) {
+    const sets = fields.map((f, i) => `${f} = $${i + 1}`).join(', ');
+    await q(`UPDATE clients SET ${sets}, updated_at = now() WHERE id = $${fields.length + 1}`, [
+      ...Object.values(updates),
+      client.id
+    ]);
+  }
+  res.json(await getClient(client.id));
+}));
+
+app.delete('/api/clients/:id', h(async (req, res) => {
+  const client = await getClient(req.params.id);
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+  await q('UPDATE orders SET client_id = NULL WHERE client_id = $1', [client.id]);
+  await q('DELETE FROM clients WHERE id = $1', [client.id]);
   res.json({ ok: true });
 }));
 

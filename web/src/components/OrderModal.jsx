@@ -33,6 +33,7 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [messages, setMessages] = useState([]);
+  const [clients, setClients] = useState([]);
 
   useEffect(() => {
     if (!order) return;
@@ -42,7 +43,24 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
       .catch((err) => onAuthError(err));
   }, [order, onAuthError]);
 
+  // Autocomplete de clientes ao criar pedido novo
+  useEffect(() => {
+    if (!isNew) return;
+    api.listClients().then(setClients).catch(() => {});
+  }, [isNew]);
+
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
+
+  const setCustomerName = (e) => {
+    const name = e.target.value;
+    const match = clients.find((c) => c.name.toLowerCase() === name.trim().toLowerCase());
+    setForm((f) => ({
+      ...f,
+      customer_name: name,
+      // ao escolher um cliente conhecido, puxa o telefone dele
+      phone: match && match.phone && !f.phone ? match.phone : f.phone
+    }));
+  };
 
   const save = async () => {
     if (!form.customer_name.trim()) {
@@ -138,7 +156,20 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
         <div className="flex-1 overflow-y-auto p-6 bg-slate-50 grid grid-cols-2 gap-4">
           <div className="col-span-2 sm:col-span-1">
             <label className={label}>Nome do Cliente *</label>
-            <input className={input} value={form.customer_name} onChange={set('customer_name')} placeholder="Nome do cliente" />
+            <input
+              className={input}
+              value={form.customer_name}
+              onChange={isNew ? setCustomerName : set('customer_name')}
+              placeholder="Nome do cliente"
+              list={isNew ? 'clients-datalist' : undefined}
+            />
+            {isNew && (
+              <datalist id="clients-datalist">
+                {clients.map((c) => (
+                  <option key={c.id} value={c.name} />
+                ))}
+              </datalist>
+            )}
           </div>
           <div className="col-span-2 sm:col-span-1">
             <label className={label}>Telefone (WhatsApp)</label>

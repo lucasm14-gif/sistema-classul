@@ -14,6 +14,11 @@ export const CASE_COLOR_DOT = {
   Vermelho: 'bg-red-500'
 };
 
+export function parseBRL(value) {
+  const n = parseFloat(String(value ?? '').replace(/[^\d.,]/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
+}
+
 export function formatBRL(value) {
   const n = parseFloat(String(value ?? '').replace(/[^\d.,]/g, '').replace(/\.(?=\d{3})/g, '').replace(',', '.'));
   return Number.isFinite(n) ? n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : value || '';
