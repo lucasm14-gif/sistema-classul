@@ -8,6 +8,12 @@ export const COLUMNS = [
 export const PRODUCT_TYPES = ['Maquina', 'Jota', 'Sublimação'];
 export const CASE_COLORS = ['Preto', 'Azul', 'Vermelho'];
 
+export const PAYMENT_STATUSES = [
+  { id: 'pendente', label: 'Pendente' },
+  { id: 'sinal', label: 'Sinal' },
+  { id: 'pago', label: 'Pago' }
+];
+
 export const CASE_COLOR_DOT = {
   Preto: 'bg-slate-900',
   Azul: 'bg-blue-500',

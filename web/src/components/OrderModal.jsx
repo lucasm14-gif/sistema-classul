@@ -16,7 +16,7 @@ import {
   FileWarning
 } from 'lucide-react';
 import { api } from '../api';
-import { CASE_COLORS, PRODUCT_TYPES, COLUMNS } from '../constants';
+import { CASE_COLORS, PRODUCT_TYPES, COLUMNS, PAYMENT_STATUSES } from '../constants';
 
 const formatDateTime = (value) => {
   const d = new Date(value);
@@ -37,7 +37,8 @@ const emptyForm = {
   product_type: 'Maquina',
   case_color: '',
   value: '',
-  due_date: ''
+  due_date: '',
+  payment_status: 'pendente'
 };
 
 export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchived, onResend, onAuthError }) {
@@ -96,7 +97,8 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
       product_type: form.product_type,
       case_color: form.case_color,
       value: form.value,
-      due_date: form.due_date
+      due_date: form.due_date,
+      payment_status: form.payment_status || 'pendente'
     };
     try {
       const saved = isNew ? await api.createOrder(payload) : await api.updateOrder(order.id, payload);
@@ -256,6 +258,31 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
           <div className="col-span-2 sm:col-span-1">
             <label className={label}>Valor (R$)</label>
             <input className={input} inputMode="decimal" value={form.value || ''} onChange={set('value')} placeholder="150,00" />
+          </div>
+          <div className="col-span-2 sm:col-span-1">
+            <label className={label}>Pagamento</label>
+            <div className="grid grid-cols-3 gap-2">
+              {PAYMENT_STATUSES.map(({ id, label: lbl }) => {
+                const selected = (form.payment_status || 'pendente') === id;
+                const activeStyle = {
+                  pendente: 'bg-slate-600 text-white border-slate-600 shadow-md',
+                  sinal: 'bg-sun-100 text-yellow-800 border-sun-400',
+                  pago: 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-600/20'
+                }[id];
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, payment_status: id }))}
+                    className={`text-xs font-bold rounded-xl border-2 px-2 py-2.5 transition-all ${
+                      selected ? activeStyle : 'bg-white text-slate-500 border-slate-200 hover:border-brand-300'
+                    }`}
+                  >
+                    {lbl}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <div className="col-span-2 sm:col-span-1">
             <label className={label}>Tipo</label>

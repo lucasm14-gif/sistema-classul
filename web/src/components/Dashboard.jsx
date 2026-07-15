@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { TrendingUp, Package, Receipt, CircleDollarSign, FileWarning, CheckCircle2 } from 'lucide-react';
+import { TrendingUp, Package, CircleDollarSign, FileWarning, CheckCircle2, Wallet, HandCoins } from 'lucide-react';
 import { api } from '../api';
 import { formatDateBR, parseBRL } from '../constants';
 import { useToast } from './Toast';
@@ -138,7 +138,7 @@ export default function Dashboard({ onAuthError }) {
         </select>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <StatTile
           icon={CircleDollarSign}
           label={`Faturado · ${monthLabel(month)}`}
@@ -146,10 +146,23 @@ export default function Dashboard({ onAuthError }) {
           sub={`${stats.month.count} pedido${stats.month.count !== 1 ? 's' : ''} entregue${stats.month.count !== 1 ? 's' : ''}`}
         />
         <StatTile
+          icon={Wallet}
+          label={`Recebido · ${monthLabel(month)}`}
+          value={brl(stats.month.paid)}
+          sub="entregas do mês marcadas como pagas"
+        />
+        <StatTile
           icon={TrendingUp}
           label="Ticket médio"
           value={brl(stats.month.avg)}
           sub="por pedido no mês"
+        />
+        <StatTile
+          icon={HandCoins}
+          label="A receber"
+          value={brl(stats.receivable.total)}
+          sub={`${stats.receivable.count} pedido${stats.receivable.count !== 1 ? 's' : ''} não pago${stats.receivable.count !== 1 ? 's' : ''}`}
+          tone={stats.receivable.count ? 'amber' : 'brand'}
         />
         <StatTile
           icon={Package}
@@ -214,6 +227,15 @@ export default function Dashboard({ onAuthError }) {
               <div key={o.id} className="px-6 py-3 flex items-center gap-3 text-sm">
                 <span className="font-extrabold text-brand-600 text-xs">{o.order_number}</span>
                 <span className="flex-1 min-w-0 truncate font-bold text-brand-950">{o.customer_name}</span>
+                {o.payment_status === 'pago' ? (
+                  <span className="flex items-center gap-1 text-[10px] font-extrabold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full">
+                    <Wallet size={11} /> pago
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-[10px] font-extrabold text-flame-700 bg-flame-50 px-2 py-0.5 rounded-full">
+                    <Wallet size={11} /> {o.payment_status === 'sinal' ? 'sinal' : 'a receber'}
+                  </span>
+                )}
                 {o.has_invoice ? (
                   <span className="flex items-center gap-1 text-[10px] font-extrabold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full">
                     <CheckCircle2 size={11} /> NF

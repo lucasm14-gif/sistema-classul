@@ -81,7 +81,17 @@ app.use('/api', async (req, res, next) => {
   }
 });
 
-const ORDER_FIELDS = ['customer_name', 'phone', 'description', 'product_type', 'case_color', 'value', 'due_date'];
+const ORDER_FIELDS = [
+  'customer_name',
+  'phone',
+  'description',
+  'product_type',
+  'case_color',
+  'value',
+  'due_date',
+  'payment_status'
+];
+const PAYMENT_STATUSES = ['pendente', 'sinal', 'pago'];
 
 function serializeOrder(order) {
   return { ...order, order_number: formatOrderNumber(order.id) };
@@ -171,6 +181,7 @@ app.post('/api/orders', h(async (req, res) => {
     return res.status(400).json({ error: 'O nome do cliente é obrigatório.' });
   }
   const status = STATUSES.includes(data.status) ? data.status : 'novo';
+  const paymentStatus = PAYMENT_STATUSES.includes(data.payment_status) ? data.payment_status : 'pendente';
 
   // Vincula/cria o cliente automaticamente (ou usa o client_id informado)
   let clientId = null;
@@ -184,8 +195,8 @@ app.post('/api/orders', h(async (req, res) => {
   }
 
   const { rows } = await q(
-    `INSERT INTO orders (customer_name, phone, description, product_type, case_color, value, due_date, status, client_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    `INSERT INTO orders (customer_name, phone, description, product_type, case_color, value, due_date, status, client_id, payment_status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
     [
       String(data.customer_name).trim(),
       normalizePhone(data.phone) || (data.phone ? String(data.phone) : null),
@@ -195,7 +206,8 @@ app.post('/api/orders', h(async (req, res) => {
       data.value || null,
       data.due_date || null,
       status,
-      clientId
+      clientId,
+      paymentStatus
     ]
   );
   res.status(201).json(serializeOrder(rows[0]));
@@ -211,6 +223,9 @@ app.put('/api/orders/:id', h(async (req, res) => {
   }
   if ('phone' in updates && updates.phone) {
     updates.phone = normalizePhone(updates.phone) || String(updates.phone);
+  }
+  if ('payment_status' in updates && !PAYMENT_STATUSES.includes(updates.payment_status)) {
+    return res.status(400).json({ error: `Status de pagamento inválido. Use: ${PAYMENT_STATUSES.join(', ')}` });
   }
   const fields = Object.keys(updates);
   if (fields.length) {
@@ -473,6 +488,7 @@ app.get('/api/stats', h(async (req, res) => {
 
   const monthOrders = [];
   let monthTotal = 0;
+  let monthPaid = 0;
   for (const o of delivered) {
     const key = monthKeySP(o.delivered_at);
     const bucket = monthMap.get(key);
@@ -483,6 +499,7 @@ app.get('/api/stats', h(async (req, res) => {
     if (key === selected) {
       monthOrders.push({ ...serializeOrder(o), has_invoice: invoiceSet.has(o.id) });
       monthTotal += parseValueBRL(o.value);
+      if (o.payment_status === 'pago') monthPaid += parseValueBRL(o.value);
     }
   }
 
@@ -490,16 +507,26 @@ app.get('/api/stats', h(async (req, res) => {
     .filter((o) => !invoiceSet.has(o.id))
     .map((o) => serializeOrder(o));
 
+  // a receber: qualquer pedido ativo (no quadro ou entregue) ainda não pago
+  const { rows: unpaid } = await q(
+    "SELECT * FROM orders WHERE archived = 0 AND payment_status != 'pago'"
+  );
+
   res.json({
     selected_month: selected,
     month: {
       total: monthTotal,
+      paid: monthPaid,
       count: monthOrders.length,
       avg: monthOrders.length ? monthTotal / monthOrders.length : 0
     },
     open: {
       count: open.length,
       total: open.reduce((sum, o) => sum + parseValueBRL(o.value), 0)
+    },
+    receivable: {
+      count: unpaid.length,
+      total: unpaid.reduce((sum, o) => sum + parseValueBRL(o.value), 0)
     },
     months,
     month_orders: monthOrders,

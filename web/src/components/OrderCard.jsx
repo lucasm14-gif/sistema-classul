@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, MessageCircle, Paperclip, FileWarning } from 'lucide-react';
+import { Calendar, MessageCircle, Paperclip, FileWarning, CircleDollarSign, CheckCircle2 } from 'lucide-react';
 import { CASE_COLOR_DOT, formatBRL, formatDateBR, isOverdue } from '../constants';
 
 export default function OrderCard({ order, dragging, onClick }) {
@@ -31,10 +31,31 @@ export default function OrderCard({ order, dragging, onClick }) {
 
       <p className="font-bold text-sm text-brand-950 leading-snug mb-1">{order.customer_name}</p>
 
-      {order.status === 'entregue' && !order.has_invoice && (
-        <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-yellow-800 bg-sun-100 px-2 py-0.5 rounded-full mb-1.5">
-          <FileWarning size={11} /> Anexar nota fiscal
-        </span>
+      {(order.payment_status === 'pago' ||
+        order.payment_status === 'sinal' ||
+        (order.status === 'entregue' && (!order.has_invoice || order.payment_status === 'pendente'))) && (
+        <div className="flex flex-wrap gap-1 mb-1.5">
+          {order.payment_status === 'pago' && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full">
+              <CheckCircle2 size={11} /> Pago
+            </span>
+          )}
+          {order.payment_status === 'sinal' && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-yellow-800 bg-sun-100 px-2 py-0.5 rounded-full">
+              <CircleDollarSign size={11} /> Sinal
+            </span>
+          )}
+          {order.status === 'entregue' && order.payment_status === 'pendente' && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-flame-700 bg-flame-50 px-2 py-0.5 rounded-full">
+              <CircleDollarSign size={11} /> Pgto pendente
+            </span>
+          )}
+          {order.status === 'entregue' && !order.has_invoice && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-yellow-800 bg-sun-100 px-2 py-0.5 rounded-full">
+              <FileWarning size={11} /> Anexar NF
+            </span>
+          )}
+        </div>
       )}
 
       {order.description && (

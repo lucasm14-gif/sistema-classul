@@ -199,5 +199,38 @@ check('sair de entregue limpa delivered_at', (await r.json()).order.delivered_at
 r = await fetch(`${B}/stats`, { headers: H });
 check('stats zera após reverter entrega', (await r.json()).month.count === 0);
 
+// ---------- Status de pagamento ----------
+
+r = await fetch(`${B}/orders/${o2.id}`, { headers: H });
+check('pedido nasce com pagamento pendente', (await r.json()).payment_status === 'pendente');
+
+r = await fetch(`${B}/orders/${o2.id}`, { method: 'PUT', headers: H, body: JSON.stringify({ payment_status: 'invalido' }) });
+check('status de pagamento inválido → 400', r.status === 400);
+
+r = await fetch(`${B}/orders/${o2.id}`, { method: 'PUT', headers: H, body: JSON.stringify({ payment_status: 'pago' }) });
+check('marcar como pago', (await r.json()).payment_status === 'pago');
+
+// pedido pago e entregue conta em month.paid; a receber zera
+await fetch(`${B}/orders/${o2.id}/status`, { method: 'PATCH', headers: H, body: JSON.stringify({ status: 'entregue' }) });
+r = await fetch(`${B}/stats`, { headers: H });
+let payStats = await r.json();
+check(
+  'stats: recebido no mês e a receber',
+  payStats.month.paid === 250 && payStats.receivable.count === 0,
+  `paid=${payStats.month.paid} receivable=${payStats.receivable.count}`
+);
+
+// novo pedido com sinal entra no a receber
+r = await fetch(`${B}/orders`, {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({ customer_name: 'Pedido Sinal', value: '100,00', payment_status: 'sinal' })
+});
+const sinalOrder = await r.json();
+check('criar pedido com sinal', sinalOrder.payment_status === 'sinal');
+r = await fetch(`${B}/stats`, { headers: H });
+payStats = await r.json();
+check('a receber inclui pedido com sinal', payStats.receivable.count === 1 && payStats.receivable.total === 100);
+
 server.close();
 console.log('\nFim dos testes.');

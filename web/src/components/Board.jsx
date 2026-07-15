@@ -49,8 +49,15 @@ export default function Board({ onAuthError }) {
       const { order, notification } = await api.moveOrder(id, status);
       setOrders((prev) => prev.map((o) => (o.id === id ? order : o)));
       notifyResult(notification, order.order_number);
-      if (status === 'entregue' && !order.has_invoice) {
-        toast(`📄 Pedido ${order.order_number} entregue sem nota fiscal — abra o card e use "Anexar NF".`, 'info', 8000);
+      const pendencias = [];
+      if (status === 'entregue' && !order.has_invoice) pendencias.push('nota fiscal');
+      if (status === 'entregue' && order.payment_status !== 'pago') pendencias.push('pagamento');
+      if (pendencias.length) {
+        toast(
+          `📄 Pedido ${order.order_number} entregue com pendência: ${pendencias.join(' e ')}. Abra o card para resolver.`,
+          'info',
+          8000
+        );
       }
     } catch (err) {
       setOrders(previous);
