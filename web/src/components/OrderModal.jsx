@@ -11,7 +11,9 @@ import {
   XCircle,
   Paperclip,
   FileText,
-  ExternalLink
+  ExternalLink,
+  Receipt,
+  FileWarning
 } from 'lucide-react';
 import { api } from '../api';
 import { CASE_COLORS, PRODUCT_TYPES, COLUMNS } from '../constants';
@@ -48,6 +50,7 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
+  const uploadCategoryRef = useRef('arquivo');
 
   useEffect(() => {
     if (!order) return;
@@ -124,17 +127,24 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
     }
   };
 
+  const pickFile = (category) => {
+    uploadCategoryRef.current = category;
+    fileInputRef.current?.click();
+  };
+
   const uploadFile = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    const category = uploadCategoryRef.current;
     setUploading(true);
     setError('');
     try {
       const { uploadUrl } = await api.createUploadSession(order.id, {
         name: file.name,
         mimeType: file.type || 'application/octet-stream',
-        size: file.size
+        size: file.size,
+        category
       });
       // envia o arquivo direto do navegador para o Google Drive
       const up = await fetch(uploadUrl, {
@@ -144,7 +154,7 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
       });
       if (!up.ok) throw new Error(`Falha no envio para o Google Drive (${up.status}).`);
       const uploaded = await up.json();
-      const attachment = await api.registerAttachment(order.id, uploaded.id);
+      const attachment = await api.registerAttachment(order.id, uploaded.id, category);
       setAttachments((prev) => [attachment, ...prev]);
     } catch (err) {
       if (!onAuthError(err)) setError(err.message);
@@ -152,6 +162,8 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
       setUploading(false);
     }
   };
+
+  const hasInvoice = attachments.some((a) => a.category === 'nota_fiscal');
 
   const removeAttachment = async (attachment) => {
     if (!confirm(`Excluir o arquivo "${attachment.name}" do Google Drive?`)) return;
@@ -269,18 +281,45 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
 
           {!isNew && (
             <div className="col-span-2">
-              <div className="flex items-center justify-between mb-2">
-                <label className={`${label} mb-0`}>Arquivos do pedido (Google Drive)</label>
+              <div className="flex items-center gap-3 mb-2 flex-wrap">
+                <label className={`${label} mb-0 mr-auto`}>Arquivos do pedido (Google Drive)</label>
                 <button
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => pickFile('arquivo')}
                   disabled={uploading}
                   className="flex items-center gap-1.5 text-xs font-extrabold text-brand-700 hover:text-brand-900 transition-colors disabled:opacity-60"
                 >
-                  {uploading ? <LoaderCircle size={13} className="animate-spin" /> : <Paperclip size={13} />}
-                  {uploading ? 'Enviando…' : 'Anexar arquivo'}
+                  {uploading && uploadCategoryRef.current === 'arquivo' ? (
+                    <LoaderCircle size={13} className="animate-spin" />
+                  ) : (
+                    <Paperclip size={13} />
+                  )}
+                  Anexar arquivo
+                </button>
+                <button
+                  onClick={() => pickFile('nota_fiscal')}
+                  disabled={uploading}
+                  className="flex items-center gap-1.5 text-xs font-extrabold text-yellow-700 hover:text-yellow-900 transition-colors disabled:opacity-60"
+                >
+                  {uploading && uploadCategoryRef.current === 'nota_fiscal' ? (
+                    <LoaderCircle size={13} className="animate-spin" />
+                  ) : (
+                    <Receipt size={13} />
+                  )}
+                  Anexar NF
                 </button>
                 <input ref={fileInputRef} type="file" className="hidden" onChange={uploadFile} />
               </div>
+
+              {order.status === 'entregue' && !hasInvoice && (
+                <div className="flex items-start gap-2.5 bg-sun-100 border border-sun-300/60 rounded-xl px-3.5 py-3 mb-2.5">
+                  <FileWarning size={16} className="text-yellow-700 shrink-0 mt-0.5" />
+                  <p className="text-xs font-bold text-yellow-800 leading-relaxed">
+                    Pedido entregue sem nota fiscal anexada. Use o botão{' '}
+                    <span className="whitespace-nowrap">"Anexar NF"</span> acima para regularizar.
+                  </p>
+                </div>
+              )}
+
               {attachments.length === 0 ? (
                 <p className="text-xs font-medium text-slate-400">
                   Nenhum arquivo ainda. Os anexos ficam numa pasta do pedido no seu Google Drive.
@@ -292,8 +331,17 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
                       key={a.id}
                       className="bg-white border border-black/5 rounded-xl px-3.5 py-2.5 text-xs flex items-center gap-3 shadow-sm"
                     >
-                      <FileText size={15} className="text-brand-600 shrink-0" />
+                      {a.category === 'nota_fiscal' ? (
+                        <Receipt size={15} className="text-yellow-600 shrink-0" />
+                      ) : (
+                        <FileText size={15} className="text-brand-600 shrink-0" />
+                      )}
                       <span className="flex-1 min-w-0 truncate font-bold text-brand-950">{a.name}</span>
+                      {a.category === 'nota_fiscal' && (
+                        <span className="text-[9px] font-extrabold uppercase bg-sun-100 text-yellow-700 px-2 py-0.5 rounded-full shrink-0">
+                          NF
+                        </span>
+                      )}
                       {a.size && <span className="text-slate-400 font-medium shrink-0">{formatBytes(a.size)}</span>}
                       {a.web_view_link && (
                         <a

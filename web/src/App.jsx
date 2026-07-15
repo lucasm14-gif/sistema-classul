@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users } from 'lucide-react';
+import { KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn } from 'lucide-react';
+import Dashboard from './components/Dashboard';
 import Board from './components/Board';
 import Settings from './components/Settings';
 import Login from './components/Login';
@@ -11,6 +12,7 @@ import { getToken, clearToken, AuthError } from './api';
 const TABS = [
   { id: 'board', label: 'Pedidos', icon: KanbanSquare },
   { id: 'clients', label: 'Clientes', icon: Users },
+  { id: 'dashboard', label: 'Faturamento', icon: ChartColumn },
   { id: 'archived', label: 'Arquivados', icon: Archive },
   { id: 'settings', label: 'Configurações', icon: SettingsIcon }
 ];
@@ -82,6 +84,7 @@ export default function App() {
         <main className="flex-1 overflow-hidden">
           {tab === 'board' && <Board onAuthError={handleAuthError} />}
           {tab === 'clients' && <Clients onAuthError={handleAuthError} />}
+          {tab === 'dashboard' && <Dashboard onAuthError={handleAuthError} />}
           {tab === 'archived' && <Archived onAuthError={handleAuthError} />}
           {tab === 'settings' && <Settings onAuthError={handleAuthError} />}
         </main>

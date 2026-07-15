@@ -135,9 +135,20 @@ const h = (fn) => (req, res) =>
 app.get('/api/orders', h(async (req, res) => {
   const archived = req.query.archived === '1' ? 1 : 0;
   const { rows } = await q('SELECT * FROM orders WHERE archived = $1 ORDER BY created_at ASC, id ASC', [archived]);
-  const { rows: counts } = await q('SELECT order_id, COUNT(*) AS n FROM attachments GROUP BY order_id');
-  const countMap = new Map(counts.map((r) => [r.order_id, Number(r.n)]));
-  res.json(rows.map((r) => ({ ...serializeOrder(r), attachments_count: countMap.get(r.id) || 0 })));
+  const { rows: counts } = await q('SELECT order_id, category, COUNT(*) AS n FROM attachments GROUP BY order_id, category');
+  const countMap = new Map();
+  const invoiceSet = new Set();
+  for (const r of counts) {
+    countMap.set(r.order_id, (countMap.get(r.order_id) || 0) + Number(r.n));
+    if (r.category === 'nota_fiscal') invoiceSet.add(r.order_id);
+  }
+  res.json(
+    rows.map((r) => ({
+      ...serializeOrder(r),
+      attachments_count: countMap.get(r.id) || 0,
+      has_invoice: invoiceSet.has(r.id)
+    }))
+  );
 }));
 
 app.get('/api/orders/:id', h(async (req, res) => {
@@ -220,10 +231,25 @@ app.patch('/api/orders/:id/status', h(async (req, res) => {
   if (!STATUSES.includes(status)) {
     return res.status(400).json({ error: `Etapa inválida. Use: ${STATUSES.join(', ')}` });
   }
-  await q('UPDATE orders SET status = $1, updated_at = now() WHERE id = $2', [status, order.id]);
+  // registra a data de entrega (base do faturamento)
+  if (status === 'entregue') {
+    await q(
+      'UPDATE orders SET status = $1, delivered_at = COALESCE(delivered_at, now()), updated_at = now() WHERE id = $2',
+      [status, order.id]
+    );
+  } else {
+    await q('UPDATE orders SET status = $1, delivered_at = NULL, updated_at = now() WHERE id = $2', [
+      status,
+      order.id
+    ]);
+  }
   const updated = await getOrder(order.id);
   const notification = await notifyStatus(updated, status);
-  res.json({ order: serializeOrder(updated), notification });
+  const { rows: invoiceRows } = await q(
+    "SELECT 1 FROM attachments WHERE order_id = $1 AND category = 'nota_fiscal' LIMIT 1",
+    [order.id]
+  );
+  res.json({ order: { ...serializeOrder(updated), has_invoice: invoiceRows.length > 0 }, notification });
 }));
 
 // Reenviar manualmente a mensagem de uma etapa.
@@ -276,10 +302,12 @@ app.get('/api/google/auth-url', h(async (req, res) => {
 app.post('/api/orders/:id/attachments/session', h(async (req, res) => {
   const order = await getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Pedido não encontrado.' });
-  const { name, mimeType, size } = req.body || {};
+  const { name, mimeType, size, category } = req.body || {};
   if (!name) return res.status(400).json({ error: 'Informe o nome do arquivo.' });
+  // notas fiscais ganham prefixo no Drive para facilitar a organização
+  const driveName = category === 'nota_fiscal' && !/^\[NF\]/i.test(name) ? `[NF] ${name}` : name;
   try {
-    const uploadUrl = await createUploadSession(order, { name, mimeType, size }, req.headers.origin);
+    const uploadUrl = await createUploadSession(order, { name: driveName, mimeType, size }, req.headers.origin);
     res.json({ uploadUrl });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -292,11 +320,20 @@ app.post('/api/orders/:id/attachments', h(async (req, res) => {
   if (!order) return res.status(404).json({ error: 'Pedido não encontrado.' });
   const fileId = req.body?.file_id;
   if (!fileId) return res.status(400).json({ error: 'Informe o file_id do Drive.' });
+  const category = req.body?.category === 'nota_fiscal' ? 'nota_fiscal' : 'arquivo';
   const meta = await getFileMeta(fileId);
   const { rows } = await q(
-    `INSERT INTO attachments (order_id, drive_file_id, name, mime_type, size, web_view_link)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [order.id, meta.id, meta.name, meta.mimeType || null, meta.size ? Number(meta.size) : null, meta.webViewLink || null]
+    `INSERT INTO attachments (order_id, drive_file_id, name, mime_type, size, web_view_link, category)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [
+      order.id,
+      meta.id,
+      meta.name,
+      meta.mimeType || null,
+      meta.size ? Number(meta.size) : null,
+      meta.webViewLink || null,
+      category
+    ]
   );
   res.status(201).json(rows[0]);
 }));
@@ -393,6 +430,81 @@ app.delete('/api/clients/:id', h(async (req, res) => {
   await q('UPDATE orders SET client_id = NULL WHERE client_id = $1', [client.id]);
   await q('DELETE FROM clients WHERE id = $1', [client.id]);
   res.json({ ok: true });
+}));
+
+// ---------- Faturamento ----------
+
+// Valores são texto livre ("150,00") — a soma é feita aqui, igual ao frontend.
+function parseValueBRL(v) {
+  const n = parseFloat(
+    String(v ?? '')
+      .replace(/[^\d.,]/g, '')
+      .replace(/\.(?=\d{3})/g, '')
+      .replace(',', '.')
+  );
+  return Number.isFinite(n) ? n : 0;
+}
+
+// Mês local de São Paulo no formato YYYY-MM.
+function monthKeySP(date) {
+  return new Date(date).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }).slice(0, 7);
+}
+
+app.get('/api/stats', h(async (req, res) => {
+  const selected = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? req.query.month : monthKeySP(new Date());
+
+  const { rows: delivered } = await q(
+    "SELECT * FROM orders WHERE status = 'entregue' AND delivered_at IS NOT NULL ORDER BY delivered_at DESC, id DESC"
+  );
+  const { rows: open } = await q("SELECT * FROM orders WHERE archived = 0 AND status != 'entregue'");
+  const { rows: invoiceRows } = await q(
+    "SELECT DISTINCT order_id FROM attachments WHERE category = 'nota_fiscal'"
+  );
+  const invoiceSet = new Set(invoiceRows.map((r) => r.order_id));
+
+  // últimos 6 meses (incluindo o atual)
+  const months = [];
+  const now = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 15);
+    months.push({ key: monthKeySP(d), total: 0, count: 0 });
+  }
+  const monthMap = new Map(months.map((m) => [m.key, m]));
+
+  const monthOrders = [];
+  let monthTotal = 0;
+  for (const o of delivered) {
+    const key = monthKeySP(o.delivered_at);
+    const bucket = monthMap.get(key);
+    if (bucket) {
+      bucket.total += parseValueBRL(o.value);
+      bucket.count += 1;
+    }
+    if (key === selected) {
+      monthOrders.push({ ...serializeOrder(o), has_invoice: invoiceSet.has(o.id) });
+      monthTotal += parseValueBRL(o.value);
+    }
+  }
+
+  const pendingInvoices = delivered
+    .filter((o) => !invoiceSet.has(o.id))
+    .map((o) => serializeOrder(o));
+
+  res.json({
+    selected_month: selected,
+    month: {
+      total: monthTotal,
+      count: monthOrders.length,
+      avg: monthOrders.length ? monthTotal / monthOrders.length : 0
+    },
+    open: {
+      count: open.length,
+      total: open.reduce((sum, o) => sum + parseValueBRL(o.value), 0)
+    },
+    months,
+    month_orders: monthOrders,
+    pending_invoices: pendingInvoices
+  });
 }));
 
 // ---------- Configurações ----------

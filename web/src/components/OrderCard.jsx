@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, MessageCircle, Paperclip } from 'lucide-react';
+import { Calendar, MessageCircle, Paperclip, FileWarning } from 'lucide-react';
 import { CASE_COLOR_DOT, formatBRL, formatDateBR, isOverdue } from '../constants';
 
 export default function OrderCard({ order, dragging, onClick }) {
@@ -30,6 +30,12 @@ export default function OrderCard({ order, dragging, onClick }) {
       </div>
 
       <p className="font-bold text-sm text-brand-950 leading-snug mb-1">{order.customer_name}</p>
+
+      {order.status === 'entregue' && !order.has_invoice && (
+        <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-yellow-800 bg-sun-100 px-2 py-0.5 rounded-full mb-1.5">
+          <FileWarning size={11} /> Anexar nota fiscal
+        </span>
+      )}
 
       {order.description && (
         <p className="text-xs text-slate-500 line-clamp-2 mb-2.5 leading-relaxed">{order.description}</p>

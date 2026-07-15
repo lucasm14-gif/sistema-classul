@@ -51,8 +51,12 @@ export const api = {
   googleAuthUrl: () => request('/api/google/auth-url'),
   createUploadSession: (orderId, meta) =>
     request(`/api/orders/${orderId}/attachments/session`, { method: 'POST', body: JSON.stringify(meta) }),
-  registerAttachment: (orderId, fileId) =>
-    request(`/api/orders/${orderId}/attachments`, { method: 'POST', body: JSON.stringify({ file_id: fileId }) }),
+  registerAttachment: (orderId, fileId, category = 'arquivo') =>
+    request(`/api/orders/${orderId}/attachments`, {
+      method: 'POST',
+      body: JSON.stringify({ file_id: fileId, category })
+    }),
+  getStats: (month) => request(`/api/stats${month ? `?month=${month}` : ''}`),
   deleteAttachment: (id) => request(`/api/attachments/${id}`, { method: 'DELETE' }),
   getSettings: () => request('/api/settings'),
   saveSettings: (data) => request('/api/settings', { method: 'PUT', body: JSON.stringify(data) }),

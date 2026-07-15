@@ -161,5 +161,43 @@ check('pedido devolve lista de anexos', Array.isArray(withAtt.attachments) && wi
 r = await fetch(`${B}/orders`, { headers: H });
 check('lista de pedidos tem attachments_count', (await r.json()).every((o) => 'attachments_count' in o));
 
+// ---------- Faturamento / nota fiscal ----------
+
+// entrega o pedido o2 → delivered_at registrado e has_invoice false
+r = await fetch(`${B}/orders/${o2.id}/status`, { method: 'PATCH', headers: H, body: JSON.stringify({ status: 'entregue' }) });
+const deliveredResp = await r.json();
+check(
+  'entregar registra delivered_at e has_invoice',
+  Boolean(deliveredResp.order.delivered_at) && deliveredResp.order.has_invoice === false
+);
+
+// dá um valor ao pedido para o faturamento
+await fetch(`${B}/orders/${o2.id}`, { method: 'PUT', headers: H, body: JSON.stringify({ value: '250,00' }) });
+
+r = await fetch(`${B}/stats`, { headers: H });
+const stats = await r.json();
+check(
+  'stats do mês atual',
+  stats.month.count === 1 && stats.month.total === 250 && stats.months.length === 6,
+  `total=${stats.month.total} count=${stats.month.count}`
+);
+check('stats: NF pendente listada', stats.pending_invoices.length === 1 && stats.pending_invoices[0].id === o2.id);
+check('stats: pedidos em aberto zerados', stats.open.count === 0);
+
+// sessão de upload de NF exige categoria válida e Drive conectado
+r = await fetch(`${B}/orders/${o2.id}/attachments/session`, {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({ name: 'nota.pdf', mimeType: 'application/pdf', size: 100, category: 'nota_fiscal' })
+});
+check('sessão NF sem Drive conectado → erro claro', r.status === 400 && /Google Drive/.test((await r.json()).error || ''));
+
+// voltar o pedido para o quadro limpa delivered_at
+r = await fetch(`${B}/orders/${o2.id}/status`, { method: 'PATCH', headers: H, body: JSON.stringify({ status: 'pronto' }) });
+check('sair de entregue limpa delivered_at', (await r.json()).order.delivered_at === null);
+
+r = await fetch(`${B}/stats`, { headers: H });
+check('stats zera após reverter entrega', (await r.json()).month.count === 0);
+
 server.close();
 console.log('\nFim dos testes.');

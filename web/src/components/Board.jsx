@@ -49,6 +49,9 @@ export default function Board({ onAuthError }) {
       const { order, notification } = await api.moveOrder(id, status);
       setOrders((prev) => prev.map((o) => (o.id === id ? order : o)));
       notifyResult(notification, order.order_number);
+      if (status === 'entregue' && !order.has_invoice) {
+        toast(`📄 Pedido ${order.order_number} entregue sem nota fiscal — abra o card e use "Anexar NF".`, 'info', 8000);
+      }
     } catch (err) {
       setOrders(previous);
       if (!onAuthError(err)) toast(err.message, 'error');
