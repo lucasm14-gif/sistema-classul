@@ -6,6 +6,7 @@ import {
   Save,
   Trash2,
   Archive,
+  RotateCcw,
   Send,
   CheckCircle2,
   XCircle,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api';
 import { CASE_COLORS, PRODUCT_TYPES, COLUMNS, PAYMENT_STATUSES } from '../constants';
+import { useToast } from './Toast';
 
 const formatDateTime = (value) => {
   const d = new Date(value);
@@ -41,8 +43,9 @@ const emptyForm = {
   payment_status: 'pendente'
 };
 
-export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchived, onResend, onAuthError }) {
+export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchived, onAuthError }) {
   const isNew = !order;
+  const toast = useToast();
   const [form, setForm] = useState(order ? { ...emptyForm, ...order, phone: order.phone || '' } : emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -120,10 +123,24 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
     }
   };
 
-  const archive = async () => {
+  // arquiva ou restaura, dependendo do estado atual do pedido
+  const toggleArchive = async () => {
     try {
-      await api.archiveOrder(order.id, true);
-      onArchived(order);
+      const updated = await api.archiveOrder(order.id, !order.archived);
+      onArchived(updated);
+    } catch (err) {
+      if (!onAuthError(err)) setError(err.message);
+    }
+  };
+
+  const resend = async () => {
+    try {
+      const { notification } = await api.notifyOrder(order.id, order.status);
+      if (notification?.sent) {
+        toast(`WhatsApp reenviado para o cliente do pedido ${order.order_number} ✅`, 'success');
+      } else {
+        toast(notification?.error || notification?.reason || 'Não foi possível enviar.', notification?.error ? 'error' : 'info', 7000);
+      }
     } catch (err) {
       if (!onAuthError(err)) setError(err.message);
     }
@@ -217,6 +234,7 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
               {!isNew && (
                 <span className="ml-3 text-[11px] font-bold uppercase tracking-wide text-slate-400">
                   {COLUMNS.find((c) => c.id === order.status)?.title}
+                  {order.archived ? ' · arquivado' : ''}
                 </span>
               )}
             </h2>
@@ -426,7 +444,7 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
               )}
               {(order.status === 'pronto' || order.status === 'entregue') && (
                 <button
-                  onClick={() => onResend(order, order.status)}
+                  onClick={resend}
                   className="mt-3 flex items-center gap-1.5 text-xs font-extrabold text-brand-700 hover:text-brand-900 transition-colors"
                 >
                   <Send size={13} /> Reenviar mensagem da etapa atual
@@ -447,11 +465,15 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
                 <Trash2 size={16} />
               </button>
               <button
-                onClick={archive}
-                title="Arquivar pedido"
-                className="p-2.5 rounded-full text-slate-400 hover:bg-black/5 hover:text-brand-950 transition-colors"
+                onClick={toggleArchive}
+                title={order.archived ? 'Restaurar para o quadro' : 'Arquivar pedido'}
+                className={`p-2.5 rounded-full transition-colors ${
+                  order.archived
+                    ? 'text-brand-600 hover:bg-brand-50'
+                    : 'text-slate-400 hover:bg-black/5 hover:text-brand-950'
+                }`}
               >
-                <Archive size={16} />
+                {order.archived ? <RotateCcw size={16} /> : <Archive size={16} />}
               </button>
             </>
           )}

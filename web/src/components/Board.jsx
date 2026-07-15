@@ -85,18 +85,6 @@ export default function Board({ onAuthError }) {
     toast(`Pedido ${order.order_number} arquivado.`, 'info');
   };
 
-  const handleResend = async (order, status) => {
-    try {
-      const { notification } = await api.notifyOrder(order.id, status);
-      notifyResult(notification, order.order_number);
-      if (notification && !notification.sent && notification.reason) {
-        toast(notification.reason, 'info');
-      }
-    } catch (err) {
-      if (!onAuthError(err)) toast(err.message, 'error');
-    }
-  };
-
   const term = search.trim().toLowerCase();
   const visible = term
     ? orders.filter(
@@ -212,7 +200,6 @@ export default function Board({ onAuthError }) {
           onSaved={handleSaved}
           onDeleted={handleDeleted}
           onArchived={handleArchived}
-          onResend={handleResend}
           onAuthError={onAuthError}
         />
       )}

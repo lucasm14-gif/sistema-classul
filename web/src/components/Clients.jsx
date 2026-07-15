@@ -15,6 +15,7 @@ import { createPortal } from 'react-dom';
 import { api } from '../api';
 import { COLUMNS, formatBRL, formatDateBR, parseBRL } from '../constants';
 import { useToast } from './Toast';
+import OrderModal from './OrderModal';
 
 const label = 'block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2';
 const input =
@@ -41,14 +42,20 @@ function ClientModal({ client, onClose, onSaved, onDeleted, onAuthError }) {
   const [orders, setOrders] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [orderModal, setOrderModal] = useState(null);
+  const toast = useToast();
 
-  useEffect(() => {
+  const reloadOrders = useCallback(() => {
     if (!client) return;
     api
       .getClient(client.id)
       .then((full) => setOrders(full.orders || []))
       .catch((err) => onAuthError(err));
   }, [client, onAuthError]);
+
+  useEffect(() => {
+    reloadOrders();
+  }, [reloadOrders]);
 
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
@@ -168,7 +175,9 @@ function ClientModal({ client, onClose, onSaved, onDeleted, onAuthError }) {
                   {orders.map((o) => (
                     <li
                       key={o.id}
-                      className="bg-white border border-black/5 rounded-xl px-3.5 py-3 text-xs flex items-center gap-3 shadow-sm"
+                      onClick={() => setOrderModal(o)}
+                      title="Abrir pedido completo"
+                      className="bg-white border border-black/5 rounded-xl px-3.5 py-3 text-xs flex items-center gap-3 shadow-sm cursor-pointer transition-all hover:border-brand-300 hover:shadow-md group"
                     >
                       <span className="font-extrabold text-brand-600">{o.order_number}</span>
                       <span className="flex-1 min-w-0 truncate text-slate-500 font-medium">
@@ -178,7 +187,12 @@ function ClientModal({ client, onClose, onSaved, onDeleted, onAuthError }) {
                       {o.due_date && <span className="text-slate-400 font-medium">{formatDateBR(o.due_date)}</span>}
                       <span className={`px-2.5 py-0.5 rounded-full font-extrabold ${STATUS_BADGE[o.status] || ''}`}>
                         {COLUMNS.find((c) => c.id === o.status)?.title || o.status}
+                        {o.archived ? ' · arq.' : ''}
                       </span>
+                      <ChevronRight
+                        size={14}
+                        className="text-slate-300 group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all shrink-0"
+                      />
                     </li>
                   ))}
                 </ul>
@@ -216,6 +230,32 @@ function ClientModal({ client, onClose, onSaved, onDeleted, onAuthError }) {
           </div>
         </div>
       </div>
+
+      {orderModal && (
+        <OrderModal
+          order={orderModal}
+          onClose={() => setOrderModal(null)}
+          onSaved={(saved) => {
+            setOrderModal(null);
+            reloadOrders();
+            toast(`Pedido ${saved.order_number} atualizado.`, 'success');
+          }}
+          onDeleted={(o) => {
+            setOrderModal(null);
+            reloadOrders();
+            toast(`Pedido ${o.order_number} excluído.`, 'info');
+          }}
+          onArchived={(o) => {
+            setOrderModal(null);
+            reloadOrders();
+            toast(
+              o.archived ? `Pedido ${o.order_number} arquivado.` : `Pedido ${o.order_number} restaurado para o quadro.`,
+              'info'
+            );
+          }}
+          onAuthError={onAuthError}
+        />
+      )}
     </div>,
     document.body
   );

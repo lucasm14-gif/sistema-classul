@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { RotateCcw, Trash2 } from 'lucide-react';
+import { RotateCcw, Trash2, ChevronRight } from 'lucide-react';
 import { api } from '../api';
 import { formatBRL, formatDateBR, COLUMNS } from '../constants';
 import { useToast } from './Toast';
+import OrderModal from './OrderModal';
 
 export default function Archived({ onAuthError }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(null);
   const toast = useToast();
 
   const load = useCallback(async () => {
@@ -48,7 +50,9 @@ export default function Archived({ onAuthError }) {
     <div className="p-4 sm:p-6 max-w-4xl mx-auto animate-fade-up">
       <div className="mb-4">
         <h2 className="text-xl font-extrabold tracking-tight text-brand-950">Pedidos arquivados</h2>
-        <p className="text-xs font-medium text-slate-400">Fora do quadro, mas guardados no histórico.</p>
+        <p className="text-xs font-medium text-slate-400">
+          Fora do quadro, mas guardados no histórico. Clique num pedido para abrir tudo.
+        </p>
       </div>
       {loading ? (
         <p className="text-sm font-medium text-slate-400">Carregando…</p>
@@ -59,7 +63,12 @@ export default function Archived({ onAuthError }) {
       ) : (
         <div className="bg-white rounded-3xl shadow-sm border border-black/5 divide-y divide-black/5 overflow-hidden">
           {orders.map((order) => (
-            <div key={order.id} className="flex items-center gap-4 px-5 py-3.5 text-sm">
+            <div
+              key={order.id}
+              onClick={() => setModal(order)}
+              title="Abrir pedido completo"
+              className="flex items-center gap-4 px-5 py-3.5 text-sm cursor-pointer hover:bg-brand-50/50 transition-colors group"
+            >
               <span className="font-extrabold text-brand-600 text-xs w-14">{order.order_number}</span>
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-brand-950 truncate">{order.customer_name}</p>
@@ -73,22 +82,55 @@ export default function Archived({ onAuthError }) {
                 {COLUMNS.find((c) => c.id === order.status)?.title}
               </span>
               <button
-                onClick={() => restore(order)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  restore(order);
+                }}
                 title="Restaurar para o quadro"
                 className="p-2 rounded-full text-brand-600 hover:bg-brand-50 transition-colors"
               >
                 <RotateCcw size={16} />
               </button>
               <button
-                onClick={() => remove(order)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  remove(order);
+                }}
                 title="Excluir definitivamente"
                 className="p-2 rounded-full text-flame-500 hover:bg-flame-50 transition-colors"
               >
                 <Trash2 size={16} />
               </button>
+              <ChevronRight
+                size={16}
+                className="text-slate-300 group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all"
+              />
             </div>
           ))}
         </div>
+      )}
+
+      {modal && (
+        <OrderModal
+          order={modal}
+          onClose={() => setModal(null)}
+          onSaved={(saved) => {
+            setModal(null);
+            setOrders((prev) => prev.map((o) => (o.id === saved.id ? { ...o, ...saved } : o)));
+            toast(`Pedido ${saved.order_number} atualizado.`, 'success');
+          }}
+          onDeleted={(o) => {
+            setModal(null);
+            setOrders((prev) => prev.filter((x) => x.id !== o.id));
+            toast(`Pedido ${o.order_number} excluído.`, 'info');
+          }}
+          onArchived={(o) => {
+            setModal(null);
+            setOrders((prev) => prev.filter((x) => x.id !== o.id));
+            toast(`Pedido ${o.order_number} restaurado para o quadro.`, 'success');
+          }}
+          onAuthError={onAuthError}
+        />
       )}
     </div>
   );
