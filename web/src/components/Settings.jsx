@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { LoaderCircle, Save, Plug, Send, List, HardDrive, CheckCircle2, XCircle } from 'lucide-react';
+import { LoaderCircle, Save, Plug, Send, List, HardDrive, CheckCircle2, XCircle, Bot, Link2 } from 'lucide-react';
 import { api } from '../api';
 import { useToast } from './Toast';
 
@@ -16,12 +16,15 @@ export default function Settings({ onAuthError }) {
   const [testing, setTesting] = useState(false);
   const [driveStatus, setDriveStatus] = useState(null);
   const [connecting, setConnecting] = useState(false);
+  const [botStatus, setBotStatus] = useState(null);
+  const [connectingBot, setConnectingBot] = useState(false);
   const toast = useToast();
 
   const load = useCallback(async () => {
     try {
       setForm(await api.getSettings());
       setDriveStatus(await api.googleStatus());
+      setBotStatus(await api.botStatus());
     } catch (err) {
       if (!onAuthError(err)) toast(err.message, 'error');
     }
@@ -81,6 +84,20 @@ export default function Settings({ onAuthError }) {
       if (!onAuthError(err)) toast(err.message, 'error', 8000);
     } finally {
       setTesting(false);
+    }
+  };
+
+  const connectBot = async () => {
+    setConnectingBot(true);
+    try {
+      await api.saveSettings(form);
+      await api.botSetupWebhook();
+      setBotStatus(await api.botStatus());
+      toast('Bot conectado ao WhatsApp! A Evolution vai enviar as mensagens para o bot.', 'success');
+    } catch (err) {
+      if (!onAuthError(err)) toast(err.message, 'error', 8000);
+    } finally {
+      setConnectingBot(false);
     }
   };
 
@@ -229,6 +246,100 @@ export default function Settings({ onAuthError }) {
           </button>
           <p className="text-[11px] font-medium text-slate-400">
             Você será levado ao Google para autorizar — use a conta que vai guardar os arquivos.
+          </p>
+        </div>
+      </section>
+
+      {/* Bot de pré-atendimento */}
+      <section className="bg-white rounded-3xl shadow-sm border border-black/5 p-6 sm:p-7">
+        <h3 className="font-extrabold tracking-tight text-brand-950 mb-1 flex items-center gap-2">
+          <span className="w-8 h-8 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center">
+            <Bot size={15} />
+          </span>
+          Bot de pré-atendimento (IA)
+          <button
+            onClick={toggle('bot_enabled')}
+            className={`ml-auto w-11 h-6 rounded-full transition-colors relative ${
+              form.bot_enabled === '1' ? 'bg-brand-500' : 'bg-slate-300'
+            }`}
+            title={form.bot_enabled === '1' ? 'Ativado' : 'Desativado'}
+          >
+            <span
+              className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${
+                form.bot_enabled === '1' ? 'left-[22px]' : 'left-0.5'
+              }`}
+            />
+          </button>
+        </h3>
+        <p className="text-xs font-medium text-slate-400 mb-5">
+          Faz o primeiro contato no WhatsApp, entende o que o cliente quer e encerra — deixando o atendimento
+          humano assumir. Se você responder manualmente, o bot silencia naquela conversa.
+        </p>
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label className={label}>Chave da OpenAI</label>
+            <input
+              className={input}
+              type="password"
+              value={form.openai_api_key || ''}
+              onChange={set('openai_api_key')}
+              placeholder="sk-..."
+            />
+          </div>
+          <div>
+            <label className={label}>Modelo</label>
+            <input className={input} value={form.openai_model || ''} onChange={set('openai_model')} placeholder="gpt-4o-mini" />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={label}>Número de teste (deixe vazio para responder a todos)</label>
+            <input
+              className={input}
+              value={form.bot_test_number || ''}
+              onChange={set('bot_test_number')}
+              placeholder="5551999999999"
+            />
+            <p className="text-[11px] font-medium text-slate-400 mt-1.5">
+              Enquanto testa, o bot só responde a este número. Apague para liberar para todos os clientes.
+            </p>
+          </div>
+          <div className="sm:col-span-2">
+            <label className={label}>Produtos que produzimos</label>
+            <textarea
+              className={`${input} h-32 resize-none font-mono text-xs`}
+              value={form.bot_products || ''}
+              onChange={set('bot_products')}
+            />
+            <p className="text-[11px] font-medium text-slate-400 mt-1.5">
+              O bot só oferece o que estiver aqui. Qualquer outro pedido, ele diz que não produzimos no momento.
+            </p>
+          </div>
+          <div className="sm:col-span-2">
+            <label className={label}>Instruções do bot (personalidade e regras)</label>
+            <textarea
+              className={`${input} h-44 resize-none text-xs`}
+              value={form.bot_system_prompt || ''}
+              onChange={set('bot_system_prompt')}
+            />
+            <p className="text-[11px] font-medium text-slate-400 mt-1.5">
+              Use {'{PRODUTOS}'} onde a lista de produtos deve entrar. O bot encerra ao escrever [[ATENDIDO]] —
+              não remova essa regra.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-black/5 flex items-center gap-3 flex-wrap">
+          <button
+            onClick={connectBot}
+            disabled={connectingBot}
+            className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-extrabold px-5 py-2.5 rounded-full shadow-lg shadow-brand-600/25 transition-all hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0"
+          >
+            {connectingBot ? <LoaderCircle size={15} className="animate-spin" /> : <Link2 size={15} />}
+            Conectar bot ao WhatsApp
+          </button>
+          <p className="text-[11px] font-medium text-slate-400 flex-1 min-w-[200px]">
+            Salva as configurações e faz a Evolution mandar as mensagens recebidas para o bot. Rode de novo se
+            trocar de instância.
           </p>
         </div>
       </section>

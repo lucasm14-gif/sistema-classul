@@ -16,6 +16,7 @@ import {
   getFileMeta,
   deleteFile
 } from '../lib/google.js';
+import { handleIncoming } from '../lib/bot.js';
 
 const app = express();
 app.use(cors());
@@ -61,6 +62,28 @@ app.get('/api/google/callback', async (req, res) => {
     page('Google Drive conectado! ✅', 'Voltando para o sistema…', true);
   } catch (err) {
     page('Erro na conexão', err.message, false);
+  }
+});
+
+// Webhook do bot — chamado pela Evolution API (sem Bearer). Protegido por secret na query.
+// Sempre responde 200 rápido para a Evolution não re-tentar; o processamento é aguardado
+// mas erros internos não viram erro HTTP.
+app.all('/api/bot/webhook', async (req, res) => {
+  try {
+    await ensureSchema();
+    const settings = await getSettings();
+    if (!settings.bot_webhook_secret || req.query.secret !== settings.bot_webhook_secret) {
+      return res.status(200).json({ ignored: 'secret inválido' });
+    }
+    const event = (req.body?.event || '').toLowerCase().replace(/_/g, '.');
+    if (req.method !== 'POST' || !event.includes('messages.upsert')) {
+      return res.status(200).json({ ignored: 'evento ignorado', event });
+    }
+    const result = await handleIncoming(req.body);
+    res.status(200).json(result);
+  } catch (err) {
+    console.error('bot webhook:', err);
+    res.status(200).json({ error: err.message });
   }
 });
 
@@ -544,6 +567,89 @@ app.get('/api/stats', h(async (req, res) => {
     month_orders: monthOrders,
     pending_invoices: pendingInvoices
   });
+}));
+
+// ---------- Bot de pré-atendimento ----------
+
+app.get('/api/bot/status', h(async (req, res) => {
+  const s = await getSettings();
+  res.json({
+    enabled: s.bot_enabled === '1',
+    has_key: Boolean(s.openai_api_key),
+    model: s.openai_model,
+    test_number: s.bot_test_number || '',
+    webhook_url: `${baseUrl(req)}/api/bot/webhook?secret=${s.bot_webhook_secret}`
+  });
+}));
+
+// Configura o webhook na Evolution API apontando para o nosso endpoint do bot.
+app.post('/api/bot/setup-webhook', h(async (req, res) => {
+  const s = await getSettings();
+  if (!s.evolution_url || !s.evolution_apikey || !s.evolution_instance) {
+    return res.status(400).json({ error: 'Configure a Evolution API (URL, chave e instância) antes.' });
+  }
+  const base = s.evolution_url.replace(/\/+$/, '');
+  const instance = encodeURIComponent(s.evolution_instance);
+  const url = `${baseUrl(req)}/api/bot/webhook?secret=${s.bot_webhook_secret}`;
+  const headers = { 'Content-Type': 'application/json', apikey: s.evolution_apikey };
+  const events = ['MESSAGES_UPSERT'];
+
+  // Formato Evolution v2 (objeto webhook aninhado); fallback para o formato antigo.
+  let resp = await fetch(`${base}/webhook/set/${instance}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ webhook: { enabled: true, url, webhookByEvents: false, webhookBase64: false, events } })
+  });
+  if (!resp.ok) {
+    resp = await fetch(`${base}/webhook/set/${instance}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ enabled: true, url, webhook_by_events: false, events })
+    });
+  }
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    return res.status(502).json({ error: `Evolution recusou a configuração (${resp.status}): ${body.slice(0, 250)}` });
+  }
+  res.json({ ok: true, url });
+}));
+
+app.get('/api/bot/conversations', h(async (req, res) => {
+  const { rows } = await q('SELECT * FROM bot_conversations ORDER BY updated_at DESC, id DESC LIMIT 200');
+  const { rows: lastMsgs } = await q(
+    `SELECT DISTINCT ON (phone) phone, content, role, created_at
+     FROM bot_messages ORDER BY phone, id DESC`
+  );
+  const lastMap = new Map(lastMsgs.map((m) => [m.phone, m]));
+  res.json(
+    rows.map((c) => ({
+      ...c,
+      last_message: lastMap.get(c.phone)?.content || null,
+      last_role: lastMap.get(c.phone)?.role || null
+    }))
+  );
+}));
+
+app.get('/api/bot/conversations/:phone', h(async (req, res) => {
+  const phone = String(req.params.phone).replace(/\D/g, '');
+  const { rows } = await q('SELECT * FROM bot_conversations WHERE phone = $1', [phone]);
+  if (!rows.length) return res.status(404).json({ error: 'Conversa não encontrada.' });
+  const { rows: messages } = await q(
+    'SELECT id, role, content, created_at FROM bot_messages WHERE phone = $1 ORDER BY id ASC',
+    [phone]
+  );
+  res.json({ ...rows[0], messages });
+}));
+
+// Reativa o bot para uma conversa já encerrada (ele volta a responder aquele número).
+app.post('/api/bot/conversations/:phone/reactivate', h(async (req, res) => {
+  const phone = String(req.params.phone).replace(/\D/g, '');
+  const { rowCount } = await q(
+    "UPDATE bot_conversations SET status = 'active', handled_reason = NULL, handled_at = NULL, updated_at = now() WHERE phone = $1",
+    [phone]
+  );
+  if (!rowCount) return res.status(404).json({ error: 'Conversa não encontrada.' });
+  res.json({ ok: true });
 }));
 
 // ---------- Configurações ----------

@@ -60,6 +60,11 @@ export const api = {
   deleteAttachment: (id) => request(`/api/attachments/${id}`, { method: 'DELETE' }),
   getSettings: () => request('/api/settings'),
   saveSettings: (data) => request('/api/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  botStatus: () => request('/api/bot/status'),
+  botSetupWebhook: () => request('/api/bot/setup-webhook', { method: 'POST' }),
+  botConversations: () => request('/api/bot/conversations'),
+  botConversation: (phone) => request(`/api/bot/conversations/${phone}`),
+  botReactivate: (phone) => request(`/api/bot/conversations/${phone}/reactivate`, { method: 'POST' }),
   listInstances: () => request('/api/evolution/instances'),
   testMessage: (number) =>
     request('/api/evolution/test', { method: 'POST', body: JSON.stringify({ number }) })
