@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, MessageCircle, Paperclip, FileWarning, CircleDollarSign, CheckCircle2 } from 'lucide-react';
+import { Calendar, MessageCircle, Paperclip, FileWarning, CircleDollarSign, CheckCircle2, KeyRound } from 'lucide-react';
 import { CASE_COLOR_DOT, formatBRL, formatDateBR, isOverdue } from '../constants';
 
 export default function OrderCard({ order, dragging, onClick }) {
@@ -13,7 +13,17 @@ export default function OrderCard({ order, dragging, onClick }) {
       }`}
     >
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[11px] font-extrabold text-brand-600 tracking-wider">{order.order_number}</span>
+        <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-brand-600 tracking-wider">
+          {order.order_number}
+          {order.pickup_code && (
+            <span
+              title="Código de retirada"
+              className="flex items-center gap-0.5 text-[10px] font-extrabold text-slate-500 bg-black/[0.05] px-1.5 py-0.5 rounded-md tracking-widest"
+            >
+              <KeyRound size={9} /> {order.pickup_code}
+            </span>
+          )}
+        </span>
         <div className="flex items-center gap-1.5">
           {order.case_color && (
             <span

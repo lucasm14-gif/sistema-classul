@@ -14,7 +14,8 @@ import {
   FileText,
   ExternalLink,
   Receipt,
-  FileWarning
+  FileWarning,
+  KeyRound
 } from 'lucide-react';
 import { api } from '../api';
 import { CASE_COLORS, PRODUCT_TYPES, COLUMNS, PAYMENT_STATUSES } from '../constants';
@@ -238,6 +239,18 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
                 </span>
               )}
             </h2>
+            {!isNew && order.pickup_code && (
+              <button
+                onClick={() => {
+                  navigator.clipboard?.writeText(order.pickup_code);
+                  toast(`Código de retirada ${order.pickup_code} copiado!`, 'success', 2500);
+                }}
+                title="Código de retirada — clique para copiar"
+                className="flex items-center gap-1.5 text-xs font-extrabold text-brand-800 bg-brand-50 hover:bg-brand-100 px-3 py-1.5 rounded-full tracking-widest transition-colors"
+              >
+                <KeyRound size={13} /> {order.pickup_code}
+              </button>
+            )}
           </div>
           <button
             onClick={onClose}

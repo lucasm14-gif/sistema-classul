@@ -107,6 +107,16 @@ async function getClient(id) {
   return rows[0] || null;
 }
 
+// Código de retirada: 4 dígitos aleatórios, único entre os pedidos ativos.
+async function generatePickupCode() {
+  for (let i = 0; i < 25; i++) {
+    const code = String(Math.floor(1000 + Math.random() * 9000));
+    const { rows } = await q('SELECT 1 FROM orders WHERE pickup_code = $1 AND archived = 0 LIMIT 1', [code]);
+    if (!rows.length) return code;
+  }
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+
 // Vincula o pedido a um cliente existente (por telefone, depois por nome)
 // ou cria o cliente automaticamente.
 async function findOrCreateClient(name, phone) {
@@ -194,9 +204,10 @@ app.post('/api/orders', h(async (req, res) => {
     if (client) clientId = client.id;
   }
 
+  const pickupCode = await generatePickupCode();
   const { rows } = await q(
-    `INSERT INTO orders (customer_name, phone, description, product_type, case_color, value, due_date, status, client_id, payment_status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+    `INSERT INTO orders (customer_name, phone, description, product_type, case_color, value, due_date, status, client_id, payment_status, pickup_code)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
     [
       String(data.customer_name).trim(),
       normalizePhone(data.phone) || (data.phone ? String(data.phone) : null),
@@ -207,7 +218,8 @@ app.post('/api/orders', h(async (req, res) => {
       data.due_date || null,
       status,
       clientId,
-      paymentStatus
+      paymentStatus,
+      pickupCode
     ]
   );
   res.status(201).json(serializeOrder(rows[0]));

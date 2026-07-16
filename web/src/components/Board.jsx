@@ -92,6 +92,7 @@ export default function Board({ onAuthError }) {
           o.customer_name.toLowerCase().includes(term) ||
           o.order_number.includes(term) ||
           String(o.id) === term.replace(/\D/g, '') ||
+          (o.pickup_code || '').includes(term) ||
           (o.description || '').toLowerCase().includes(term)
       )
     : orders;

@@ -232,5 +232,25 @@ r = await fetch(`${B}/stats`, { headers: H });
 payStats = await r.json();
 check('a receber inclui pedido com sinal', payStats.receivable.count === 1 && payStats.receivable.total === 100);
 
+// ---------- Código de retirada ----------
+
+r = await fetch(`${B}/orders`, {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({ customer_name: 'Pedido Código', phone: '(51) 97777-6666' })
+});
+const codeOrder = await r.json();
+check('pedido ganha código de retirada de 4 dígitos', /^\d{4}$/.test(codeOrder.pickup_code || ''), codeOrder.pickup_code);
+
+r = await fetch(`${B}/orders/${codeOrder.id}/status`, { method: 'PATCH', headers: H, body: JSON.stringify({ status: 'pronto' }) });
+await r.json();
+r = await fetch(`${B}/orders/${codeOrder.id}`, { headers: H });
+const codeFull = await r.json();
+check(
+  'mensagem de pronto renderiza {codigo}',
+  (codeFull.messages[0]?.body || '').includes(codeOrder.pickup_code),
+  (codeFull.messages[0]?.body || '').match(/Código de retirada: \d{4}/)?.[0] || 'não encontrado'
+);
+
 server.close();
 console.log('\nFim dos testes.');

@@ -98,7 +98,7 @@ export default function Settings({ onAuthError }) {
 
   const templateHelp = (
     <p className="text-[11px] font-medium text-slate-400 mt-1.5">
-      Variáveis: {'{nome}'} {'{pedido}'} {'{produto}'} {'{valor}'} {'{entrega}'} {'{descricao}'}
+      Variáveis: {'{nome}'} {'{pedido}'} {'{codigo}'} {'{produto}'} {'{valor}'} {'{entrega}'} {'{descricao}'} — {'{codigo}'} é o código de retirada do pedido
     </p>
   );
 
