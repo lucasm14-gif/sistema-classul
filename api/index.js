@@ -79,7 +79,7 @@ app.all('/api/bot/webhook', async (req, res) => {
     if (req.method !== 'POST' || !event.includes('messages.upsert')) {
       return res.status(200).json({ ignored: 'evento ignorado', event });
     }
-    const result = await handleIncoming(req.body);
+    const result = await handleIncoming(req.body, baseUrl(req));
     res.status(200).json(result);
   } catch (err) {
     console.error('bot webhook:', err);

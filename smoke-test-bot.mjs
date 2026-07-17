@@ -16,6 +16,7 @@ const bot = await import(`file://${ROOT}/lib/bot.js`);
 const realFetch = globalThis.fetch;
 let openaiReply = 'Olá! Que bom falar com a Classul 🙂 Me conta o que você procura?';
 const sentMessages = [];
+const sentImages = [];
 let sendCounter = 0;
 globalThis.fetch = async (url, opts) => {
   const u = String(url);
@@ -26,6 +27,11 @@ globalThis.fetch = async (url, opts) => {
     const body = JSON.parse(opts.body);
     sentMessages.push(body.text);
     return { ok: true, json: async () => ({ key: { id: 'BOT' + ++sendCounter } }) };
+  }
+  if (u.includes('/message/sendMedia/')) {
+    const body = JSON.parse(opts.body);
+    sentImages.push(body.media || body.mediaMessage?.media);
+    return { ok: true, json: async () => ({ key: { id: 'IMG' + ++sendCounter } }) };
   }
   return realFetch(url, opts);
 };
@@ -109,6 +115,19 @@ await q("UPDATE bot_conversations SET status = 'active', handled_reason = NULL W
 const botText = sentMessages[0];
 r = await fetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: H, body: JSON.stringify(upsert(TEST_JID, botText, true, 'ECO1')) });
 check('eco do bot não é tratado como handoff', (await r.json()).ignored === 'eco do próprio bot');
+
+// 10. bot envia foto quando o modelo emite [[FOTO:...]] e o token não vai no texto
+sentImages.length = 0;
+openaiReply = 'Temos placas de homenagem lindas! Olha alguns exemplos 🙂\n[[FOTO:placa_homenagem]]';
+r = await fetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: H, body: JSON.stringify(upsert(TEST_JID, 'me mostra a placa de homenagem')) });
+check('bot envia foto do produto', sentImages.length >= 1 && sentImages.every((u) => u.includes('/bot-fotos/')), sentImages.join(', '));
+check('marcador [[FOTO]] não vai para o cliente', !sentMessages.at(-1).includes('FOTO'), sentMessages.at(-1));
+
+// 11. token de foto inválido é ignorado (não quebra e não envia nada)
+sentImages.length = 0;
+openaiReply = 'Beleza! [[FOTO:inexistente]]';
+r = await fetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: H, body: JSON.stringify(upsert(TEST_JID, 'e ai')) });
+check('token de foto inválido não envia imagem', sentImages.length === 0);
 
 server.close();
 console.log('\nFim dos testes do bot.');
