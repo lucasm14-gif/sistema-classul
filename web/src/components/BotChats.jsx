@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bot, RefreshCw, RotateCcw, X, User, CheckCircle2, MessageCircle, Clock } from 'lucide-react';
+import { Bot, RefreshCw, RotateCcw, X, User, CheckCircle2, MessageCircle, Clock, Power, LoaderCircle } from 'lucide-react';
 import { api } from '../api';
 import { useToast } from './Toast';
 
@@ -125,6 +125,7 @@ export default function BotChats({ onAuthError }) {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
   const [openPhone, setOpenPhone] = useState(null);
+  const [toggling, setToggling] = useState(false);
   const toast = useToast();
 
   const load = useCallback(async () => {
@@ -142,6 +143,20 @@ export default function BotChats({ onAuthError }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  const toggleBot = async () => {
+    const turningOn = !status?.enabled;
+    setToggling(true);
+    try {
+      await api.saveSettings({ bot_enabled: turningOn ? '1' : '0' });
+      setStatus(await api.botStatus());
+      toast(turningOn ? 'Bot ATIVADO — vai responder no WhatsApp.' : 'Bot PAUSADO — não vai responder ninguém.', turningOn ? 'success' : 'info');
+    } catch (err) {
+      if (!onAuthError(err)) toast(err.message, 'error');
+    } finally {
+      setToggling(false);
+    }
+  };
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto h-full overflow-y-auto animate-fade-up">
@@ -162,6 +177,25 @@ export default function BotChats({ onAuthError }) {
             )}
           </p>
         </div>
+        {status && (
+          <button
+            onClick={toggleBot}
+            disabled={toggling}
+            title={status.enabled ? 'Clique para pausar o bot' : 'Clique para ativar o bot'}
+            className={`flex items-center gap-2 text-sm font-extrabold px-5 py-2.5 rounded-full shadow-lg transition-all hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0 ${
+              status.enabled
+                ? 'bg-brand-600 hover:bg-brand-700 text-white shadow-brand-600/25'
+                : 'bg-slate-200 hover:bg-slate-300 text-slate-600 shadow-black/5'
+            }`}
+          >
+            {toggling ? (
+              <LoaderCircle size={16} className="animate-spin" />
+            ) : (
+              <Power size={16} strokeWidth={2.5} />
+            )}
+            {status.enabled ? 'Bot ligado' : 'Bot desligado'}
+          </button>
+        )}
         <button
           onClick={load}
           title="Atualizar"
