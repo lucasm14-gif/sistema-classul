@@ -16,6 +16,7 @@ import { api } from '../api';
 import { COLUMNS, formatBRL, formatDateBR, parseBRL } from '../constants';
 import { useToast } from './Toast';
 import OrderModal from './OrderModal';
+import { openWhatsApp } from '../whatsapp';
 
 const label = 'block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2';
 const input =
@@ -362,16 +363,16 @@ export default function Clients({ onAuthError }) {
                 {client.orders_count} pedido{client.orders_count !== 1 ? 's' : ''}
               </span>
               {client.phone && (
-                <a
-                  href={`https://wa.me/${client.phone}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(e) => e.stopPropagation()}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openWhatsApp(client.phone);
+                  }}
                   title="Abrir conversa no WhatsApp"
                   className="p-2 rounded-full text-brand-600 hover:bg-brand-100 transition-colors"
                 >
                   <MessageCircle size={16} />
-                </a>
+                </button>
               )}
               <ChevronRight size={16} className="text-slate-300 group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all" />
             </div>

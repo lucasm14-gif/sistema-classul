@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import App from '../App'
 import '../index.css'
 import { initChatObserver } from './ChatObserver';
+import { initOpenChat } from './openChat';
 
 // Function to mount the app
 function mount() {
@@ -41,6 +42,7 @@ function mount() {
 try {
     mount();
     initChatObserver();
+    initOpenChat();
     console.log('WhatsApp Kanban: Observers Initialized');
 } catch (err) {
     console.error('WhatsApp Kanban: Initialization Failed', err);

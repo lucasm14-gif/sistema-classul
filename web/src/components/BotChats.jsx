@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Bot, RefreshCw, RotateCcw, X, User, CheckCircle2, MessageCircle, Clock, Power, LoaderCircle } from 'lucide-react';
 import { api } from '../api';
 import { useToast } from './Toast';
+import { openWhatsApp } from '../whatsapp';
 
 function formatPhoneBR(phone) {
   const d = String(phone || '').replace(/\D/g, '');
@@ -244,16 +245,16 @@ export default function BotChats({ onAuthError }) {
                   <Clock size={11} /> Em atendimento
                 </span>
               )}
-              <a
-                href={`https://wa.me/${c.phone}`}
-                target="_blank"
-                rel="noreferrer"
-                onClick={(e) => e.stopPropagation()}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openWhatsApp(c.phone);
+                }}
                 title="Abrir no WhatsApp"
                 className="p-2 rounded-full text-brand-600 hover:bg-brand-100 transition-colors shrink-0"
               >
                 <MessageCircle size={16} />
-              </a>
+              </button>
             </div>
           ))}
         </div>

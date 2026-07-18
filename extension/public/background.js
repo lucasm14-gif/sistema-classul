@@ -43,6 +43,33 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch((error) => sendResponse({ success: false, error: error.message }));
     return true;
   }
+
+  // Abre a conversa na aba do WhatsApp Web já aberta (pedido vindo do sistema via bridge.js)
+  if (request.action === 'openWhatsAppChat') {
+    (async () => {
+      const phone = String(request.phone || '').replace(/\D/g, '');
+      if (!phone) return sendResponse({ success: false, error: 'sem telefone' });
+
+      const tabs = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' });
+      if (tabs.length) {
+        const tab = tabs[0];
+        await chrome.windows.update(tab.windowId, { focused: true });
+        await chrome.tabs.update(tab.id, { active: true });
+        try {
+          // pede pro content script abrir a conversa dentro da página (sem recarregar)
+          await chrome.tabs.sendMessage(tab.id, { action: 'openChat', phone });
+        } catch (e) {
+          // content script indisponível (aba antiga?) → navega a própria aba
+          await chrome.tabs.update(tab.id, { url: 'https://web.whatsapp.com/send?phone=' + phone });
+        }
+        sendResponse({ success: true, mode: 'existing-tab' });
+      } else {
+        await chrome.tabs.create({ url: 'https://web.whatsapp.com/send?phone=' + phone });
+        sendResponse({ success: true, mode: 'new-tab' });
+      }
+    })().catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
 });
 
 console.log('Classul Background Service Worker carregado');

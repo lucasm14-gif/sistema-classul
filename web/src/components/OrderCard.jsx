@@ -1,6 +1,7 @@
 import React from 'react';
 import { Calendar, MessageCircle, Paperclip, FileWarning, CircleDollarSign, CheckCircle2, KeyRound } from 'lucide-react';
 import { CASE_COLOR_DOT, formatBRL, formatDateBR, isOverdue } from '../constants';
+import { openWhatsApp } from '../whatsapp';
 
 export default function OrderCard({ order, dragging, onClick }) {
   const overdue = isOverdue(order.due_date) && order.status !== 'entregue';
@@ -89,16 +90,16 @@ export default function OrderCard({ order, dragging, onClick }) {
           </span>
         )}
         {order.phone && (
-          <a
-            href={`https://wa.me/${order.phone}`}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => e.stopPropagation()}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              openWhatsApp(order.phone);
+            }}
             title="Abrir conversa no WhatsApp"
             className="ml-auto p-1.5 -m-1 rounded-full text-brand-500 opacity-60 group-hover:opacity-100 hover:bg-brand-50 transition-all"
           >
             <MessageCircle size={14} />
-          </a>
+          </button>
         )}
       </div>
     </div>
