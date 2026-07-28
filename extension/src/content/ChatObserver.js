@@ -295,57 +295,51 @@ function setInputFiles(input, files) {
     input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
 }
 
-// Anexa todas as fotos no input de "Fotos e vídeos" do WhatsApp e clica em Enviar.
+// Injeta o inject.js no MUNDO DA PÁGINA (necessário para a colagem funcionar).
+let injectReady = false;
+function ensurePageScript() {
+    if (document.getElementById('classul-inject')) return;
+    const s = document.createElement('script');
+    s.id = 'classul-inject';
+    s.src = getExtensionAssetUrl('inject.js');
+    (document.head || document.documentElement).appendChild(s);
+}
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('message', (e) => {
+        if (e.source === window && e.data?.type === 'CLASSUL_INJECT_READY') injectReady = true;
+    });
+}
+
+// Cola as 5 fotos no campo de mensagem (via script na página) e envia como FOTO normal.
 async function sendHomenagemPhotos() {
     if (!document.querySelector('#main')) throw new Error('Abra uma conversa primeiro.');
+
+    ensurePageScript();
+    // espera o script da página ficar pronto
+    for (let i = 0; i < 30 && !injectReady; i++) await sleep(100);
 
     const files = await Promise.all(
         HOMENAGEM_PHOTOS.map((path, i) => fetchAssetAsFile(path, `placa-homenagem-${i + 1}.jpg`))
     );
 
-    // procura o campo de arquivo (prioriza o que aceita vídeo = Fotos e vídeos;
-    // se só existir o de imagem, usa ele). Abre o menu de anexo se preciso.
-    const pickInput = () => findPhotosVideosInput() || findAnyImageInput();
-    let input = pickInput();
-    if (!input) {
-        const attach = findAttachButton();
-        if (attach) {
-            attach.click();
-            input = await waitForElement2(pickInput, 3500);
-        }
-    }
+    const result = await new Promise((resolve) => {
+        const onResult = (e) => {
+            if (e.source !== window || e.data?.type !== 'CLASSUL_SEND_PHOTOS_RESULT') return;
+            window.removeEventListener('message', onResult);
+            resolve(e.data);
+        };
+        window.addEventListener('message', onResult);
+        window.postMessage({ type: 'CLASSUL_SEND_PHOTOS', files }, '*');
+        setTimeout(() => {
+            window.removeEventListener('message', onResult);
+            resolve({ ok: false, reason: 'Tempo esgotado. Recarregue o WhatsApp Web (F5).' });
+        }, 20000);
+    });
 
-    const inputsFound = listFileInputs();
-
-    if (!input) {
-        showDiag([
-            `Fotos carregadas: ${files.length} ✓`,
-            `Campos de arquivo encontrados: ${inputsFound.length}`,
-            ...inputsFound,
-            '',
-            '➡️ Não achei onde anexar. Me mande este print.'
-        ]);
-        return { sent: false, count: files.length, noInput: true };
-    }
-
-    setInputFiles(input, files);
-
-    const sendBtn = await waitForElement2(findPreviewSendButton, 10000);
-    if (sendBtn) {
-        await sleep(600); // deixa as miniaturas carregarem
-        sendBtn.click();
-        return { sent: true, count: files.length };
-    }
-
-    // anexou mas não achou o botão enviar
-    showDiag([
-        `Fotos anexadas no campo accept="${input.getAttribute('accept') || '(vazio)'}"`,
-        `Campos de arquivo: ${inputsFound.length}`,
-        ...inputsFound,
-        '',
-        '➡️ Anexou mas não achei o botão Enviar. Aperte Enter, ou me mande este print.'
-    ]);
-    return { sent: false, count: files.length };
+    if (result.ok) return { sent: true, count: files.length };
+    if (/Enter/.test(result.reason || '')) return { sent: false, count: files.length };
+    throw new Error(result.reason || 'Não foi possível enviar as fotos.');
 }
 
 function createImageCopyButton() {
