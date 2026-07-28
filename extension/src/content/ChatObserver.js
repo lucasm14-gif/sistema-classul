@@ -1,5 +1,5 @@
 import { eventBus } from '../utils/events';
-import { getActiveChatName, getActiveChatAvatar, getActiveChatPhone, scrapePhoneFromProfile } from '../utils/dom';
+import { getActiveChatName, getActiveChatAvatar, getActiveChatPhone, scrapePhoneFromProfile, sleep } from '../utils/dom';
 
 let currentButton = null;
 
