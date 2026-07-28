@@ -11,7 +11,7 @@ const defaultMessages = [
     {
         id: 2,
         title: 'Endereço',
-        text: 'Rua Carlos Von Koseritiz, 63 - Apt 1 90540-031'
+        text: 'Rua Carlos Von Koseritiz, 63 - Bairro São João - Conj 1 -  90540-031'
     },
     {
         id: 3,

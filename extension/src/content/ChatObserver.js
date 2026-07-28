@@ -63,7 +63,8 @@ async function svgUrlToPngBlob(url) {
     }
 }
 
-async function imageUrlToBlob(url) {
+// Converte qualquer imagem (JPG/PNG) para PNG — o clipboard do Chrome só aceita image/png.
+async function rasterUrlToPngBlob(url) {
     const response = await fetch(url);
     if (!response.ok) {
         throw new Error(`Falha ao carregar imagem: ${response.status}`);
@@ -73,8 +74,23 @@ async function imageUrlToBlob(url) {
     if (!blob.type.startsWith('image/')) {
         throw new Error('O arquivo selecionado nao e uma imagem valida.');
     }
+    if (blob.type === 'image/png') return blob;
 
-    return blob;
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(bitmap, 0, 0);
+
+    return new Promise((resolve, reject) => {
+        canvas.toBlob((png) => {
+            if (png) resolve(png);
+            else reject(new Error('Nao foi possivel converter a imagem.'));
+        }, 'image/png');
+    });
 }
 
 async function copyImageAssetToClipboard(assetPath) {
@@ -85,11 +101,11 @@ async function copyImageAssetToClipboard(assetPath) {
     const assetUrl = getExtensionAssetUrl(assetPath);
     const pngBlob = assetPath.toLowerCase().endsWith('.svg')
         ? await svgUrlToPngBlob(assetUrl)
-        : await imageUrlToBlob(assetUrl);
+        : await rasterUrlToPngBlob(assetUrl);
 
     await navigator.clipboard.write([
         new ClipboardItem({
-            [pngBlob.type || 'image/png']: pngBlob
+            'image/png': pngBlob
         })
     ]);
 }
@@ -164,6 +180,14 @@ function createQuickMessagesButton() {
     return btn;
 }
 
+// Fotos de placa de homenagem copiadas em sequência (1 → 2 → 3 → 1 → ...)
+const HOMENAGEM_PHOTOS = [
+    'bot-fotos/placa-homenagem-1.jpg',
+    'bot-fotos/placa-homenagem-2.jpg',
+    'bot-fotos/placa-homenagem-3.jpg'
+];
+let homenagemPhotoCursor = 0;
+
 function createImageCopyButton() {
     const btn = document.createElement('button');
     const defaultIcon = `
@@ -174,27 +198,35 @@ function createImageCopyButton() {
     </svg>
   `;
 
+    const baseTitle = () =>
+        `Copiar foto de placa de homenagem (próxima: ${(homenagemPhotoCursor % HOMENAGEM_PHOTOS.length) + 1}/${HOMENAGEM_PHOTOS.length})`;
+
     btn.innerHTML = defaultIcon;
-    btn.title = "Copiar imagem de placa";
+    btn.title = baseTitle();
     btn.className = "kanban-header-btn quick-image-btn";
     btn.style.marginRight = '8px';
     btn.onclick = async (e) => {
         e.preventDefault();
         e.stopPropagation();
 
-        const originalTitle = btn.title;
+        const index = homenagemPhotoCursor % HOMENAGEM_PHOTOS.length;
+        const label = `${index + 1}/${HOMENAGEM_PHOTOS.length}`;
+
         btn.disabled = true;
         btn.style.opacity = '0.7';
         btn.innerHTML = `<div style="animation: spin 1s linear infinite">⌛</div>`;
 
         try {
-            await copyImageAssetToClipboard('placa-homenagem-veludo-luxo.png');
+            await copyImageAssetToClipboard(HOMENAGEM_PHOTOS[index]);
+            homenagemPhotoCursor++;
             btn.innerHTML = `
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20 6L9 17l-5-5"></path>
-            </svg>
+            <span style="display:flex;align-items:center;gap:2px;font-size:11px;font-weight:700">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 6L9 17l-5-5"></path>
+              </svg>${label}
+            </span>
           `;
-            btn.title = "Imagem copiada";
+            btn.title = `Foto ${label} copiada — cole no chat (Ctrl+V). Clique de novo para a próxima.`;
         } catch (error) {
             console.error('Falha ao copiar imagem:', error);
             btn.innerHTML = `
@@ -210,7 +242,7 @@ function createImageCopyButton() {
                 btn.disabled = false;
                 btn.style.opacity = '1';
                 btn.innerHTML = defaultIcon;
-                btn.title = originalTitle;
+                btn.title = baseTitle();
             }, 2000);
         }
     };
