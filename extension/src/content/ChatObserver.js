@@ -256,50 +256,95 @@ function findPreviewSendButton() {
     return icon ? icon.closest('div[role="button"], button') || icon : null;
 }
 
-// Anexa todas as fotos no input de arquivo do WhatsApp e clica em Enviar.
+// Mostra um quadro de diagnóstico na tela (o usuário tira print e manda).
+function showDiag(lines) {
+    document.getElementById('classul-diag')?.remove();
+    const box = document.createElement('div');
+    box.id = 'classul-diag';
+    box.style.cssText = `
+        position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+        z-index: 2147483647; background: #0f172a; color: #fff; padding: 14px 18px;
+        border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,.4); max-width: 92vw;
+        font-family: -apple-system, sans-serif; font-size: 12px; line-height: 1.5;
+        border: 1px solid rgba(255,255,255,.15); white-space: pre-wrap;`;
+    box.textContent = 'CLASSUL — diagnóstico (tire um print e mande):\n\n' + lines.join('\n');
+    const close = document.createElement('div');
+    close.textContent = '✕ fechar';
+    close.style.cssText = 'margin-top:10px;cursor:pointer;color:#82c953;font-weight:700;';
+    close.onclick = () => box.remove();
+    box.appendChild(close);
+    document.body.appendChild(box);
+    setTimeout(() => box.remove(), 30000);
+}
+
+function listFileInputs() {
+    return [...document.querySelectorAll('input[type="file"]')].map(
+        (i, n) => `#${n + 1} accept="${i.getAttribute('accept') || '(vazio)'}"`
+    );
+}
+
+function setInputFiles(input, files) {
+    const dt = new DataTransfer();
+    files.forEach((f) => dt.items.add(f));
+    try {
+        input.files = dt.files;
+    } catch (e) {
+        Object.defineProperty(input, 'files', { value: dt.files, configurable: true });
+    }
+    input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+}
+
+// Anexa todas as fotos no input de "Fotos e vídeos" do WhatsApp e clica em Enviar.
 async function sendHomenagemPhotos() {
     if (!document.querySelector('#main')) throw new Error('Abra uma conversa primeiro.');
 
     const files = await Promise.all(
         HOMENAGEM_PHOTOS.map((path, i) => fetchAssetAsFile(path, `placa-homenagem-${i + 1}.jpg`))
     );
-    console.log('[Classul] fotos carregadas:', files.map((f) => `${f.name} (${f.size}b)`));
 
-    // 1. tenta achar o input de "Fotos e vídeos" (qualidade normal). Se não achar,
-    //    abre o menu de anexo (+) para revelá-lo.
+    // abre o menu de anexo para garantir que os inputs existam no DOM
     let input = findPhotosVideosInput();
     if (!input) {
         const attach = findAttachButton();
-        console.log('[Classul] "Fotos e vídeos" não encontrado direto; abrindo menu de anexo:', attach);
         if (attach) {
             attach.click();
             input = await waitForElement2(findPhotosVideosInput, 3500);
         }
     }
-    // último recurso: qualquer input de imagem que não seja figurinha
-    if (!input) input = findAnyImageInput();
-    if (!input) throw new Error('Não encontrei onde anexar no WhatsApp. Recarregue a página do WhatsApp Web.');
-    console.log('[Classul] usando input de arquivo. accept=', input.getAttribute('accept'));
 
-    // 2. injeta os arquivos e avisa o WhatsApp (evento change)
-    const dataTransfer = new DataTransfer();
-    files.forEach((file) => dataTransfer.items.add(file));
-    try {
-        input.files = dataTransfer.files;
-    } catch (err) {
-        Object.defineProperty(input, 'files', { value: dataTransfer.files, configurable: true });
+    const inputsFound = listFileInputs();
+
+    if (!input) {
+        // não achou o de "Fotos e vídeos" — mostra o que existe para eu ajustar
+        showDiag([
+            `Fotos carregadas: ${files.length} ✓`,
+            `Campos de arquivo encontrados: ${inputsFound.length}`,
+            ...inputsFound,
+            '',
+            '➡️ Não achei o campo "Fotos e vídeos". Me mande este print.'
+        ]);
+        return { sent: false, count: files.length, noInput: true };
     }
-    input.dispatchEvent(new Event('change', { bubbles: true }));
 
-    // 3. espera o preview abrir com as miniaturas e clica em Enviar
+    setInputFiles(input, files);
+
     const sendBtn = await waitForElement2(findPreviewSendButton, 10000);
-    console.log('[Classul] botão enviar do preview:', sendBtn);
     if (sendBtn) {
-        await sleep(600); // deixa as miniaturas terminarem de carregar
+        await sleep(600); // deixa as miniaturas carregarem
         sendBtn.click();
         return { sent: true, count: files.length };
     }
-    return { sent: false, count: files.length }; // preview aberto — Enter envia
+
+    // anexou mas não achou o botão enviar
+    showDiag([
+        `Fotos anexadas no campo accept="${input.getAttribute('accept') || '(vazio)'}"`,
+        `Campos de arquivo: ${inputsFound.length}`,
+        ...inputsFound,
+        '',
+        '➡️ Anexou mas não achei o botão Enviar. Aperte Enter, ou me mande este print.'
+    ]);
+    return { sent: false, count: files.length };
 }
 
 function createImageCopyButton() {
