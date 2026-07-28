@@ -196,14 +196,7 @@ async function fetchAssetAsFile(path, name) {
     return new File([blob], name, { type: blob.type || 'image/jpeg' });
 }
 
-function findComposer() {
-    return (
-        document.querySelector('#main footer div[contenteditable="true"]') ||
-        document.querySelector('#main [contenteditable="true"][data-tab]')
-    );
-}
-
-async function waitForElement2(finder, timeout = 6000, step = 150) {
+async function waitForElement2(finder, timeout = 8000, step = 150) {
     const start = Date.now();
     while (Date.now() - start < timeout) {
         const el = finder();
@@ -211,6 +204,32 @@ async function waitForElement2(finder, timeout = 6000, step = 150) {
         await sleep(step);
     }
     return null;
+}
+
+// Procura um <input type=file> que aceite imagens (o WhatsApp usa esse input no anexo).
+function findImageFileInput() {
+    const inputs = [...document.querySelectorAll('input[type="file"]')];
+    return (
+        inputs.find((i) => /image/i.test(i.getAttribute('accept') || '')) ||
+        inputs.find((i) => !i.getAttribute('accept')) ||
+        inputs[0] ||
+        null
+    );
+}
+
+// Botão "+" / clipe de anexar, para revelar os inputs de arquivo caso não existam ainda.
+function findAttachButton() {
+    const iconSelectors = [
+        'plus', 'plus-rounded', 'attach-menu-plus', 'clip', 'attach', 'wds-ic-plus-filled'
+    ].map((n) => `#main footer span[data-icon="${n}"]`);
+    for (const sel of iconSelectors) {
+        const icon = document.querySelector(sel);
+        if (icon) return icon.closest('div[role="button"], button, span[role="button"]') || icon;
+    }
+    const labelled = document.querySelector(
+        '#main footer [aria-label="Anexar"], #main footer [title="Anexar"], #main footer [aria-label="Attach"], #main footer [title="Attach"]'
+    );
+    return labelled || null;
 }
 
 function findPreviewSendButton() {
@@ -221,34 +240,49 @@ function findPreviewSendButton() {
     if (byAria) return byAria;
     const byTestId = document.querySelector('[data-testid="send"]');
     if (byTestId) return byTestId;
-    const icon = document.querySelector('span[data-icon="send"], span[data-icon="wds-ic-send-filled"]');
+    const icon = document.querySelector(
+        'span[data-icon="send"], span[data-icon="wds-ic-send-filled"], span[data-icon="send-light"]'
+    );
     return icon ? icon.closest('div[role="button"], button') || icon : null;
 }
 
-// Anexa todas as fotos na conversa aberta (via evento de colagem) e clica em Enviar.
+// Anexa todas as fotos no input de arquivo do WhatsApp e clica em Enviar.
 async function sendHomenagemPhotos() {
-    const composer = findComposer();
-    if (!composer) throw new Error('Abra uma conversa primeiro.');
+    if (!document.querySelector('#main')) throw new Error('Abra uma conversa primeiro.');
 
     const files = await Promise.all(
         HOMENAGEM_PHOTOS.map((path, i) => fetchAssetAsFile(path, `placa-homenagem-${i + 1}.jpg`))
     );
+    console.log('[Classul] fotos carregadas:', files.map((f) => `${f.name} (${f.size}b)`));
 
+    // 1. acha o input de imagem (ou abre o menu de anexo para revelá-lo)
+    let input = findImageFileInput();
+    if (!input) {
+        const attach = findAttachButton();
+        console.log('[Classul] input não encontrado direto; botão de anexo:', attach);
+        if (attach) {
+            attach.click();
+            input = await waitForElement2(findImageFileInput, 3500);
+        }
+    }
+    if (!input) throw new Error('Não encontrei onde anexar no WhatsApp. Recarregue a página do WhatsApp Web.');
+    console.log('[Classul] usando input de arquivo:', input, 'accept=', input.getAttribute('accept'));
+
+    // 2. injeta os arquivos e avisa o WhatsApp (evento change)
     const dataTransfer = new DataTransfer();
     files.forEach((file) => dataTransfer.items.add(file));
-
-    composer.focus();
-    let pasteEvent = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dataTransfer });
-    if (!pasteEvent.clipboardData) {
-        pasteEvent = new ClipboardEvent('paste', { bubbles: true, cancelable: true });
-        Object.defineProperty(pasteEvent, 'clipboardData', { value: dataTransfer, configurable: true });
+    try {
+        input.files = dataTransfer.files;
+    } catch (err) {
+        Object.defineProperty(input, 'files', { value: dataTransfer.files, configurable: true });
     }
-    composer.dispatchEvent(pasteEvent);
+    input.dispatchEvent(new Event('change', { bubbles: true }));
 
-    // espera o preview de mídia abrir e envia
-    const sendBtn = await waitForElement2(findPreviewSendButton);
+    // 3. espera o preview abrir com as miniaturas e clica em Enviar
+    const sendBtn = await waitForElement2(findPreviewSendButton, 10000);
+    console.log('[Classul] botão enviar do preview:', sendBtn);
     if (sendBtn) {
-        await sleep(400); // deixa as miniaturas terminarem de carregar
+        await sleep(600); // deixa as miniaturas terminarem de carregar
         sendBtn.click();
         return { sent: true, count: files.length };
     }
