@@ -303,26 +303,27 @@ async function sendHomenagemPhotos() {
         HOMENAGEM_PHOTOS.map((path, i) => fetchAssetAsFile(path, `placa-homenagem-${i + 1}.jpg`))
     );
 
-    // abre o menu de anexo para garantir que os inputs existam no DOM
-    let input = findPhotosVideosInput();
+    // procura o campo de arquivo (prioriza o que aceita vídeo = Fotos e vídeos;
+    // se só existir o de imagem, usa ele). Abre o menu de anexo se preciso.
+    const pickInput = () => findPhotosVideosInput() || findAnyImageInput();
+    let input = pickInput();
     if (!input) {
         const attach = findAttachButton();
         if (attach) {
             attach.click();
-            input = await waitForElement2(findPhotosVideosInput, 3500);
+            input = await waitForElement2(pickInput, 3500);
         }
     }
 
     const inputsFound = listFileInputs();
 
     if (!input) {
-        // não achou o de "Fotos e vídeos" — mostra o que existe para eu ajustar
         showDiag([
             `Fotos carregadas: ${files.length} ✓`,
             `Campos de arquivo encontrados: ${inputsFound.length}`,
             ...inputsFound,
             '',
-            '➡️ Não achei o campo "Fotos e vídeos". Me mande este print.'
+            '➡️ Não achei onde anexar. Me mande este print.'
         ]);
         return { sent: false, count: files.length, noInput: true };
     }
