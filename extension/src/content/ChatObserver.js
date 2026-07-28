@@ -184,7 +184,9 @@ function createQuickMessagesButton() {
 const HOMENAGEM_PHOTOS = [
     'bot-fotos/placa-homenagem-1.jpg',
     'bot-fotos/placa-homenagem-2.jpg',
-    'bot-fotos/placa-homenagem-3.jpg'
+    'bot-fotos/placa-homenagem-3.jpg',
+    'bot-fotos/placa-homenagem-4.jpg',
+    'bot-fotos/placa-homenagem-5.jpg'
 ];
 
 async function fetchAssetAsFile(path, name) {
