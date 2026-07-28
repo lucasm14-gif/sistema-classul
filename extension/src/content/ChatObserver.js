@@ -180,13 +180,78 @@ function createQuickMessagesButton() {
     return btn;
 }
 
-// Fotos de placa de homenagem copiadas em sequência (1 → 2 → 3 → 1 → ...)
+// Fotos de placa de homenagem enviadas todas de uma vez na conversa aberta
 const HOMENAGEM_PHOTOS = [
     'bot-fotos/placa-homenagem-1.jpg',
     'bot-fotos/placa-homenagem-2.jpg',
     'bot-fotos/placa-homenagem-3.jpg'
 ];
-let homenagemPhotoCursor = 0;
+
+async function fetchAssetAsFile(path, name) {
+    const response = await fetch(getExtensionAssetUrl(path));
+    if (!response.ok) throw new Error(`Falha ao carregar ${name}: ${response.status}`);
+    const blob = await response.blob();
+    return new File([blob], name, { type: blob.type || 'image/jpeg' });
+}
+
+function findComposer() {
+    return (
+        document.querySelector('#main footer div[contenteditable="true"]') ||
+        document.querySelector('#main [contenteditable="true"][data-tab]')
+    );
+}
+
+async function waitForElement2(finder, timeout = 6000, step = 150) {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+        const el = finder();
+        if (el) return el;
+        await sleep(step);
+    }
+    return null;
+}
+
+function findPreviewSendButton() {
+    // botão de enviar do preview de mídia (várias variações do WhatsApp Web)
+    const byAria = document.querySelector(
+        'div[role="button"][aria-label="Enviar"], button[aria-label="Enviar"], div[role="button"][aria-label="Send"], button[aria-label="Send"]'
+    );
+    if (byAria) return byAria;
+    const byTestId = document.querySelector('[data-testid="send"]');
+    if (byTestId) return byTestId;
+    const icon = document.querySelector('span[data-icon="send"], span[data-icon="wds-ic-send-filled"]');
+    return icon ? icon.closest('div[role="button"], button') || icon : null;
+}
+
+// Anexa todas as fotos na conversa aberta (via evento de colagem) e clica em Enviar.
+async function sendHomenagemPhotos() {
+    const composer = findComposer();
+    if (!composer) throw new Error('Abra uma conversa primeiro.');
+
+    const files = await Promise.all(
+        HOMENAGEM_PHOTOS.map((path, i) => fetchAssetAsFile(path, `placa-homenagem-${i + 1}.jpg`))
+    );
+
+    const dataTransfer = new DataTransfer();
+    files.forEach((file) => dataTransfer.items.add(file));
+
+    composer.focus();
+    let pasteEvent = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dataTransfer });
+    if (!pasteEvent.clipboardData) {
+        pasteEvent = new ClipboardEvent('paste', { bubbles: true, cancelable: true });
+        Object.defineProperty(pasteEvent, 'clipboardData', { value: dataTransfer, configurable: true });
+    }
+    composer.dispatchEvent(pasteEvent);
+
+    // espera o preview de mídia abrir e envia
+    const sendBtn = await waitForElement2(findPreviewSendButton);
+    if (sendBtn) {
+        await sleep(400); // deixa as miniaturas terminarem de carregar
+        sendBtn.click();
+        return { sent: true, count: files.length };
+    }
+    return { sent: false, count: files.length }; // preview aberto — Enter envia
+}
 
 function createImageCopyButton() {
     const btn = document.createElement('button');
@@ -198,37 +263,31 @@ function createImageCopyButton() {
     </svg>
   `;
 
-    const baseTitle = () =>
-        `Copiar foto de placa de homenagem (próxima: ${(homenagemPhotoCursor % HOMENAGEM_PHOTOS.length) + 1}/${HOMENAGEM_PHOTOS.length})`;
-
     btn.innerHTML = defaultIcon;
-    btn.title = baseTitle();
+    btn.title = "Enviar as fotos de placa de homenagem nesta conversa";
     btn.className = "kanban-header-btn quick-image-btn";
     btn.style.marginRight = '8px';
     btn.onclick = async (e) => {
         e.preventDefault();
         e.stopPropagation();
 
-        const index = homenagemPhotoCursor % HOMENAGEM_PHOTOS.length;
-        const label = `${index + 1}/${HOMENAGEM_PHOTOS.length}`;
-
+        const originalTitle = btn.title;
         btn.disabled = true;
         btn.style.opacity = '0.7';
         btn.innerHTML = `<div style="animation: spin 1s linear infinite">⌛</div>`;
 
         try {
-            await copyImageAssetToClipboard(HOMENAGEM_PHOTOS[index]);
-            homenagemPhotoCursor++;
+            const result = await sendHomenagemPhotos();
             btn.innerHTML = `
-            <span style="display:flex;align-items:center;gap:2px;font-size:11px;font-weight:700">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20 6L9 17l-5-5"></path>
-              </svg>${label}
-            </span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 6L9 17l-5-5"></path>
+            </svg>
           `;
-            btn.title = `Foto ${label} copiada — cole no chat (Ctrl+V). Clique de novo para a próxima.`;
+            btn.title = result.sent
+                ? `${result.count} fotos enviadas!`
+                : 'Fotos anexadas — aperte Enter para enviar.';
         } catch (error) {
-            console.error('Falha ao copiar imagem:', error);
+            console.error('Falha ao enviar fotos:', error);
             btn.innerHTML = `
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="10"></circle>
@@ -236,14 +295,14 @@ function createImageCopyButton() {
               <line x1="9" y1="9" x2="15" y2="15"></line>
             </svg>
           `;
-            btn.title = error.message || "Erro ao copiar imagem";
+            btn.title = error.message || "Erro ao enviar fotos";
         } finally {
             window.setTimeout(() => {
                 btn.disabled = false;
                 btn.style.opacity = '1';
                 btn.innerHTML = defaultIcon;
-                btn.title = baseTitle();
-            }, 2000);
+                btn.title = originalTitle;
+            }, 2500);
         }
     };
 
