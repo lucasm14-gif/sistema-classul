@@ -206,13 +206,23 @@ async function waitForElement2(finder, timeout = 8000, step = 150) {
     return null;
 }
 
-// Procura um <input type=file> que aceite imagens (o WhatsApp usa esse input no anexo).
-function findImageFileInput() {
+const inputAccept = (i) => (i.getAttribute('accept') || '').toLowerCase();
+
+// Input de "Fotos e vídeos" — o único que aceita vídeo. É o que envia em qualidade normal.
+// (o input de "Figurinha" aceita só imagem; usá-lo mandaria as fotos como figurinha.)
+function findPhotosVideosInput() {
+    return (
+        [...document.querySelectorAll('input[type="file"]')].find((i) => /video/.test(inputAccept(i))) || null
+    );
+}
+
+// Fallback: qualquer input que aceite imagem, evitando o de figurinha (webp puro).
+function findAnyImageInput() {
     const inputs = [...document.querySelectorAll('input[type="file"]')];
     return (
-        inputs.find((i) => /image/i.test(i.getAttribute('accept') || '')) ||
-        inputs.find((i) => !i.getAttribute('accept')) ||
-        inputs[0] ||
+        inputs.find((i) => /image/.test(inputAccept(i)) && inputAccept(i) !== 'image/webp') ||
+        inputs.find((i) => /image/.test(inputAccept(i))) ||
+        inputs.find((i) => !inputAccept(i)) ||
         null
     );
 }
@@ -255,18 +265,21 @@ async function sendHomenagemPhotos() {
     );
     console.log('[Classul] fotos carregadas:', files.map((f) => `${f.name} (${f.size}b)`));
 
-    // 1. acha o input de imagem (ou abre o menu de anexo para revelá-lo)
-    let input = findImageFileInput();
+    // 1. tenta achar o input de "Fotos e vídeos" (qualidade normal). Se não achar,
+    //    abre o menu de anexo (+) para revelá-lo.
+    let input = findPhotosVideosInput();
     if (!input) {
         const attach = findAttachButton();
-        console.log('[Classul] input não encontrado direto; botão de anexo:', attach);
+        console.log('[Classul] "Fotos e vídeos" não encontrado direto; abrindo menu de anexo:', attach);
         if (attach) {
             attach.click();
-            input = await waitForElement2(findImageFileInput, 3500);
+            input = await waitForElement2(findPhotosVideosInput, 3500);
         }
     }
+    // último recurso: qualquer input de imagem que não seja figurinha
+    if (!input) input = findAnyImageInput();
     if (!input) throw new Error('Não encontrei onde anexar no WhatsApp. Recarregue a página do WhatsApp Web.');
-    console.log('[Classul] usando input de arquivo:', input, 'accept=', input.getAttribute('accept'));
+    console.log('[Classul] usando input de arquivo. accept=', input.getAttribute('accept'));
 
     // 2. injeta os arquivos e avisa o WhatsApp (evento change)
     const dataTransfer = new DataTransfer();
