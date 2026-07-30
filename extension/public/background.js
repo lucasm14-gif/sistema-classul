@@ -54,10 +54,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === 'listChats') {
+    apiRequest('/api/chats')
+      .then((data) => sendResponse({ success: true, data }))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
   if (request.action === 'setChat') {
     apiRequest('/api/chats/' + encodeURIComponent(request.phone), {
       method: 'PUT',
-      body: JSON.stringify({ employee: request.employee, status: request.status })
+      body: JSON.stringify({ employee: request.employee, status: request.status, name: request.name })
     })
       .then((data) => sendResponse({ success: true, data }))
       .catch((error) => sendResponse({ success: false, error: error.message }));

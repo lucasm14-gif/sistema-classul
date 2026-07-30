@@ -424,6 +424,97 @@ function assignmentColor(name) {
     return ASSIGN_COLORS[h] || ASSIGN_COLORS[0];
 }
 
+const normName = (s) => (s || '').trim().toLowerCase();
+function chatKeyFor(name, phone) {
+    return phone || 'n_' + normName(name);
+}
+
+// Mapa compartilhado de etiquetas (nome da conversa -> atribuição).
+let assignmentsByName = new Map();
+
+async function refreshAssignments() {
+    const r = await bgSend({ action: 'listChats' });
+    if (!r || !r.success) return;
+    const map = new Map();
+    for (const a of r.data || []) {
+        if (a.chat_name) map.set(normName(a.chat_name), a);
+    }
+    assignmentsByName = map;
+    paintChatList();
+}
+
+function chatListRows() {
+    const pane = document.querySelector('#pane-side');
+    if (!pane) return [];
+    return [...pane.querySelectorAll('div[role="listitem"], [role="listitem"]')];
+}
+
+function rowTitle(row) {
+    const t = row.querySelector('span[title]');
+    if (t) return t.getAttribute('title') || t.textContent || '';
+    const s = row.querySelector('span[dir="auto"]');
+    return s ? s.textContent || '' : '';
+}
+
+function makeBadge(employee) {
+    const b = document.createElement('span');
+    b.className = 'classul-assign-badge';
+    b.style.cssText =
+        'display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:9px;' +
+        'font-size:10px;font-weight:700;color:#fff;vertical-align:middle;white-space:nowrap;' +
+        `background:${assignmentColor(employee)}`;
+    b.textContent = employee;
+    return b;
+}
+
+// Coloca/atualiza a etiqueta do funcionário em cada linha da lista de conversas.
+function paintChatList() {
+    for (const row of chatListRows()) {
+        const a = assignmentsByName.get(normName(rowTitle(row)));
+        const existing = row.querySelector('.classul-assign-badge');
+        if (a && a.employee) {
+            if (existing) {
+                existing.textContent = a.employee;
+                existing.style.background = assignmentColor(a.employee);
+            } else {
+                const titleEl = row.querySelector('span[title]') || row.querySelector('span[dir="auto"]');
+                if (titleEl && titleEl.parentElement) titleEl.parentElement.appendChild(makeBadge(a.employee));
+            }
+        } else if (existing) {
+            existing.remove();
+        }
+    }
+}
+
+let listWatcherStarted = false;
+function startChatListWatcher() {
+    if (listWatcherStarted) return;
+    listWatcherStarted = true;
+
+    let repaintTimer = null;
+    const scheduleRepaint = () => {
+        clearTimeout(repaintTimer);
+        repaintTimer = setTimeout(paintChatList, 200);
+    };
+
+    const attach = () => {
+        const pane = document.querySelector('#pane-side');
+        if (!pane) return false;
+        new MutationObserver(scheduleRepaint).observe(pane, { childList: true, subtree: true });
+        paintChatList();
+        return true;
+    };
+
+    if (!attach()) {
+        const wait = setInterval(() => {
+            if (attach()) clearInterval(wait);
+        }, 800);
+    }
+
+    refreshAssignments();
+    setInterval(refreshAssignments, 25000); // mantém sincronizado entre a equipe
+}
+
 // Etiqueta "quem está atendendo" desta conversa (compartilhada entre a equipe).
 function createAssignmentButton() {
     const btn = document.createElement('button');
@@ -440,8 +531,8 @@ function createAssignmentButton() {
       <circle cx="12" cy="7" r="4"></circle>
     </svg>`;
 
-    let phone = null;
-    let assignment = null;
+    const chatName = getActiveChatName();
+    let assignment = assignmentsByName.get(normName(chatName)) || null;
 
     const render = () => {
         if (assignment && assignment.employee) {
@@ -456,34 +547,9 @@ function createAssignmentButton() {
     };
     render();
 
-    (async () => {
-        phone = getActiveChatPhone();
-        if (!phone) return;
-        const r = await bgSend({ action: 'getChat', phone });
-        if (r?.success) {
-            assignment = r.data;
-            render();
-        }
-    })();
-
     btn.onclick = async (e) => {
         e.preventDefault();
         e.stopPropagation();
-
-        if (!phone) phone = getActiveChatPhone();
-        if (!phone) {
-            btn.innerHTML = `<div style="animation: spin 1s linear infinite">⌛</div>`;
-            try {
-                phone = await scrapePhoneFromProfile();
-            } catch (err) {
-                phone = null;
-            }
-            render();
-        }
-        if (!phone) {
-            alert('Não consegui identificar o número deste contato. Abra o perfil do contato e tente de novo.');
-            return;
-        }
 
         const me = await getMyName();
         if (!me) {
@@ -491,17 +557,23 @@ function createAssignmentButton() {
             return;
         }
 
+        const name = getActiveChatName();
+        const phone = getActiveChatPhone();
+        const key = chatKeyFor(name, phone);
+
         if (assignment && assignment.employee === me) {
-            const r = await bgSend({ action: 'clearChat', phone });
+            const r = await bgSend({ action: 'clearChat', phone: key });
             if (r?.success) {
                 assignment = null;
                 render();
+                refreshAssignments();
             }
         } else {
-            const r = await bgSend({ action: 'setChat', phone, employee: me, status: 'atendendo' });
+            const r = await bgSend({ action: 'setChat', phone: key, employee: me, status: 'atendendo', name });
             if (r?.success) {
                 assignment = r.data;
                 render();
+                refreshAssignments();
             } else if (r?.error) {
                 alert(r.error);
             }
@@ -512,6 +584,9 @@ function createAssignmentButton() {
 }
 
 export function initChatObserver() {
+    // Etiquetas de "quem está atendendo" na lista de conversas
+    startChatListWatcher();
+
     // Observe the main app area for header changes
     const observer = new MutationObserver(() => {
         const header = document.querySelector('header');

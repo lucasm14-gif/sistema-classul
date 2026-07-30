@@ -294,5 +294,18 @@ check('listar etiquetas', (await r.json()).length === 1);
 r = await fetch(`${B}/chats/5551999998888`, { method: 'DELETE', headers: H });
 check('limpar etiqueta', (await r.json()).ok === true);
 
+// etiqueta por nome (contato salvo, sem telefone) guarda o nome da conversa
+r = await fetch(`${B}/chats/${encodeURIComponent('n_moises casa')}`, {
+  method: 'PUT',
+  headers: H,
+  body: JSON.stringify({ employee: 'Maria', status: 'atendendo', name: 'moises casa' })
+});
+const named = await r.json();
+check('etiqueta por nome guarda chat_name', named.employee === 'Maria' && named.chat_name === 'moises casa');
+r = await fetch(`${B}/chats`, { headers: H });
+const allChats = await r.json();
+check('listagem inclui chat_name', allChats.some((c) => c.chat_name === 'moises casa'));
+await fetch(`${B}/chats/${encodeURIComponent('n_moises casa')}`, { method: 'DELETE', headers: H });
+
 server.close();
 console.log('\nFim dos testes.');

@@ -126,6 +126,11 @@ function currentUser(req) {
   return u ? String(u).trim().slice(0, 60) || null : null;
 }
 
+// Chave de uma conversa: telefone normalizado quando houver dígitos, senão o texto cru (ex: 'n_...').
+function chatKey(param) {
+  return normalizePhone(param) || String(param || '').trim().slice(0, 80);
+}
+
 async function getOrder(id) {
   const { rows } = await q('SELECT * FROM orders WHERE id = $1', [id]);
   return rows[0] || null;
@@ -636,30 +641,31 @@ app.get('/api/chats', h(async (req, res) => {
 }));
 
 app.get('/api/chats/:phone', h(async (req, res) => {
-  const phone = normalizePhone(req.params.phone) || String(req.params.phone).replace(/\D/g, '');
+  const phone = chatKey(req.params.phone);
   const { rows } = await q('SELECT * FROM chat_assignments WHERE phone = $1', [phone]);
-  res.json(rows[0] || { phone, employee: null, status: null, note: null });
+  res.json(rows[0] || { phone, employee: null, status: null, note: null, chat_name: null });
 }));
 
 app.put('/api/chats/:phone', h(async (req, res) => {
-  const phone = normalizePhone(req.params.phone) || String(req.params.phone).replace(/\D/g, '');
-  if (!phone) return res.status(400).json({ error: 'Telefone inválido.' });
+  const phone = chatKey(req.params.phone);
+  if (!phone) return res.status(400).json({ error: 'Conversa inválida.' });
   const employee = req.body?.employee ? String(req.body.employee).slice(0, 60) : null;
   const status = req.body?.status ? String(req.body.status).slice(0, 40) : null;
   const note = req.body?.note ? String(req.body.note).slice(0, 200) : null;
+  const chatName = req.body?.name ? String(req.body.name).slice(0, 120) : null;
   const { rows } = await q(
-    `INSERT INTO chat_assignments (phone, employee, status, note, updated_at)
-     VALUES ($1, $2, $3, $4, now())
+    `INSERT INTO chat_assignments (phone, employee, status, note, chat_name, updated_at)
+     VALUES ($1, $2, $3, $4, $5, now())
      ON CONFLICT (phone) DO UPDATE SET employee = EXCLUDED.employee, status = EXCLUDED.status,
-       note = EXCLUDED.note, updated_at = now()
+       note = EXCLUDED.note, chat_name = COALESCE(EXCLUDED.chat_name, chat_assignments.chat_name), updated_at = now()
      RETURNING *`,
-    [phone, employee, status, note]
+    [phone, employee, status, note, chatName]
   );
   res.json(rows[0]);
 }));
 
 app.delete('/api/chats/:phone', h(async (req, res) => {
-  const phone = normalizePhone(req.params.phone) || String(req.params.phone).replace(/\D/g, '');
+  const phone = chatKey(req.params.phone);
   await q('DELETE FROM chat_assignments WHERE phone = $1', [phone]);
   res.json({ ok: true });
 }));
