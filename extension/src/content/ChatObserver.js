@@ -544,13 +544,9 @@ function createAssignmentButton() {
     const btn = document.createElement('button');
     btn.className = 'kanban-header-btn classul-assign-btn';
     btn.style.marginRight = '8px';
-    btn.style.display = 'flex';
-    btn.style.alignItems = 'center';
-    btn.style.gap = '5px';
-    btn.style.padding = '0 8px';
 
-    const userIcon = `
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    const userIconSvg = (color) => `
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
       <circle cx="12" cy="7" r="4"></circle>
     </svg>`;
@@ -558,14 +554,13 @@ function createAssignmentButton() {
     const chatName = getActiveChatName();
     let assignment = assignmentsByName.get(normName(chatName)) || null;
 
+    // Ícone-só (sem texto) para não alargar o cabeçalho; colorido quando atribuído.
     const render = () => {
         if (assignment && assignment.employee) {
-            btn.innerHTML =
-                `<span style="width:9px;height:9px;border-radius:50%;background:${assignmentColor(assignment.employee)};display:inline-block"></span>` +
-                `<span style="font-size:12px;font-weight:700;white-space:nowrap">${assignment.employee}</span>`;
+            btn.innerHTML = userIconSvg(assignmentColor(assignment.employee));
             btn.title = `Atendendo: ${assignment.employee}. Clique para assumir/limpar.`;
         } else {
-            btn.innerHTML = userIcon;
+            btn.innerHTML = userIconSvg('currentColor');
             btn.title = 'Marcar quem está atendendo esta conversa';
         }
     };
