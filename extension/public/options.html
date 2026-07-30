@@ -40,6 +40,18 @@
       outline: none;
     }
     input:focus { border-color: #10b981; }
+    select {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 14px;
+      outline: none;
+      background: white;
+    }
+    select:focus { border-color: #10b981; }
+    .hint { font-size: 12px; color: #94a3b8; margin: 6px 0 0; }
     button {
       margin-top: 24px;
       width: 100%;
@@ -68,6 +80,12 @@
 
     <label for="apiToken">Senha de acesso (API_TOKEN)</label>
     <input id="apiToken" type="password" placeholder="A mesma senha usada para entrar no sistema" />
+
+    <label for="employee">Quem é você? (funcionário)</label>
+    <select id="employee">
+      <option value="">— selecione depois de conectar —</option>
+    </select>
+    <p class="hint">Aparece nos pedidos e nas etiquetas de conversa. Cadastre funcionários no sistema (topo → "Quem é você?").</p>
 
     <button id="save">Salvar e testar conexão</button>
     <div id="status"></div>

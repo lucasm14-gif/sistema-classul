@@ -398,6 +398,119 @@ function createImageCopyButton() {
     return btn;
 }
 
+function bgSend(msg) {
+    return new Promise((resolve) => {
+        try {
+            chrome.runtime.sendMessage(msg, (r) => resolve(chrome.runtime.lastError ? null : r));
+        } catch (e) {
+            resolve(null);
+        }
+    });
+}
+
+async function getMyName() {
+    try {
+        const { classulUser } = await chrome.storage.sync.get(['classulUser']);
+        return classulUser || '';
+    } catch (e) {
+        return '';
+    }
+}
+
+const ASSIGN_COLORS = ['#4a9c33', '#ee3b33', '#eabf00', '#2563eb', '#7c3aed', '#db2777', '#0891b2'];
+function assignmentColor(name) {
+    let h = 0;
+    for (let i = 0; i < (name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) % ASSIGN_COLORS.length;
+    return ASSIGN_COLORS[h] || ASSIGN_COLORS[0];
+}
+
+// Etiqueta "quem está atendendo" desta conversa (compartilhada entre a equipe).
+function createAssignmentButton() {
+    const btn = document.createElement('button');
+    btn.className = 'kanban-header-btn classul-assign-btn';
+    btn.style.marginRight = '8px';
+    btn.style.display = 'flex';
+    btn.style.alignItems = 'center';
+    btn.style.gap = '5px';
+    btn.style.padding = '0 8px';
+
+    const userIcon = `
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+      <circle cx="12" cy="7" r="4"></circle>
+    </svg>`;
+
+    let phone = null;
+    let assignment = null;
+
+    const render = () => {
+        if (assignment && assignment.employee) {
+            btn.innerHTML =
+                `<span style="width:9px;height:9px;border-radius:50%;background:${assignmentColor(assignment.employee)};display:inline-block"></span>` +
+                `<span style="font-size:12px;font-weight:700;white-space:nowrap">${assignment.employee}</span>`;
+            btn.title = `Atendendo: ${assignment.employee}. Clique para assumir/limpar.`;
+        } else {
+            btn.innerHTML = userIcon;
+            btn.title = 'Marcar quem está atendendo esta conversa';
+        }
+    };
+    render();
+
+    (async () => {
+        phone = getActiveChatPhone();
+        if (!phone) return;
+        const r = await bgSend({ action: 'getChat', phone });
+        if (r?.success) {
+            assignment = r.data;
+            render();
+        }
+    })();
+
+    btn.onclick = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!phone) phone = getActiveChatPhone();
+        if (!phone) {
+            btn.innerHTML = `<div style="animation: spin 1s linear infinite">⌛</div>`;
+            try {
+                phone = await scrapePhoneFromProfile();
+            } catch (err) {
+                phone = null;
+            }
+            render();
+        }
+        if (!phone) {
+            alert('Não consegui identificar o número deste contato. Abra o perfil do contato e tente de novo.');
+            return;
+        }
+
+        const me = await getMyName();
+        if (!me) {
+            alert('Escolha seu nome nas Opções da extensão (botão direito no ícone > Opções > "Quem é você?").');
+            return;
+        }
+
+        if (assignment && assignment.employee === me) {
+            const r = await bgSend({ action: 'clearChat', phone });
+            if (r?.success) {
+                assignment = null;
+                render();
+            }
+        } else {
+            const r = await bgSend({ action: 'setChat', phone, employee: me, status: 'atendendo' });
+            if (r?.success) {
+                assignment = r.data;
+                render();
+            } else if (r?.error) {
+                alert(r.error);
+            }
+        }
+    };
+
+    return btn;
+}
+
 export function initChatObserver() {
     // Observe the main app area for header changes
     const observer = new MutationObserver(() => {
@@ -412,9 +525,11 @@ export function initChatObserver() {
                 const imageCopyBtn = createImageCopyButton();
                 const quickMsgBtn = createQuickMessagesButton();
                 const orderBtn = createOrderButton();
+                const assignBtn = createAssignmentButton();
                 actionsContainer.prepend(imageCopyBtn);
                 actionsContainer.prepend(quickMsgBtn);
                 actionsContainer.prepend(orderBtn);
+                actionsContainer.prepend(assignBtn);
             }
         }
     });

@@ -12,11 +12,13 @@ async function getConfig() {
 
 async function apiRequest(path, options = {}) {
   const { apiUrl, apiToken } = await getConfig();
+  const { classulUser } = await chrome.storage.sync.get(['classulUser']);
   const res = await fetch(`${apiUrl}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiToken}`,
+      ...(classulUser ? { 'X-Classul-User': classulUser } : {}),
       ...(options.headers || {})
     }
   });
@@ -35,6 +37,38 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .then((result) => sendResponse({ success: true, data: result }))
       .catch((error) => sendResponse({ success: false, error: error.message }));
     return true; // mantém o canal aberto para resposta assíncrona
+  }
+
+  // Funcionários e etiquetas de conversa (compartilhadas)
+  if (request.action === 'listEmployees') {
+    apiRequest('/api/employees')
+      .then((data) => sendResponse({ success: true, data }))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (request.action === 'getChat') {
+    apiRequest('/api/chats/' + encodeURIComponent(request.phone))
+      .then((data) => sendResponse({ success: true, data }))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (request.action === 'setChat') {
+    apiRequest('/api/chats/' + encodeURIComponent(request.phone), {
+      method: 'PUT',
+      body: JSON.stringify({ employee: request.employee, status: request.status })
+    })
+      .then((data) => sendResponse({ success: true, data }))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (request.action === 'clearChat') {
+    apiRequest('/api/chats/' + encodeURIComponent(request.phone), { method: 'DELETE' })
+      .then(() => sendResponse({ success: true }))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
   }
 
   if (request.action === 'testConnection') {
