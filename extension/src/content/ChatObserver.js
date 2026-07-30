@@ -429,6 +429,18 @@ function chatKeyFor(name, phone) {
     return phone || 'n_' + normName(name);
 }
 
+// Aviso rápido no canto da tela.
+function classulToast(text, color = '#0f172a') {
+    const t = document.createElement('div');
+    t.textContent = text;
+    t.style.cssText =
+        'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2147483647;' +
+        `background:${color};color:#fff;padding:10px 18px;border-radius:12px;font-size:13px;font-weight:700;` +
+        'font-family:-apple-system,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.3)';
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+}
+
 // Mapa compartilhado de etiquetas (nome da conversa -> atribuição).
 let assignmentsByName = new Map();
 
@@ -443,10 +455,21 @@ async function refreshAssignments() {
     paintChatList();
 }
 
+function chatListPane() {
+    return (
+        document.querySelector('#pane-side') ||
+        document.querySelector('[aria-label="Lista de conversas"]') ||
+        document.querySelector('[aria-label="Chat list"]') ||
+        document.querySelector('div[role="grid"]')
+    );
+}
+
 function chatListRows() {
-    const pane = document.querySelector('#pane-side');
+    const pane = chatListPane();
     if (!pane) return [];
-    return [...pane.querySelectorAll('div[role="listitem"], [role="listitem"]')];
+    let rows = [...pane.querySelectorAll('[role="listitem"]')];
+    if (!rows.length) rows = [...pane.querySelectorAll('[role="row"]')];
+    return rows;
 }
 
 function rowTitle(row) {
@@ -498,10 +521,11 @@ function startChatListWatcher() {
     };
 
     const attach = () => {
-        const pane = document.querySelector('#pane-side');
+        const pane = chatListPane();
         if (!pane) return false;
         new MutationObserver(scheduleRepaint).observe(pane, { childList: true, subtree: true });
         paintChatList();
+        console.log('[Classul] observando a lista de conversas');
         return true;
     };
 
@@ -566,16 +590,20 @@ function createAssignmentButton() {
             if (r?.success) {
                 assignment = null;
                 render();
-                refreshAssignments();
+                await refreshAssignments();
+                classulToast('Atendimento removido desta conversa');
+            } else {
+                classulToast('Erro ao remover: ' + (r?.error || 'sem conexão'), '#b71f19');
             }
         } else {
             const r = await bgSend({ action: 'setChat', phone: key, employee: me, status: 'atendendo', name });
             if (r?.success) {
                 assignment = r.data;
                 render();
-                refreshAssignments();
-            } else if (r?.error) {
-                alert(r.error);
+                await refreshAssignments();
+                classulToast(`✓ Você (${me}) está atendendo "${name}"`, '#3a7a2a');
+            } else {
+                classulToast('Erro ao marcar: ' + (r?.error || 'sem conexão'), '#b71f19');
             }
         }
     };
@@ -589,24 +617,25 @@ export function initChatObserver() {
 
     // Observe the main app area for header changes
     const observer = new MutationObserver(() => {
-        const header = document.querySelector('header');
-        if (header) {
-            // Check if we already injected
-            if (header.querySelector('.kanban-header-btn')) return;
+        // Mira no cabeçalho da CONVERSA aberta (o WhatsApp novo tem vários <header>).
+        const header = document.querySelector('#main header') || document.querySelector('header');
+        if (!header) return;
+        if (header.querySelector('.kanban-header-btn')) return;
 
-            // Find the actions container (usually has search/menu icons)
-            const actionsContainer = header.lastElementChild;
-            if (actionsContainer) {
-                const imageCopyBtn = createImageCopyButton();
-                const quickMsgBtn = createQuickMessagesButton();
-                const orderBtn = createOrderButton();
-                const assignBtn = createAssignmentButton();
-                actionsContainer.prepend(imageCopyBtn);
-                actionsContainer.prepend(quickMsgBtn);
-                actionsContainer.prepend(orderBtn);
-                actionsContainer.prepend(assignBtn);
-            }
-        }
+        // Container de ações: o último filho costuma ter os ícones de vídeo/ligar/buscar/menu.
+        const actionsContainer =
+            header.querySelector('div[role="toolbar"]') ||
+            header.lastElementChild ||
+            header;
+        const imageCopyBtn = createImageCopyButton();
+        const quickMsgBtn = createQuickMessagesButton();
+        const orderBtn = createOrderButton();
+        const assignBtn = createAssignmentButton();
+        actionsContainer.prepend(imageCopyBtn);
+        actionsContainer.prepend(quickMsgBtn);
+        actionsContainer.prepend(orderBtn);
+        actionsContainer.prepend(assignBtn);
+        console.log('[Classul] botões injetados no cabeçalho da conversa');
     });
 
     const appElement = document.getElementById('app'); // WhatsApp usually mounts here
