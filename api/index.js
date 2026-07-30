@@ -120,6 +120,12 @@ function serializeOrder(order) {
   return { ...order, order_number: formatOrderNumber(order.id) };
 }
 
+// Nome do funcionário que está fazendo a ação (vem do header, salvo no dispositivo).
+function currentUser(req) {
+  const u = req.headers['x-classul-user'];
+  return u ? String(u).trim().slice(0, 60) || null : null;
+}
+
 async function getOrder(id) {
   const { rows } = await q('SELECT * FROM orders WHERE id = $1', [id]);
   return rows[0] || null;
@@ -205,7 +211,11 @@ app.get('/api/orders/:id', h(async (req, res) => {
     'SELECT * FROM attachments WHERE order_id = $1 ORDER BY created_at DESC, id DESC',
     [order.id]
   );
-  res.json({ ...serializeOrder(order), messages, attachments });
+  const { rows: comments } = await q(
+    'SELECT * FROM order_comments WHERE order_id = $1 ORDER BY created_at ASC, id ASC',
+    [order.id]
+  );
+  res.json({ ...serializeOrder(order), messages, attachments, comments });
 }));
 
 app.post('/api/orders', h(async (req, res) => {
@@ -228,9 +238,10 @@ app.post('/api/orders', h(async (req, res) => {
   }
 
   const pickupCode = await generatePickupCode();
+  const user = currentUser(req);
   const { rows } = await q(
-    `INSERT INTO orders (customer_name, phone, description, product_type, case_color, value, due_date, status, client_id, payment_status, pickup_code)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+    `INSERT INTO orders (customer_name, phone, description, product_type, case_color, value, due_date, status, client_id, payment_status, pickup_code, created_by, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12) RETURNING *`,
     [
       String(data.customer_name).trim(),
       normalizePhone(data.phone) || (data.phone ? String(data.phone) : null),
@@ -242,7 +253,8 @@ app.post('/api/orders', h(async (req, res) => {
       status,
       clientId,
       paymentStatus,
-      pickupCode
+      pickupCode,
+      user
     ]
   );
   res.status(201).json(serializeOrder(rows[0]));
@@ -262,14 +274,13 @@ app.put('/api/orders/:id', h(async (req, res) => {
   if ('payment_status' in updates && !PAYMENT_STATUSES.includes(updates.payment_status)) {
     return res.status(400).json({ error: `Status de pagamento inválido. Use: ${PAYMENT_STATUSES.join(', ')}` });
   }
+  updates.updated_by = currentUser(req);
   const fields = Object.keys(updates);
-  if (fields.length) {
-    const sets = fields.map((f, i) => `${f} = $${i + 1}`).join(', ');
-    await q(`UPDATE orders SET ${sets}, updated_at = now() WHERE id = $${fields.length + 1}`, [
-      ...Object.values(updates),
-      order.id
-    ]);
-  }
+  const sets = fields.map((f, i) => `${f} = $${i + 1}`).join(', ');
+  await q(`UPDATE orders SET ${sets}, updated_at = now() WHERE id = $${fields.length + 1}`, [
+    ...Object.values(updates),
+    order.id
+  ]);
   res.json(serializeOrder(await getOrder(order.id)));
 }));
 
@@ -281,16 +292,18 @@ app.patch('/api/orders/:id/status', h(async (req, res) => {
   if (!STATUSES.includes(status)) {
     return res.status(400).json({ error: `Etapa inválida. Use: ${STATUSES.join(', ')}` });
   }
+  const mover = currentUser(req);
   // registra a data de entrega (base do faturamento)
   if (status === 'entregue') {
     await q(
-      'UPDATE orders SET status = $1, delivered_at = COALESCE(delivered_at, now()), updated_at = now() WHERE id = $2',
-      [status, order.id]
+      'UPDATE orders SET status = $1, delivered_at = COALESCE(delivered_at, now()), updated_at = now(), updated_by = $3 WHERE id = $2',
+      [status, order.id, mover]
     );
   } else {
-    await q('UPDATE orders SET status = $1, delivered_at = NULL, updated_at = now() WHERE id = $2', [
+    await q('UPDATE orders SET status = $1, delivered_at = NULL, updated_at = now(), updated_by = $3 WHERE id = $2', [
       status,
-      order.id
+      order.id,
+      mover
     ]);
   }
   const updated = await getOrder(order.id);
@@ -567,6 +580,88 @@ app.get('/api/stats', h(async (req, res) => {
     month_orders: monthOrders,
     pending_invoices: pendingInvoices
   });
+}));
+
+// ---------- Funcionários (perfil simples, sem senha) ----------
+
+app.get('/api/employees', h(async (req, res) => {
+  const { rows } = await q('SELECT * FROM employees WHERE active = 1 ORDER BY name ASC');
+  res.json(rows);
+}));
+
+app.post('/api/employees', h(async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Informe o nome do funcionário.' });
+  const color = req.body?.color || null;
+  // reativa se já existir com o mesmo nome (case-insensitive)
+  const { rows: exist } = await q('SELECT * FROM employees WHERE LOWER(name) = LOWER($1) LIMIT 1', [name]);
+  if (exist.length) {
+    await q('UPDATE employees SET active = 1, color = COALESCE($2, color) WHERE id = $1', [exist[0].id, color]);
+    return res.status(200).json({ ...exist[0], active: 1, color: color || exist[0].color });
+  }
+  const { rows } = await q('INSERT INTO employees (name, color) VALUES ($1, $2) RETURNING *', [name, color]);
+  res.status(201).json(rows[0]);
+}));
+
+app.delete('/api/employees/:id', h(async (req, res) => {
+  await q('UPDATE employees SET active = 0 WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ---------- Comentários do pedido ----------
+
+app.post('/api/orders/:id/comments', h(async (req, res) => {
+  const order = await getOrder(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Pedido não encontrado.' });
+  const body = String(req.body?.body || '').trim();
+  if (!body) return res.status(400).json({ error: 'Escreva um comentário.' });
+  const author = currentUser(req) || req.body?.author || null;
+  const { rows } = await q(
+    'INSERT INTO order_comments (order_id, author, body) VALUES ($1, $2, $3) RETURNING *',
+    [order.id, author, body]
+  );
+  res.status(201).json(rows[0]);
+}));
+
+app.delete('/api/comments/:id', h(async (req, res) => {
+  await q('DELETE FROM order_comments WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// ---------- Etiquetas de conversa do WhatsApp (compartilhadas) ----------
+
+app.get('/api/chats', h(async (req, res) => {
+  const { rows } = await q('SELECT * FROM chat_assignments ORDER BY updated_at DESC');
+  res.json(rows);
+}));
+
+app.get('/api/chats/:phone', h(async (req, res) => {
+  const phone = normalizePhone(req.params.phone) || String(req.params.phone).replace(/\D/g, '');
+  const { rows } = await q('SELECT * FROM chat_assignments WHERE phone = $1', [phone]);
+  res.json(rows[0] || { phone, employee: null, status: null, note: null });
+}));
+
+app.put('/api/chats/:phone', h(async (req, res) => {
+  const phone = normalizePhone(req.params.phone) || String(req.params.phone).replace(/\D/g, '');
+  if (!phone) return res.status(400).json({ error: 'Telefone inválido.' });
+  const employee = req.body?.employee ? String(req.body.employee).slice(0, 60) : null;
+  const status = req.body?.status ? String(req.body.status).slice(0, 40) : null;
+  const note = req.body?.note ? String(req.body.note).slice(0, 200) : null;
+  const { rows } = await q(
+    `INSERT INTO chat_assignments (phone, employee, status, note, updated_at)
+     VALUES ($1, $2, $3, $4, now())
+     ON CONFLICT (phone) DO UPDATE SET employee = EXCLUDED.employee, status = EXCLUDED.status,
+       note = EXCLUDED.note, updated_at = now()
+     RETURNING *`,
+    [phone, employee, status, note]
+  );
+  res.json(rows[0]);
+}));
+
+app.delete('/api/chats/:phone', h(async (req, res) => {
+  const phone = normalizePhone(req.params.phone) || String(req.params.phone).replace(/\D/g, '');
+  await q('DELETE FROM chat_assignments WHERE phone = $1', [phone]);
+  res.json({ ok: true });
 }));
 
 // ---------- Bot de pré-atendimento ----------

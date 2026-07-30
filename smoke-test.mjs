@@ -252,5 +252,47 @@ check(
   (codeFull.messages[0]?.body || '').match(/Código de retirada: \d{4}/)?.[0] || 'não encontrado'
 );
 
+// ---------- Funcionários, comentários e atribuição ----------
+
+const HU = { ...H, 'X-Classul-User': 'Lucas' };
+
+// pedido criado registra o autor
+r = await fetch(`${B}/orders`, { method: 'POST', headers: HU, body: JSON.stringify({ customer_name: 'Cliente Autor' }) });
+const authored = await r.json();
+check('pedido registra created_by/updated_by', authored.created_by === 'Lucas' && authored.updated_by === 'Lucas');
+
+// mover por outro funcionário atualiza updated_by
+r = await fetch(`${B}/orders/${authored.id}/status`, {
+  method: 'PATCH',
+  headers: { ...H, 'X-Classul-User': 'Maria' },
+  body: JSON.stringify({ status: 'producao' })
+});
+check('mover atualiza updated_by', (await r.json()).order.updated_by === 'Maria');
+
+// funcionários
+r = await fetch(`${B}/employees`, { method: 'POST', headers: H, body: JSON.stringify({ name: 'Lucas', color: '#4a9c33' }) });
+check('criar funcionário', (await r.json()).name === 'Lucas');
+r = await fetch(`${B}/employees`, { method: 'POST', headers: H, body: JSON.stringify({ name: 'lucas' }) });
+check('funcionário duplicado não cria outro', r.status === 200);
+r = await fetch(`${B}/employees`, { headers: H });
+check('listar funcionários', (await r.json()).length === 1);
+
+// comentários
+r = await fetch(`${B}/orders/${authored.id}/comments`, { method: 'POST', headers: HU, body: JSON.stringify({ body: 'Cliente quer entrega rápida' }) });
+const comment = await r.json();
+check('criar comentário com autor', comment.author === 'Lucas' && comment.body.includes('entrega'));
+r = await fetch(`${B}/orders/${authored.id}`, { headers: H });
+check('comentário aparece no pedido', (await r.json()).comments.length === 1);
+
+// etiquetas de conversa
+r = await fetch(`${B}/chats/5551999998888`, { method: 'PUT', headers: H, body: JSON.stringify({ employee: 'Lucas', status: 'atendendo' }) });
+check('marcar conversa', (await r.json()).employee === 'Lucas');
+r = await fetch(`${B}/chats/(51)99999-8888`, { headers: H });
+check('ler etiqueta (telefone normalizado)', (await r.json()).employee === 'Lucas');
+r = await fetch(`${B}/chats`, { headers: H });
+check('listar etiquetas', (await r.json()).length === 1);
+r = await fetch(`${B}/chats/5551999998888`, { method: 'DELETE', headers: H });
+check('limpar etiqueta', (await r.json()).ok === true);
+
 server.close();
 console.log('\nFim dos testes.');

@@ -15,11 +15,13 @@ import {
   ExternalLink,
   Receipt,
   FileWarning,
-  KeyRound
+  KeyRound,
+  MessageSquare
 } from 'lucide-react';
-import { api } from '../api';
+import { api, getUser } from '../api';
 import { CASE_COLORS, PRODUCT_TYPES, COLUMNS, PAYMENT_STATUSES } from '../constants';
 import { useToast } from './Toast';
+import { colorFor } from './UserPicker';
 
 const formatDateTime = (value) => {
   const d = new Date(value);
@@ -53,6 +55,9 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
   const [messages, setMessages] = useState([]);
   const [clients, setClients] = useState([]);
   const [attachments, setAttachments] = useState([]);
+  const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState('');
+  const [postingComment, setPostingComment] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
   const uploadCategoryRef = useRef('arquivo');
@@ -64,9 +69,39 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
       .then((full) => {
         setMessages(full.messages || []);
         setAttachments(full.attachments || []);
+        setComments(full.comments || []);
       })
       .catch((err) => onAuthError(err));
   }, [order, onAuthError]);
+
+  const postComment = async () => {
+    const body = newComment.trim();
+    if (!body) return;
+    if (!getUser()) {
+      setError('Escolha seu nome no topo (canto superior direito) antes de comentar.');
+      return;
+    }
+    setPostingComment(true);
+    setError('');
+    try {
+      const created = await api.addComment(order.id, body);
+      setComments((prev) => [...prev, created]);
+      setNewComment('');
+    } catch (err) {
+      if (!onAuthError(err)) setError(err.message);
+    } finally {
+      setPostingComment(false);
+    }
+  };
+
+  const removeComment = async (id) => {
+    try {
+      await api.deleteComment(id);
+      setComments((prev) => prev.filter((c) => c.id !== id));
+    } catch (err) {
+      if (!onAuthError(err)) setError(err.message);
+    }
+  };
 
   // Autocomplete de clientes ao criar pedido novo
   useEffect(() => {
@@ -422,6 +457,74 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
                     </li>
                   ))}
                 </ul>
+              )}
+            </div>
+          )}
+
+          {!isNew && (
+            <div className="col-span-2">
+              <label className={label}>Comentários da equipe</label>
+              {comments.length > 0 && (
+                <ul className="space-y-2 mb-2.5">
+                  {comments.map((c) => (
+                    <li key={c.id} className="flex gap-2.5 group">
+                      <span
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-white font-extrabold text-[11px] shrink-0 mt-0.5"
+                        style={{ backgroundColor: colorFor(c.author || '?') }}
+                        title={c.author || 'Sem autor'}
+                      >
+                        {(c.author || '?').charAt(0).toUpperCase()}
+                      </span>
+                      <div className="flex-1 min-w-0 bg-white border border-black/5 rounded-xl px-3 py-2 shadow-sm">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-xs font-extrabold text-brand-900">{c.author || 'Alguém'}</span>
+                          <span className="text-[10px] font-medium text-slate-400 ml-auto">
+                            {formatDateTime(c.created_at)}
+                          </span>
+                          <button
+                            onClick={() => removeComment(c.id)}
+                            title="Excluir comentário"
+                            className="opacity-0 group-hover:opacity-100 text-flame-500 hover:text-flame-700 transition-opacity"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                        <p className="text-xs text-slate-600 whitespace-pre-line leading-relaxed">{c.body}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="flex gap-2">
+                <input
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && postComment()}
+                  placeholder={getUser() ? `Comentar como ${getUser()}...` : 'Escolha seu nome no topo para comentar'}
+                  className={`${input} flex-1`}
+                />
+                <button
+                  onClick={postComment}
+                  disabled={postingComment || !newComment.trim()}
+                  className="px-4 rounded-xl bg-brand-600 hover:bg-brand-700 text-white flex items-center gap-1.5 text-sm font-bold disabled:opacity-50"
+                >
+                  {postingComment ? <LoaderCircle size={15} className="animate-spin" /> : <MessageSquare size={15} />}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!isNew && (order.created_by || order.updated_by) && (
+            <div className="col-span-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-medium text-slate-400">
+              {order.created_by && (
+                <span>
+                  Criado por <span className="font-bold text-slate-600">{order.created_by}</span>
+                </span>
+              )}
+              {order.updated_by && order.updated_by !== order.created_by && (
+                <span>
+                  Última alteração por <span className="font-bold text-slate-600">{order.updated_by}</span>
+                </span>
               )}
             </div>
           )}

@@ -7,6 +7,7 @@ import Login from './components/Login';
 import Archived from './components/Archived';
 import Clients from './components/Clients';
 import BotChats from './components/BotChats';
+import UserPicker from './components/UserPicker';
 import { ToastProvider } from './components/Toast';
 import { getToken, clearToken, AuthError } from './api';
 
@@ -70,16 +71,19 @@ export default function App() {
               ))}
             </nav>
 
-            <button
-              onClick={() => {
-                clearToken();
-                setAuthed(false);
-              }}
-              title="Sair"
-              className="p-2.5 rounded-full text-slate-400 hover:text-flame-600 hover:bg-flame-50 transition-colors"
-            >
-              <LogOut size={17} />
-            </button>
+            <div className="flex items-center gap-1.5">
+              <UserPicker onAuthError={handleAuthError} />
+              <button
+                onClick={() => {
+                  clearToken();
+                  setAuthed(false);
+                }}
+                title="Sair"
+                className="p-2.5 rounded-full text-slate-400 hover:text-flame-600 hover:bg-flame-50 transition-colors"
+              >
+                <LogOut size={17} />
+              </button>
+            </div>
           </div>
         </header>
 
