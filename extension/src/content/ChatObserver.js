@@ -1,5 +1,5 @@
 import { eventBus } from '../utils/events';
-import { getActiveChatName, getActiveChatAvatar, getActiveChatPhone, scrapePhoneFromProfile, sleep } from '../utils/dom';
+import { getActiveChatName, getActiveChatAvatar, getActiveChatPhone, scrapePhoneFromProfile, scrapeContactFromProfile, sleep } from '../utils/dom';
 
 let currentButton = null;
 
@@ -128,29 +128,31 @@ function createOrderButton() {
         e.preventDefault();
         e.stopPropagation();
 
-        // 1. Basic Data
-        const name = getActiveChatName();
+        let name = getActiveChatName();
         const avatar = getActiveChatAvatar();
-
-        // 2. Try Smart Phone Scraping
         let phone = getActiveChatPhone();
+
+        // Contato não salvo mostra o número no lugar do nome.
+        const nameIsNumber = /^[+\d][\d\s()\-]{5,}$/.test((name || '').trim());
 
         const originalIcon = btn.innerHTML;
         btn.innerHTML = `<div style="animation: spin 1s linear infinite">⌛</div>`;
 
-        if (!phone) {
+        // Abre o perfil só quando precisa (sem nome de verdade ou sem telefone)
+        if (nameIsNumber || !phone) {
             try {
-                phone = await scrapePhoneFromProfile();
+                const info = await scrapeContactFromProfile();
+                if (!phone && info.phone) phone = info.phone;
+                if (nameIsNumber && info.name) name = info.name; // usa o nome do WhatsApp
             } catch (err) {
-                console.error("Smart Scrape failed:", err);
+                console.error('Falha ao ler o perfil:', err);
             }
         }
 
         btn.innerHTML = originalIcon;
 
-        // Emit event to show modal
         eventBus.emit('SHOW_ORDER_MODAL', {
-            name: name || "Novo Cliente",
+            name: name || 'Novo Cliente',
             avatar: avatar,
             phone: phone
         });
@@ -610,27 +612,24 @@ export function initChatObserver() {
     // Etiquetas de "quem está atendendo" na lista de conversas
     startChatListWatcher();
 
-    // Observe the main app area for header changes
-    const observer = new MutationObserver(() => {
-        // Mira no cabeçalho da CONVERSA aberta (o WhatsApp novo tem vários <header>).
+    // Injeta os botões no cabeçalho da conversa aberta (WhatsApp novo tem vários <header>).
+    const injectHeaderButtons = () => {
         const header = document.querySelector('#main header') || document.querySelector('header');
-        if (!header) return;
-        if (header.querySelector('.kanban-header-btn')) return;
-
-        // Container de ações: o último filho costuma ter os ícones de vídeo/ligar/buscar/menu.
+        if (!header || header.querySelector('.kanban-header-btn')) return;
         const actionsContainer =
-            header.querySelector('div[role="toolbar"]') ||
-            header.lastElementChild ||
-            header;
-        const imageCopyBtn = createImageCopyButton();
-        const quickMsgBtn = createQuickMessagesButton();
-        const orderBtn = createOrderButton();
-        const assignBtn = createAssignmentButton();
-        actionsContainer.prepend(imageCopyBtn);
-        actionsContainer.prepend(quickMsgBtn);
-        actionsContainer.prepend(orderBtn);
-        actionsContainer.prepend(assignBtn);
+            header.querySelector('div[role="toolbar"]') || header.lastElementChild || header;
+        actionsContainer.prepend(createImageCopyButton());
+        actionsContainer.prepend(createQuickMessagesButton());
+        actionsContainer.prepend(createOrderButton());
+        actionsContainer.prepend(createAssignmentButton());
         console.log('[Classul] botões injetados no cabeçalho da conversa');
+    };
+
+    // Debounce: em vez de rodar a cada mutação (pesado), agrupa em ~300ms.
+    let injectTimer = null;
+    const observer = new MutationObserver(() => {
+        clearTimeout(injectTimer);
+        injectTimer = setTimeout(injectHeaderButtons, 300);
     });
 
     const appElement = document.getElementById('app'); // WhatsApp usually mounts here

@@ -177,3 +177,59 @@ export const scrapePhoneFromProfile = async () => {
 
     return foundPhone;
 };
+
+// Abre o perfil do contato uma vez e devolve { name, phone } — usado ao criar pedido
+// para pegar o NOME do WhatsApp (perfil) de contatos não salvos, em vez do número.
+export const scrapeContactFromProfile = async () => {
+    const headerTitle = document.querySelector('#main header div[role="button"]');
+    if (!headerTitle) return { name: null, phone: null };
+
+    headerTitle.click();
+
+    let sidebar = null;
+    for (let i = 0; i < 20; i++) {
+        await sleep(100);
+        const candidates = [
+            ...document.querySelectorAll('aside'),
+            ...document.querySelectorAll('div[role="region"]')
+        ];
+        sidebar = candidates.find((el) => {
+            const rect = el.getBoundingClientRect();
+            return rect.left > window.innerWidth / 2 && rect.width > 0 && rect.height > 0 && !el.closest('#side');
+        });
+        if (sidebar) break;
+    }
+
+    const scope = sidebar || document.body;
+    await sleep(300);
+
+    const phoneRegex = /^\+?\d{2,3}[\s-]?\d{2}[\s-]?\d{4,5}[\s-]?\d{4}$/;
+    const isPhoneLike = (t) => /^[+\d][\d\s()\-]{5,}$/.test(t);
+    const isStatus = (t) =>
+        /online|visto por|digitando|typing|last seen|recado|clique aqui|toque aqui|tap here|adicionar|add to/i.test(t);
+
+    let name = null;
+    let phone = null;
+    const els = Array.from(scope.querySelectorAll('h1, h2, span[dir="auto"], div[dir="auto"]'));
+    for (const el of els) {
+        const text = el.innerText?.trim();
+        if (!text) continue;
+        if (!phone && phoneRegex.test(text) && !text.includes(':') && text.length < 30) {
+            phone = text.replace(/\D/g, '');
+        }
+        if (!name && !isPhoneLike(text) && !isStatus(text) && text.length >= 2 && text.length < 60) {
+            name = text.replace(/^~\s*/, '').trim();
+        }
+        if (name && phone) break;
+    }
+
+    if (sidebar) {
+        const closeBtn =
+            document.querySelector('span[data-icon="x"]')?.closest('button') ||
+            document.querySelector('div[role="button"][aria-label="Close"]') ||
+            document.querySelector('div[role="button"][aria-label="Fechar"]');
+        if (closeBtn) closeBtn.click();
+    }
+
+    return { name, phone };
+};
