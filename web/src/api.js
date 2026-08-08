@@ -70,6 +70,7 @@ export const api = {
       body: JSON.stringify({ file_id: fileId, category })
     }),
   getStats: (month) => request(`/api/stats${month ? `?month=${month}` : ''}`),
+  getLeads: () => request('/api/leads'),
   deleteAttachment: (id) => request(`/api/attachments/${id}`, { method: 'DELETE' }),
   getSettings: () => request('/api/settings'),
   saveSettings: (data) => request('/api/settings', { method: 'PUT', body: JSON.stringify(data) }),

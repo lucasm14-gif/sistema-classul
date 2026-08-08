@@ -307,5 +307,36 @@ const allChats = await r.json();
 check('listagem inclui chat_name', allChats.some((c) => c.chat_name === 'moises casa'));
 await fetch(`${B}/chats/${encodeURIComponent('n_moises casa')}`, { method: 'DELETE', headers: H });
 
+// ---------- Leads do WhatsApp (cliques do site) ----------
+
+// tracking é público (sem Bearer) e aceita form-urlencoded (sendBeacon)
+r = await fetch(`${B}/leads/track`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  body: new URLSearchParams({ page: '/produto/placa-de-homenagem', label: 'Chamar no WhatsApp' })
+});
+check('registrar lead sem Bearer (204)', r.status === 204);
+
+// também aceita JSON
+await fetch(`${B}/leads/track`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ page: '/', label: 'Enviar mensagem' })
+});
+
+r = await fetch(`${B}/leads`, { headers: H });
+const leads = await r.json();
+check('estatísticas de leads', leads.total === 2 && leads.today === 2 && leads.last30 === 2, JSON.stringify({ total: leads.total, today: leads.today }));
+check('série tem 30 dias', Array.isArray(leads.series) && leads.series.length === 30);
+check(
+  'top_pages agrupa por página',
+  leads.top_pages.some((p) => p.page === '/produto/placa-de-homenagem' && p.count === 1) &&
+    leads.top_pages.some((p) => p.page === '/' && p.page_label === 'Página inicial'),
+  JSON.stringify(leads.top_pages)
+);
+check('recentes trazem os cliques', leads.recent.length === 2);
+r = await fetch(`${B}/leads`);
+check('leads exige Bearer', r.status === 401);
+
 server.close();
 console.log('\nFim dos testes.');

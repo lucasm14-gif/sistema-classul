@@ -21,6 +21,8 @@ import { handleIncoming } from '../lib/bot.js';
 const app = express();
 app.use(cors());
 app.use(express.json());
+// navigator.sendBeacon do site envia os leads como application/x-www-form-urlencoded.
+app.use(express.urlencoded({ extended: false }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, service: 'classul' }));
 
@@ -84,6 +86,30 @@ app.all('/api/bot/webhook', async (req, res) => {
   } catch (err) {
     console.error('bot webhook:', err);
     res.status(200).json({ error: err.message });
+  }
+});
+
+// Registro de lead — chamado pelo site (classul.com.br) quando alguém clica num
+// botão de WhatsApp. Público (sem Bearer), aceita JSON ou form-urlencoded (sendBeacon).
+// Responde 204 rápido para não atrasar a saída do usuário para o WhatsApp.
+app.post('/api/leads/track', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const clip = (v, n) => (v == null ? null : String(v).replace(/[\r\n\t]/g, ' ').trim().slice(0, n) || null);
+    const page = clip(body.page, 120);
+    const label = clip(body.label, 80);
+    const referrer = clip(body.referrer || req.headers.referer, 200);
+    const userAgent = clip(req.headers['user-agent'], 250);
+    await ensureSchema();
+    await q(
+      'INSERT INTO leads (page, label, referrer, user_agent) VALUES ($1, $2, $3, $4)',
+      [page, label, referrer, userAgent]
+    );
+    res.status(204).end();
+  } catch (err) {
+    console.error('leads track:', err);
+    // Nunca falha de forma barulhenta: o rastreamento não pode quebrar o site.
+    res.status(204).end();
   }
 });
 
@@ -584,6 +610,79 @@ app.get('/api/stats', h(async (req, res) => {
     months,
     month_orders: monthOrders,
     pending_invoices: pendingInvoices
+  });
+}));
+
+// ---------- Leads do WhatsApp (cliques do site) ----------
+
+// Dia local de São Paulo no formato YYYY-MM-DD.
+function dayKeySP(date) {
+  return new Date(date).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+}
+
+// Nome amigável da página a partir do caminho (igual ao painel antigo).
+function pageLabel(path) {
+  const p = String(path || '').trim();
+  if (!p || p === '/') return 'Página inicial';
+  const clean = p.replace(/^\/+|\/+$/g, '');
+  if (clean.startsWith('produto/')) {
+    return 'Produto: ' + clean.slice(8).replace(/-/g, ' ');
+  }
+  return clean;
+}
+
+app.get('/api/leads', h(async (req, res) => {
+  const { rows: totalRows } = await q('SELECT COUNT(*)::int AS n FROM leads');
+  const total = totalRows[0]?.n || 0;
+
+  // Só os últimos 30 dias alimentam gráfico, páginas e recentes.
+  const { rows } = await q(
+    "SELECT page, label, created_at FROM leads WHERE created_at >= now() - interval '30 days' ORDER BY created_at DESC, id DESC"
+  );
+
+  // Série dos últimos 30 dias (dias sem clique = 0).
+  const series = [];
+  const seriesMap = new Map();
+  const today = dayKeySP(new Date());
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = dayKeySP(d);
+    const bucket = { day: key, count: 0 };
+    series.push(bucket);
+    seriesMap.set(key, bucket);
+  }
+
+  const byPage = new Map();
+  const recent = [];
+  for (const r of rows) {
+    const key = dayKeySP(r.created_at);
+    const bucket = seriesMap.get(key);
+    if (bucket) bucket.count += 1;
+    const pkey = r.page || '/';
+    byPage.set(pkey, (byPage.get(pkey) || 0) + 1);
+    if (recent.length < 20) {
+      recent.push({ created_at: r.created_at, page: pkey, page_label: pageLabel(pkey), label: r.label });
+    }
+  }
+
+  const last7 = series.slice(-7).reduce((sum, s) => sum + s.count, 0);
+  const last30 = series.reduce((sum, s) => sum + s.count, 0);
+  const todayCount = seriesMap.get(today)?.count || 0;
+
+  const topPages = [...byPage.entries()]
+    .map(([page, count]) => ({ page, page_label: pageLabel(page), count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  res.json({
+    total,
+    today: todayCount,
+    last7,
+    last30,
+    series,
+    top_pages: topPages,
+    recent
   });
 }));
 
