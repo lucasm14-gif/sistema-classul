@@ -100,10 +100,14 @@ app.post('/api/leads/track', async (req, res) => {
     const label = clip(body.label, 80);
     const referrer = clip(body.referrer || req.headers.referer, 200);
     const userAgent = clip(req.headers['user-agent'], 250);
+    const utmSource = clip(body.utm_source, 60);
+    const utmMedium = clip(body.utm_medium, 60);
+    const utmCampaign = clip(body.utm_campaign, 80);
     await ensureSchema();
     await q(
-      'INSERT INTO leads (page, label, referrer, user_agent) VALUES ($1, $2, $3, $4)',
-      [page, label, referrer, userAgent]
+      `INSERT INTO leads (page, label, referrer, user_agent, utm_source, utm_medium, utm_campaign)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [page, label, referrer, userAgent, utmSource, utmMedium, utmCampaign]
     );
     res.status(204).end();
   } catch (err) {
@@ -631,13 +635,34 @@ function pageLabel(path) {
   return clean;
 }
 
+// Origem do lead: UTM quando houver (com campanha), senão o domínio de onde
+// veio (referrer), senão "Direto".
+function leadSource(row) {
+  const source = String(row.utm_source || '').trim();
+  if (source) {
+    const campaign = String(row.utm_campaign || '').trim();
+    return campaign ? `${source} · ${campaign}` : source;
+  }
+  const ref = String(row.referrer || '').trim();
+  if (ref) {
+    try {
+      const host = new URL(ref).hostname.replace(/^www\./, '');
+      if (host && !host.includes('classul')) return host;
+    } catch {
+      /* referrer malformado — cai para "Direto" */
+    }
+  }
+  return 'Direto';
+}
+
 app.get('/api/leads', h(async (req, res) => {
   const { rows: totalRows } = await q('SELECT COUNT(*)::int AS n FROM leads');
   const total = totalRows[0]?.n || 0;
 
-  // Só os últimos 30 dias alimentam gráfico, páginas e recentes.
+  // Só os últimos 30 dias alimentam gráfico, páginas, origens e recentes.
   const { rows } = await q(
-    "SELECT page, label, created_at FROM leads WHERE created_at >= now() - interval '30 days' ORDER BY created_at DESC, id DESC"
+    `SELECT page, label, referrer, utm_source, utm_medium, utm_campaign, created_at
+     FROM leads WHERE created_at >= now() - interval '30 days' ORDER BY created_at DESC, id DESC`
   );
 
   // Série dos últimos 30 dias (dias sem clique = 0).
@@ -654,6 +679,7 @@ app.get('/api/leads', h(async (req, res) => {
   }
 
   const byPage = new Map();
+  const bySource = new Map();
   const recent = [];
   for (const r of rows) {
     const key = dayKeySP(r.created_at);
@@ -661,8 +687,16 @@ app.get('/api/leads', h(async (req, res) => {
     if (bucket) bucket.count += 1;
     const pkey = r.page || '/';
     byPage.set(pkey, (byPage.get(pkey) || 0) + 1);
+    const source = leadSource(r);
+    bySource.set(source, (bySource.get(source) || 0) + 1);
     if (recent.length < 20) {
-      recent.push({ created_at: r.created_at, page: pkey, page_label: pageLabel(pkey), label: r.label });
+      recent.push({
+        created_at: r.created_at,
+        page: pkey,
+        page_label: pageLabel(pkey),
+        label: r.label,
+        source
+      });
     }
   }
 
@@ -675,6 +709,11 @@ app.get('/api/leads', h(async (req, res) => {
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
+  const topSources = [...bySource.entries()]
+    .map(([source, count]) => ({ source, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
   res.json({
     total,
     today: todayCount,
@@ -682,6 +721,7 @@ app.get('/api/leads', h(async (req, res) => {
     last30,
     series,
     top_pages: topPages,
+    top_sources: topSources,
     recent
   });
 }));

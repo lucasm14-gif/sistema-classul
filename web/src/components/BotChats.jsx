@@ -129,20 +129,26 @@ export default function BotChats({ onAuthError }) {
   const [toggling, setToggling] = useState(false);
   const toast = useToast();
 
-  const load = useCallback(async () => {
-    try {
-      const [convos, st] = await Promise.all([api.botConversations(), api.botStatus()]);
-      setConversations(convos);
-      setStatus(st);
-    } catch (err) {
-      if (!onAuthError(err)) toast(err.message, 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [onAuthError, toast]);
+  const load = useCallback(
+    async ({ silent } = {}) => {
+      try {
+        const [convos, st] = await Promise.all([api.botConversations(), api.botStatus()]);
+        setConversations(convos);
+        setStatus(st);
+      } catch (err) {
+        // Atualização automática não incomoda com toast de erro.
+        if (!onAuthError(err) && !silent) toast(err.message, 'error');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [onAuthError, toast]
+  );
 
   useEffect(() => {
     load();
+    const id = setInterval(() => load({ silent: true }), 30000);
+    return () => clearInterval(id);
   }, [load]);
 
   const toggleBot = async () => {
@@ -198,7 +204,7 @@ export default function BotChats({ onAuthError }) {
           </button>
         )}
         <button
-          onClick={load}
+          onClick={() => load()}
           title="Atualizar"
           className="p-2.5 rounded-full bg-white border border-black/5 text-slate-400 hover:text-brand-700 shadow-sm transition-colors"
         >

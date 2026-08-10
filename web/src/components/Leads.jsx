@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { MousePointerClick, CalendarDays, CalendarRange, Sigma, MessageCircle } from 'lucide-react';
+import { MousePointerClick, CalendarDays, CalendarRange, Sigma, MessageCircle, Radio } from 'lucide-react';
 import { api } from '../api';
 import { useToast } from './Toast';
 
@@ -39,6 +39,20 @@ function whenLabel(iso) {
   });
 }
 
+function RankRow({ label, count, max, capitalize }) {
+  return (
+    <div className="px-6 py-3 flex items-center gap-3 text-sm">
+      <span className={`flex-1 min-w-0 truncate font-bold text-brand-950 ${capitalize ? 'capitalize' : ''}`}>
+        {label}
+      </span>
+      <span className="w-24 h-2 rounded-full bg-brand-100 overflow-hidden shrink-0">
+        <span className="block h-full bg-brand-500" style={{ width: `${(count / max) * 100}%` }} />
+      </span>
+      <span className="font-extrabold text-brand-700 text-xs w-8 text-right">{count}</span>
+    </div>
+  );
+}
+
 function ClicksChart({ series }) {
   const [hover, setHover] = useState(null);
   const max = Math.max(...series.map((s) => s.count), 1);
@@ -58,9 +72,7 @@ function ClicksChart({ series }) {
               title={`${dayShort(s.day)}: ${s.count} clique${s.count !== 1 ? 's' : ''}`}
               className="flex-1 flex flex-col items-center justify-end gap-1 h-full group cursor-default"
             >
-              {show && (
-                <span className="text-[10px] font-extrabold text-brand-950">{s.count}</span>
-              )}
+              {show && <span className="text-[10px] font-extrabold text-brand-950">{s.count}</span>}
               <div
                 style={{ height: `${h}%` }}
                 className={`w-full rounded-t transition-all ${
@@ -83,29 +95,42 @@ export default function Leads({ onAuthError }) {
   const [data, setData] = useState(null);
   const toast = useToast();
 
-  const load = useCallback(async () => {
-    try {
-      setData(await api.getLeads());
-    } catch (err) {
-      if (!onAuthError(err)) toast(err.message, 'error');
-    }
-  }, [onAuthError, toast]);
+  const load = useCallback(
+    async ({ silent } = {}) => {
+      try {
+        setData(await api.getLeads());
+      } catch (err) {
+        // Em atualização automática, não incomoda com toast de erro.
+        if (!onAuthError(err) && !silent) toast(err.message, 'error');
+      }
+    },
+    [onAuthError, toast]
+  );
 
   useEffect(() => {
     load();
+    const id = setInterval(() => load({ silent: true }), 30000);
+    return () => clearInterval(id);
   }, [load]);
 
   if (!data) return <p className="p-6 text-sm font-medium text-slate-400">Carregando…</p>;
 
   const maxPage = Math.max(...data.top_pages.map((p) => p.count), 1);
+  const sources = data.top_sources || [];
+  const maxSource = Math.max(...sources.map((s) => s.count), 1);
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-5 overflow-y-auto h-full animate-fade-up">
-      <div>
-        <h2 className="text-xl font-extrabold tracking-tight text-brand-950">Leads do WhatsApp</h2>
-        <p className="text-xs font-medium text-slate-400">
-          Cliques nos botões de WhatsApp do site classul.com.br.
-        </p>
+      <div className="flex items-center gap-2">
+        <div>
+          <h2 className="text-xl font-extrabold tracking-tight text-brand-950">Leads do WhatsApp</h2>
+          <p className="text-xs font-medium text-slate-400">
+            Cliques nos botões de WhatsApp do site classul.com.br.
+          </p>
+        </div>
+        <span className="ml-auto flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
+          <Radio size={13} className="text-brand-500" /> ao vivo
+        </span>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -120,20 +145,14 @@ export default function Leads({ onAuthError }) {
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="bg-white rounded-3xl border border-black/5 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-black/5">
-            <h3 className="font-extrabold tracking-tight text-brand-950 text-sm">De onde vieram</h3>
+            <h3 className="font-extrabold tracking-tight text-brand-950 text-sm">Origem / campanha</h3>
           </div>
-          {data.top_pages.length === 0 ? (
+          {sources.length === 0 ? (
             <p className="px-6 py-8 text-sm font-medium text-slate-400 text-center">Sem cliques ainda.</p>
           ) : (
             <div className="divide-y divide-black/5">
-              {data.top_pages.map((p) => (
-                <div key={p.page} className="px-6 py-3 flex items-center gap-3 text-sm">
-                  <span className="flex-1 min-w-0 truncate font-bold text-brand-950 capitalize">{p.page_label}</span>
-                  <span className="w-24 h-2 rounded-full bg-brand-100 overflow-hidden shrink-0">
-                    <span className="block h-full bg-brand-500" style={{ width: `${(p.count / maxPage) * 100}%` }} />
-                  </span>
-                  <span className="font-extrabold text-brand-700 text-xs w-8 text-right">{p.count}</span>
-                </div>
+              {sources.map((s) => (
+                <RankRow key={s.source} label={s.source} count={s.count} max={maxSource} />
               ))}
             </div>
           )}
@@ -141,23 +160,43 @@ export default function Leads({ onAuthError }) {
 
         <section className="bg-white rounded-3xl border border-black/5 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-black/5">
-            <h3 className="font-extrabold tracking-tight text-brand-950 text-sm">Últimos cliques</h3>
+            <h3 className="font-extrabold tracking-tight text-brand-950 text-sm">De onde vieram</h3>
           </div>
-          {data.recent.length === 0 ? (
+          {data.top_pages.length === 0 ? (
             <p className="px-6 py-8 text-sm font-medium text-slate-400 text-center">Sem cliques ainda.</p>
           ) : (
             <div className="divide-y divide-black/5">
-              {data.recent.map((r, i) => (
-                <div key={i} className="px-6 py-3 flex items-center gap-3 text-sm">
-                  <MessageCircle size={14} className="text-brand-500 shrink-0" />
-                  <span className="flex-1 min-w-0 truncate font-bold text-brand-950 capitalize">{r.page_label}</span>
-                  <span className="text-xs font-medium text-slate-400 shrink-0">{whenLabel(r.created_at)}</span>
-                </div>
+              {data.top_pages.map((p) => (
+                <RankRow key={p.page} label={p.page_label} count={p.count} max={maxPage} capitalize />
               ))}
             </div>
           )}
         </section>
       </div>
+
+      <section className="bg-white rounded-3xl border border-black/5 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-black/5">
+          <h3 className="font-extrabold tracking-tight text-brand-950 text-sm">Últimos cliques</h3>
+        </div>
+        {data.recent.length === 0 ? (
+          <p className="px-6 py-8 text-sm font-medium text-slate-400 text-center">Sem cliques ainda.</p>
+        ) : (
+          <div className="divide-y divide-black/5">
+            {data.recent.map((r, i) => (
+              <div key={i} className="px-6 py-3 flex items-center gap-3 text-sm">
+                <MessageCircle size={14} className="text-brand-500 shrink-0" />
+                <span className="flex-1 min-w-0 truncate font-bold text-brand-950 capitalize">{r.page_label}</span>
+                {r.source && r.source !== 'Direto' && (
+                  <span className="hidden sm:inline text-[10px] font-extrabold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full truncate max-w-[9rem]">
+                    {r.source}
+                  </span>
+                )}
+                <span className="text-xs font-medium text-slate-400 shrink-0">{whenLabel(r.created_at)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {data.total === 0 && (
         <p className="text-center text-xs font-medium text-slate-400 pt-2">

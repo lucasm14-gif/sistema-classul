@@ -309,19 +309,24 @@ await fetch(`${B}/chats/${encodeURIComponent('n_moises casa')}`, { method: 'DELE
 
 // ---------- Leads do WhatsApp (cliques do site) ----------
 
-// tracking é público (sem Bearer) e aceita form-urlencoded (sendBeacon)
+// tracking é público (sem Bearer) e aceita form-urlencoded (sendBeacon), com UTMs
 r = await fetch(`${B}/leads/track`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  body: new URLSearchParams({ page: '/produto/placa-de-homenagem', label: 'Chamar no WhatsApp' })
+  body: new URLSearchParams({
+    page: '/produto/placa-de-homenagem',
+    label: 'Chamar no WhatsApp',
+    utm_source: 'instagram',
+    utm_campaign: 'dia-das-maes'
+  })
 });
 check('registrar lead sem Bearer (204)', r.status === 204);
 
-// também aceita JSON
+// também aceita JSON; sem UTM mas com referrer externo → origem pelo domínio
 await fetch(`${B}/leads/track`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ page: '/', label: 'Enviar mensagem' })
+  body: JSON.stringify({ page: '/', label: 'Enviar mensagem', referrer: 'https://www.google.com/search?q=placa' })
 });
 
 r = await fetch(`${B}/leads`, { headers: H });
@@ -334,7 +339,13 @@ check(
     leads.top_pages.some((p) => p.page === '/' && p.page_label === 'Página inicial'),
   JSON.stringify(leads.top_pages)
 );
-check('recentes trazem os cliques', leads.recent.length === 2);
+check(
+  'top_sources: UTM com campanha e domínio do referrer',
+  leads.top_sources.some((s) => s.source === 'instagram · dia-das-maes' && s.count === 1) &&
+    leads.top_sources.some((s) => s.source === 'google.com' && s.count === 1),
+  JSON.stringify(leads.top_sources)
+);
+check('recentes trazem os cliques com origem', leads.recent.length === 2 && leads.recent.some((r2) => r2.source));
 r = await fetch(`${B}/leads`);
 check('leads exige Bearer', r.status === 401);
 
