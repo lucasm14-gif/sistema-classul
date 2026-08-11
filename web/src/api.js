@@ -24,6 +24,17 @@ export function setUser(name) {
 }
 
 export class AuthError extends Error {}
+// Lançado quando o PIN das finanças é exigido/expirou (403 com finance_locked).
+export class FinanceLockError extends Error {}
+
+const FINANCE_TOKEN_KEY = 'classul_finance_token';
+export function getFinanceToken() {
+  return sessionStorage.getItem(FINANCE_TOKEN_KEY) || '';
+}
+export function setFinanceToken(token) {
+  if (token) sessionStorage.setItem(FINANCE_TOKEN_KEY, token);
+  else sessionStorage.removeItem(FINANCE_TOKEN_KEY);
+}
 
 async function request(path, options = {}) {
   const user = getUser();
@@ -38,8 +49,17 @@ async function request(path, options = {}) {
   });
   if (res.status === 401) throw new AuthError('Sessão inválida');
   const data = await res.json().catch(() => ({}));
+  if (res.status === 403 && data.finance_locked) throw new FinanceLockError(data.error || 'Finanças bloqueadas');
   if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
   return data;
+}
+
+// Como request(), mas envia o finance token da aba de Finanças.
+function financeRequest(path, options = {}) {
+  return request(path, {
+    ...options,
+    headers: { 'X-Finance-Token': getFinanceToken(), ...(options.headers || {}) }
+  });
 }
 
 export const api = {
@@ -87,5 +107,18 @@ export const api = {
   botReactivate: (phone) => request(`/api/bot/conversations/${phone}/reactivate`, { method: 'POST' }),
   listInstances: () => request('/api/evolution/instances'),
   testMessage: (number) =>
-    request('/api/evolution/test', { method: 'POST', body: JSON.stringify({ number }) })
+    request('/api/evolution/test', { method: 'POST', body: JSON.stringify({ number }) }),
+  // ---- Finanças ----
+  financeStatus: () => request('/api/finance/status'),
+  financeSetPin: (pin, currentPin) =>
+    request('/api/finance/pin', { method: 'POST', body: JSON.stringify({ pin, current_pin: currentPin }) }),
+  financeUnlock: (pin) => request('/api/finance/unlock', { method: 'POST', body: JSON.stringify({ pin }) }),
+  financeConfig: () => financeRequest('/api/finance/config'),
+  financeSaveConfig: (data) => financeRequest('/api/finance/config', { method: 'PUT', body: JSON.stringify(data) }),
+  financeConnectToken: (itemId) =>
+    financeRequest('/api/finance/connect-token', { method: 'POST', body: JSON.stringify({ item_id: itemId }) }),
+  financeAddItem: (itemId) =>
+    financeRequest('/api/finance/items', { method: 'POST', body: JSON.stringify({ item_id: itemId }) }),
+  financeRemoveItem: (itemId) => financeRequest(`/api/finance/items/${itemId}`, { method: 'DELETE' }),
+  financeSummary: (days) => financeRequest(`/api/finance/summary${days ? `?days=${days}` : ''}`)
 };

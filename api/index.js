@@ -1,6 +1,13 @@
 import express from 'express';
 import cors from 'cors';
+import crypto from 'crypto';
 import { q, STATUSES, getSettings, setSettings, ensureSchema } from '../lib/db.js';
+import {
+  pluggyAuth,
+  createConnectToken,
+  getItem,
+  buildFinanceSummary
+} from '../lib/pluggy.js';
 import {
   notifyStatus,
   sendText,
@@ -892,9 +899,180 @@ app.post('/api/bot/conversations/:phone/reactivate', h(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ---------- Finanças pessoais (Open Finance via Pluggy) ----------
+//
+// Camada extra de segurança: além do login do sistema (Bearer), a aba tem um PIN
+// próprio. Quem sabe o PIN recebe um "finance token" (derivado do hash do PIN, sem
+// nunca trafegar o PIN em requisições seguintes) e só com ele os dados/gráficos são
+// liberados. Assim, ver as finanças exige login + PIN.
+
+const APP_SECRET = () => process.env.API_TOKEN || 'classul';
+const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+const hashPin = (pin) => sha256(`${APP_SECRET()}:pin:${pin}`);
+const financeTokenFor = (pinHash) => sha256(`${APP_SECRET()}:fin:${pinHash}`);
+
+async function getFinancePinHash() {
+  const { rows } = await q("SELECT value FROM settings WHERE key = 'finance_pin_hash'");
+  return rows[0]?.value || '';
+}
+
+async function getPluggyCreds() {
+  const { rows } = await q(
+    "SELECT key, value FROM settings WHERE key IN ('pluggy_client_id', 'pluggy_client_secret')"
+  );
+  const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  return { clientId: map.pluggy_client_id || '', clientSecret: map.pluggy_client_secret || '' };
+}
+
+async function saveSetting(key, value) {
+  await q(
+    'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value',
+    [key, String(value ?? '')]
+  );
+}
+
+async function financeItems() {
+  const { rows } = await q('SELECT item_id, connector_name, connector_image FROM finance_items ORDER BY created_at ASC');
+  return rows;
+}
+
+// Middleware da trava: exige o header X-Finance-Token válido. Responde 403 (não 401)
+// para o front distinguir "re-logar" de "digitar o PIN de novo".
+async function requireFinance(req, res, next) {
+  try {
+    const pinHash = await getFinancePinHash();
+    if (!pinHash) return res.status(403).json({ error: 'Defina um PIN para as finanças.', finance_locked: true });
+    const token = req.headers['x-finance-token'] || '';
+    if (token !== financeTokenFor(pinHash)) {
+      return res.status(403).json({ error: 'Finanças bloqueadas.', finance_locked: true });
+    }
+    next();
+  } catch (err) {
+    if (!res.headersSent) res.status(500).json({ error: err.message });
+  }
+}
+
+// Estado da aba (só precisa do login): se tem PIN, se tem credenciais, quantos itens.
+app.get('/api/finance/status', h(async (req, res) => {
+  const pinHash = await getFinancePinHash();
+  const { clientId, clientSecret } = await getPluggyCreds();
+  const items = await financeItems();
+  res.json({
+    has_pin: Boolean(pinHash),
+    has_credentials: Boolean(clientId && clientSecret),
+    item_count: items.length
+  });
+}));
+
+// Cria (primeira vez) ou troca o PIN. Para trocar, exige o PIN atual.
+app.post('/api/finance/pin', h(async (req, res) => {
+  const pin = String(req.body?.pin || '').trim();
+  if (pin.length < 4) return res.status(400).json({ error: 'O PIN precisa ter pelo menos 4 dígitos.' });
+  const current = await getFinancePinHash();
+  if (current) {
+    const currentPin = String(req.body?.current_pin || '').trim();
+    if (hashPin(currentPin) !== current) return res.status(403).json({ error: 'PIN atual incorreto.' });
+  }
+  const newHash = hashPin(pin);
+  await saveSetting('finance_pin_hash', newHash);
+  res.json({ ok: true, token: financeTokenFor(newHash) });
+}));
+
+// Destrava: recebe o PIN e devolve o finance token.
+app.post('/api/finance/unlock', h(async (req, res) => {
+  const pinHash = await getFinancePinHash();
+  if (!pinHash) return res.status(400).json({ error: 'Nenhum PIN configurado ainda.', no_pin: true });
+  const pin = String(req.body?.pin || '').trim();
+  if (hashPin(pin) !== pinHash) return res.status(403).json({ error: 'PIN incorreto.' });
+  res.json({ ok: true, token: financeTokenFor(pinHash) });
+}));
+
+// Credenciais da Pluggy (atrás da trava). Nunca devolve o secret em texto.
+app.get('/api/finance/config', requireFinance, h(async (req, res) => {
+  const { clientId, clientSecret } = await getPluggyCreds();
+  res.json({ client_id: clientId, has_secret: Boolean(clientSecret) });
+}));
+
+app.put('/api/finance/config', requireFinance, h(async (req, res) => {
+  if ('client_id' in (req.body || {})) {
+    await saveSetting('pluggy_client_id', String(req.body.client_id || '').trim());
+  }
+  // Secret só é sobrescrito quando enviado não-vazio (permite salvar só o Client ID).
+  const secret = String(req.body?.client_secret || '').trim();
+  if (secret) await saveSetting('pluggy_client_secret', secret);
+  const { clientId, clientSecret } = await getPluggyCreds();
+  res.json({ client_id: clientId, has_secret: Boolean(clientSecret) });
+}));
+
+// Gera o connect token para abrir o widget Pluggy Connect (conectar/atualizar banco).
+app.post('/api/finance/connect-token', requireFinance, h(async (req, res) => {
+  const { clientId, clientSecret } = await getPluggyCreds();
+  if (!clientId || !clientSecret) {
+    return res.status(400).json({ error: 'Configure as credenciais da Pluggy antes de conectar um banco.' });
+  }
+  const apiKey = await pluggyAuth(clientId, clientSecret);
+  const itemId = req.body?.item_id ? String(req.body.item_id) : null;
+  const token = await createConnectToken(apiKey, itemId, { clientUserId: 'classul-owner' });
+  res.json({ token });
+}));
+
+// Registra um item conectado (o widget devolve o item.id no onSuccess).
+app.post('/api/finance/items', requireFinance, h(async (req, res) => {
+  const itemId = String(req.body?.item_id || '').trim();
+  if (!itemId) return res.status(400).json({ error: 'Informe o item_id da conexão.' });
+  let connectorName = null;
+  let connectorImage = null;
+  try {
+    const { clientId, clientSecret } = await getPluggyCreds();
+    const apiKey = await pluggyAuth(clientId, clientSecret);
+    const item = await getItem(apiKey, itemId);
+    connectorName = item?.connector?.name || null;
+    connectorImage = item?.connector?.imageUrl || null;
+  } catch {
+    /* se falhar buscar o conector, ainda salvamos o item */
+  }
+  await q(
+    `INSERT INTO finance_items (item_id, connector_name, connector_image)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (item_id) DO UPDATE SET connector_name = COALESCE(EXCLUDED.connector_name, finance_items.connector_name),
+       connector_image = COALESCE(EXCLUDED.connector_image, finance_items.connector_image), updated_at = now()`,
+    [itemId, connectorName, connectorImage]
+  );
+  res.status(201).json({ ok: true, item_id: itemId, connector_name: connectorName });
+}));
+
+app.delete('/api/finance/items/:id', requireFinance, h(async (req, res) => {
+  await q('DELETE FROM finance_items WHERE item_id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// Painel consolidado: saldos, patrimônio, gastos do mês, categorias, contas a pagar.
+app.get('/api/finance/summary', requireFinance, h(async (req, res) => {
+  const { clientId, clientSecret } = await getPluggyCreds();
+  if (!clientId || !clientSecret) {
+    return res.status(400).json({ error: 'Configure as credenciais da Pluggy.', needs_setup: true });
+  }
+  const items = await financeItems();
+  if (!items.length) {
+    return res.json({ empty: true, connectors: [], accounts: [], series: [], categories: [], recent: [], upcoming: [] });
+  }
+  const apiKey = await pluggyAuth(clientId, clientSecret);
+  const days = /^\d+$/.test(String(req.query.days)) ? Math.min(90, Math.max(7, Number(req.query.days))) : 30;
+  const summary = await buildFinanceSummary(apiKey, items, { days });
+  res.json(summary);
+}));
+
 // ---------- Configurações ----------
 
-app.get('/api/settings', h(async (req, res) => res.json(await getSettings())));
+// Chaves sensíveis das finanças nunca saem pela rota geral de configurações
+// (a aba Finanças tem trava própria por PIN).
+const FINANCE_SECRET_KEYS = ['finance_pin_hash', 'pluggy_client_id', 'pluggy_client_secret'];
+
+app.get('/api/settings', h(async (req, res) => {
+  const all = await getSettings();
+  for (const k of FINANCE_SECRET_KEYS) delete all[k];
+  res.json(all);
+}));
 
 app.put('/api/settings', h(async (req, res) => res.json(await setSettings(req.body || {}))));
 
