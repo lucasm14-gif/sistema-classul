@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { PluggyConnect } from 'react-pluggy-connect';
 import {
   Lock,
@@ -333,6 +334,24 @@ function Dashboard({ status, onLock, onReload, toast }) {
     }
   };
 
+  // Widget de conexão renderizado num portal no body: escapa de ancestrais com
+  // `transform` (animate-fade-up) e `overflow`, que senão prendem o modal fixed
+  // e deixam só o fundo escuro aparecendo.
+  const connectModal =
+    connectToken &&
+    createPortal(
+      <PluggyConnect
+        connectToken={connectToken}
+        onSuccess={onWidgetSuccess}
+        onClose={() => setConnectToken(null)}
+        onError={(err) => {
+          setConnectToken(null);
+          toast(err?.message || 'Não foi possível conectar.', 'error');
+        }}
+      />,
+      document.body
+    );
+
   // Sem credenciais ainda
   if (!status.has_credentials) {
     return (
@@ -363,17 +382,7 @@ function Dashboard({ status, onLock, onReload, toast }) {
             <Plus size={18} /> Conectar banco
           </button>
         </div>
-        {connectToken && (
-          <PluggyConnect
-            connectToken={connectToken}
-            onSuccess={onWidgetSuccess}
-            onClose={() => setConnectToken(null)}
-            onError={(err) => {
-              setConnectToken(null);
-              toast(err?.message || 'Não foi possível conectar.', 'error');
-            }}
-          />
-        )}
+        {connectModal}
       </div>
     );
   }
@@ -585,17 +594,7 @@ function Dashboard({ status, onLock, onReload, toast }) {
         Dados atualizados em {new Date(data.generated_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}.
       </p>
 
-      {connectToken && (
-        <PluggyConnect
-          connectToken={connectToken}
-          onSuccess={onWidgetSuccess}
-          onClose={() => setConnectToken(null)}
-          onError={(err) => {
-            setConnectToken(null);
-            toast(err?.message || 'Não foi possível conectar.', 'error');
-          }}
-        />
-      )}
+      {connectModal}
     </div>
   );
 }
