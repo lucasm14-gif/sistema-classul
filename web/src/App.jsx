@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet } from 'lucide-react';
+import { KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet, Sun, Moon } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Board from './components/Board';
 import Settings from './components/Settings';
@@ -12,6 +12,7 @@ import Finance from './components/Finance';
 import UserPicker from './components/UserPicker';
 import { ToastProvider } from './components/Toast';
 import { getToken, clearToken, AuthError } from './api';
+import { isDark, toggleTheme } from './theme';
 
 const TABS = [
   { id: 'board', label: 'Pedidos', icon: KanbanSquare },
@@ -27,6 +28,7 @@ const TABS = [
 export default function App() {
   const [authed, setAuthed] = useState(() => Boolean(getToken()));
   const [tab, setTab] = useState('board');
+  const [dark, setDark] = useState(() => isDark());
 
   const handleAuthError = useCallback((err) => {
     if (err instanceof AuthError) {
@@ -77,6 +79,16 @@ export default function App() {
 
             <div className="flex items-center gap-1.5">
               <UserPicker onAuthError={handleAuthError} />
+              <button
+                onClick={() => {
+                  toggleTheme();
+                  setDark(isDark());
+                }}
+                title={dark ? 'Modo claro' : 'Modo escuro'}
+                className="p-2.5 rounded-full text-slate-400 hover:text-brand-800 hover:bg-black/[0.04] transition-colors"
+              >
+                {dark ? <Sun size={17} /> : <Moon size={17} />}
+              </button>
               <button
                 onClick={() => {
                   clearToken();

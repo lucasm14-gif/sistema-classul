@@ -119,6 +119,8 @@ export const api = {
     financeRequest('/api/finance/connect-token', { method: 'POST', body: JSON.stringify({ item_id: itemId }) }),
   financeAddItem: (itemId) =>
     financeRequest('/api/finance/items', { method: 'POST', body: JSON.stringify({ item_id: itemId }) }),
+  financeRenameItem: (itemId, label) =>
+    financeRequest(`/api/finance/items/${itemId}`, { method: 'PUT', body: JSON.stringify({ label }) }),
   financeRemoveItem: (itemId) => financeRequest(`/api/finance/items/${itemId}`, { method: 'DELETE' }),
   financeSummary: (days) => financeRequest(`/api/finance/summary${days ? `?days=${days}` : ''}`)
 };

@@ -932,7 +932,9 @@ async function saveSetting(key, value) {
 }
 
 async function financeItems() {
-  const { rows } = await q('SELECT item_id, connector_name, connector_image FROM finance_items ORDER BY created_at ASC');
+  const { rows } = await q(
+    'SELECT item_id, connector_name, connector_image, label FROM finance_items ORDER BY created_at ASC'
+  );
   return rows;
 }
 
@@ -1039,6 +1041,18 @@ app.post('/api/finance/items', requireFinance, h(async (req, res) => {
     [itemId, connectorName, connectorImage]
   );
   res.status(201).json({ ok: true, item_id: itemId, connector_name: connectorName });
+}));
+
+// Renomeia a conexão. No Meu Pluggy o conector é sempre o agregador ("MeuPluggy"),
+// então o apelido é o que garante o nome certo do banco no painel.
+app.put('/api/finance/items/:id', requireFinance, h(async (req, res) => {
+  const label = String(req.body?.label || '').trim().slice(0, 40);
+  const { rowCount } = await q('UPDATE finance_items SET label = $2, updated_at = now() WHERE item_id = $1', [
+    req.params.id,
+    label || null
+  ]);
+  if (!rowCount) return res.status(404).json({ error: 'Conexão não encontrada.' });
+  res.json({ ok: true, item_id: req.params.id, label: label || null });
 }));
 
 app.delete('/api/finance/items/:id', requireFinance, h(async (req, res) => {

@@ -36,9 +36,101 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ------------------------------- Modo escuro -------------------------------
+   Feito só com CSS: o Tailwind v4 gera os utilitários a partir de variáveis
+   (--color-*), então trocar as variáveis aqui reescurece o sistema inteiro sem
+   mexer em nenhum componente. As exceções são tokens usados com dois papéis
+   (ex.: `bg-white` é superfície mas `text-white` é rótulo de botão colorido);
+   esses recebem regras explícitas abaixo. Regras fora de @layer vencem os
+   utilitários do Tailwind, que ficam na camada `utilities`. */
+
+.dark {
+  color-scheme: dark;
+
+  /* Os pretos só aparecem com opacidade (bg-black/5, border-black/5,
+     divide-black/5, hover:bg-black/[0.07]) — invertê-los transforma todos os
+     véus escuros em véus claros de uma vez. */
+  --color-black: #ffffff;
+
+  /* Cinzas: usados como texto secundário e como fundos de selo/avatar. */
+  --color-slate-200: #2b332a;
+  --color-slate-300: #3d473b;
+  --color-slate-400: #8d9989;
+  --color-slate-500: #9fac9a;
+  --color-slate-600: #bac6b5;
+
+  /* Tons claros — no sistema aparecem só como fundo, então viram fundos escuros. */
+  --color-brand-50: #1a2417;
+  --color-brand-100: #22301d;
+  --color-brand-300: #33492a;
+  --color-flame-50: #2f1a19;
+  --color-flame-100: #3b201e;
+  --color-sun-100: #2f2a12;
+}
+
+.dark body {
+  background-color: #0f130e;
+  color: #dfe8da;
+}
+
+/* Superfícies dos cards e do cabeçalho. */
+.dark .bg-white {
+  background-color: #171d15;
+}
+.dark .bg-white\/85 {
+  background-color: rgb(23 29 21 / 0.85);
+}
+.dark .bg-white\/95 {
+  background-color: rgb(23 29 21 / 0.95);
+}
+.dark .ring-white {
+  --tw-ring-color: #171d15;
+}
+
+/* Textos que eram verde-escuro precisam clarear (os mesmos tons seguem
+   servindo de fundo em bg-brand-600/700, por isso não troco as variáveis). */
+.dark .text-brand-950 {
+  color: #e9f2e4;
+}
+.dark .text-brand-900 {
+  color: #dbead3;
+}
+.dark .text-brand-800 {
+  color: #c2e2af;
+}
+.dark .text-brand-700 {
+  color: #9fd77f;
+}
+.dark .text-brand-600 {
+  color: #90cf6c;
+}
+.dark .text-flame-700 {
+  color: #ff9d97;
+}
+.dark .text-flame-600 {
+  color: #ff8b84;
+}
+
+/* Campos de formulário. */
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: #10150f;
+  color: #dfe8da;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #6f7c6b;
+}
+
 ::selection {
   background: #c8eaac;
   color: #12290e;
+}
+
+.dark ::selection {
+  background: #3a7a2a;
+  color: #f2faec;
 }
 
 ::-webkit-scrollbar {
@@ -54,6 +146,12 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(18, 41, 14, 0.3);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(223, 232, 218, 0.18);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(223, 232, 218, 0.32);
 }
 
 @keyframes fadeUp {

@@ -14,6 +14,7 @@ import {
   RefreshCw,
   LockKeyhole,
   Trash2,
+  Pencil,
   KeyRound,
   ArrowDownRight,
   ArrowUpRight,
@@ -404,6 +405,17 @@ function Dashboard({ status, onLock, onReload, toast }) {
       await api.financeRemoveItem(itemId);
       setBank('all');
       await onReload();
+      await load();
+    } catch (err) {
+      handleErr(err);
+    }
+  };
+
+  const renameItem = async (c) => {
+    const label = prompt('Nome do banco desta conexão:', c.label || c.name);
+    if (label === null) return;
+    try {
+      await api.financeRenameItem(c.item_id, label.trim());
       await load();
     } catch (err) {
       handleErr(err);
@@ -881,11 +893,26 @@ function Dashboard({ status, onLock, onReload, toast }) {
                   {c.last_update ? ` · atualizado ${dateBR(c.last_update)}` : ''}
                 </p>
               </div>
+              {c.generic && (
+                <span
+                  title="Nome não identificado pela Pluggy — clique no lápis para corrigir"
+                  className="text-[10px] font-extrabold text-brand-800 bg-sun-100 px-2 py-0.5 rounded-full shrink-0"
+                >
+                  renomear
+                </span>
+              )}
               {c.error && (
                 <span className="text-[10px] font-extrabold text-flame-700 bg-flame-50 px-2 py-0.5 rounded-full shrink-0">
                   erro
                 </span>
               )}
+              <button
+                onClick={() => renameItem(c)}
+                title="Renomear banco"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-brand-700 hover:bg-black/[0.04]"
+              >
+                <Pencil size={14} />
+              </button>
               <button
                 onClick={() => openConnect(c.item_id)}
                 title="Reconectar / atualizar"

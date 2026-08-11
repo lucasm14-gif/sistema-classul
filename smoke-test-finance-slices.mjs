@@ -131,5 +131,36 @@ eq('série tem 30 dias', T.series.length, 30);
 eq('série soma os gastos da janela', T.series.reduce((a, b) => a + b.expense, 0), 230);
 eq('série tem entradas', T.series.reduce((a, b) => a + b.income, 0), 3030);
 
+console.log('--- nome do banco (Meu Pluggy manda "MeuPluggy" para todos) ---');
+const { resolveConnectorName } = await import(`file://${ROOT}/lib/pluggy.js`);
+const rn = (o) => resolveConnectorName(o);
+eq(
+  'infere Nubank pelo nome do cartão',
+  rn({ connectorName: 'MeuPluggy', accounts: [{ name: 'Nubank Gold', marketingName: '' }] }),
+  'Nubank'
+);
+eq(
+  'infere Mercado Pago',
+  rn({ connectorName: 'MeuPluggy', accounts: [{ name: 'Mercado Pago', number: 'xxxx1705' }] }),
+  'Mercado Pago'
+);
+eq(
+  'infere Inter pelo marketingName',
+  rn({ connectorName: 'Meu Pluggy', accounts: [{ name: 'Conta Corrente', marketingName: 'Banco Inter' }] }),
+  'Inter'
+);
+eq('apelido do usuário tem prioridade', rn({ label: 'Meu Inter', connectorName: 'Nubank', accounts: [] }), 'Meu Inter');
+eq(
+  'conector real não é sobrescrito',
+  rn({ connectorName: 'Itaú', accounts: [{ name: 'Nubank Gold' }] }),
+  'Itaú'
+);
+eq(
+  'sem pista usa o nome da conta',
+  rn({ connectorName: 'MeuPluggy', accounts: [{ name: 'Conta Corrente' }] }),
+  'Conta Corrente'
+);
+eq('sem nada cai no fallback', rn({ connectorName: 'MeuPluggy', accounts: [], fallback: 'Conexão 2' }), 'Conexão 2');
+
 console.log(fails === 0 ? '\n🎉 todos passaram' : `\n💥 ${fails} falharam`);
 process.exit(fails ? 1 : 0);
