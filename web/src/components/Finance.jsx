@@ -8,6 +8,7 @@ import {
   Landmark,
   CreditCard,
   TrendingDown,
+  TrendingUp,
   PiggyBank,
   Plus,
   RefreshCw,
@@ -263,10 +264,39 @@ function accountIcon(type) {
   return type === 'CREDIT' ? CreditCard : Landmark;
 }
 
+function BankLogo({ src, name, size = 'w-9 h-9' }) {
+  const [broken, setBroken] = useState(false);
+  if (src && !broken) {
+    return (
+      <img
+        src={src}
+        alt=""
+        onError={() => setBroken(true)}
+        className={`${size} rounded-xl object-contain bg-white border border-black/5 shrink-0`}
+      />
+    );
+  }
+  return (
+    <span className={`${size} rounded-xl bg-brand-100 text-brand-700 text-[11px] font-extrabold flex items-center justify-center shrink-0`}>
+      {(name || '?').slice(0, 2).toUpperCase()}
+    </span>
+  );
+}
+
+function ShareBar({ pct, tone = 'brand' }) {
+  const c = tone === 'flame' ? 'bg-flame-500' : tone === 'sun' ? 'bg-sun-400' : 'bg-brand-500';
+  return (
+    <span className="block h-1.5 rounded-full bg-black/[0.06] overflow-hidden">
+      <span className={`block h-full ${c} rounded-full`} style={{ width: `${Math.min(100, Math.max(2, pct * 100))}%` }} />
+    </span>
+  );
+}
+
 function Dashboard({ status, onLock, onReload, toast }) {
   const [data, setData] = useState(null);
   const [connectToken, setConnectToken] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [bank, setBank] = useState('all');
 
   const handleErr = useCallback(
     (err) => {
@@ -450,6 +480,109 @@ function Dashboard({ status, onLock, onReload, toast }) {
 
       <ExpenseChart series={data.series || []} />
 
+      {/* Composição por banco / cartão / classe */}
+      <div className="grid gap-5 lg:grid-cols-3">
+        {/* Contas bancárias */}
+        <section className="bg-white rounded-3xl border border-black/5 shadow-sm p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="w-8 h-8 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center">
+              <Landmark size={15} />
+            </span>
+            <p className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest">Contas bancárias</p>
+          </div>
+          <p className="text-2xl font-extrabold tracking-tight text-brand-700 leading-none mb-5">{fmtBRL(data.bank_total)}</p>
+          <div className="space-y-4">
+            {(data.banks || []).map((b) => (
+              <button
+                key={b.name}
+                onClick={() => setBank(bank === b.name ? 'all' : b.name)}
+                className={`w-full text-left rounded-2xl transition-colors ${bank === b.name ? 'bg-brand-50' : 'hover:bg-black/[0.02]'} p-2 -m-2`}
+              >
+                <div className="flex items-center gap-3 mb-1.5">
+                  <BankLogo src={b.image} name={b.name} />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-brand-950 text-sm truncate">{b.name}</p>
+                    <p className="text-[11px] font-medium text-slate-400">
+                      {b.count} conta{b.count !== 1 ? 's' : ''} · {(b.share * 100).toFixed(1)}%
+                    </p>
+                  </div>
+                  <span className="font-extrabold text-brand-700 text-sm">{fmtBRL(b.total)}</span>
+                </div>
+                <ShareBar pct={b.share} />
+              </button>
+            ))}
+            {(data.banks || []).length === 0 && (
+              <p className="text-sm font-medium text-slate-400 text-center py-4">Nenhuma conta.</p>
+            )}
+          </div>
+        </section>
+
+        {/* Cartões de crédito */}
+        <section className="bg-white rounded-3xl border border-black/5 shadow-sm p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="w-8 h-8 rounded-xl bg-flame-50 text-flame-700 flex items-center justify-center">
+              <CreditCard size={15} />
+            </span>
+            <p className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest">Cartões de crédito</p>
+          </div>
+          <p className="text-2xl font-extrabold tracking-tight text-flame-700 leading-none mb-3">{fmtBRL(data.credit_owed)}</p>
+          {data.credit_limit > 0 && (
+            <>
+              <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 mb-1.5">
+                <span>{Math.round((Math.max(0, data.credit_owed) / data.credit_limit) * 100)}% utilizado</span>
+                <span>Limite: {fmtBRL(data.credit_limit)}</span>
+              </div>
+              <ShareBar pct={Math.max(0, data.credit_owed) / data.credit_limit} tone="flame" />
+            </>
+          )}
+          <div className="space-y-3 mt-5">
+            {(data.cards || []).map((c) => (
+              <div key={c.id} className="flex items-center gap-3">
+                <span className="w-8 h-8 rounded-lg bg-black/[0.04] text-slate-500 flex items-center justify-center shrink-0">
+                  <CreditCard size={14} />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-brand-950 text-sm truncate">{c.name}</p>
+                  {c.number && <p className="text-[11px] font-medium text-slate-400">{c.number}</p>}
+                </div>
+                <span className="font-extrabold text-flame-700 text-sm">{fmtBRL(c.balance)}</span>
+              </div>
+            ))}
+            {(data.cards || []).length === 0 && (
+              <p className="text-sm font-medium text-slate-400 text-center py-4">Nenhum cartão.</p>
+            )}
+          </div>
+        </section>
+
+        {/* Investimentos */}
+        <section className="bg-white rounded-3xl border border-black/5 shadow-sm p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="w-8 h-8 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center">
+              <TrendingUp size={15} />
+            </span>
+            <p className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest">Investimentos</p>
+          </div>
+          <p className="text-2xl font-extrabold tracking-tight text-brand-700 leading-none mb-5">{fmtBRL(data.invest_total)}</p>
+          <div className="space-y-4">
+            {(data.investments || []).map((iv) => (
+              <div key={iv.name}>
+                <div className="flex items-center gap-3 mb-1.5">
+                  <span className="flex-1 min-w-0 font-bold text-brand-950 text-sm truncate">
+                    {iv.name} <span className="text-slate-400 font-medium">({iv.count})</span>
+                  </span>
+                  <span className="text-[11px] font-bold text-slate-400">{(iv.share * 100).toFixed(1)}%</span>
+                  <span className="font-extrabold text-brand-700 text-sm">{fmtBRL(iv.total)}</span>
+                </div>
+                <ShareBar pct={iv.share} />
+              </div>
+            ))}
+            {(data.investments || []).length === 0 && (
+              <p className="text-sm font-medium text-slate-400 text-center py-4">Sem investimentos.</p>
+            )}
+          </div>
+        </section>
+      </div>
+
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="bg-white rounded-3xl border border-black/5 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-black/5">
@@ -495,12 +628,41 @@ function Dashboard({ status, onLock, onReload, toast }) {
         </section>
       </div>
 
+      {/* Filtro por banco */}
+      {(data.connectors || []).length > 1 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setBank('all')}
+            className={`inline-flex items-center gap-1.5 rounded-full text-xs font-bold px-3 py-2 transition-colors ${
+              bank === 'all' ? 'bg-brand-600 text-white' : 'bg-black/[0.04] text-slate-600 hover:bg-black/[0.07]'
+            }`}
+          >
+            Todos
+          </button>
+          {data.connectors.map((c) => (
+            <button
+              key={c.item_id}
+              onClick={() => setBank(bank === c.name ? 'all' : c.name)}
+              className={`inline-flex items-center gap-1.5 rounded-full text-xs font-bold px-3 py-2 transition-colors ${
+                bank === c.name ? 'bg-brand-600 text-white' : 'bg-black/[0.04] text-slate-600 hover:bg-black/[0.07]'
+              }`}
+            >
+              <BankLogo src={c.image} name={c.name} size="w-4 h-4" />
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       <section className="bg-white rounded-3xl border border-black/5 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-black/5">
+        <div className="px-6 py-4 border-b border-black/5 flex items-center justify-between">
           <h3 className="font-extrabold tracking-tight text-brand-950 text-sm">Contas e cartões</h3>
+          {bank !== 'all' && <span className="text-[11px] font-bold text-brand-600">{bank}</span>}
         </div>
         <div className="divide-y divide-black/5">
-          {(data.accounts || []).map((a) => {
+          {(data.accounts || [])
+            .filter((a) => bank === 'all' || a.connector === bank)
+            .map((a) => {
             const Icon = accountIcon(a.type);
             return (
               <div key={a.id} className="px-6 py-3 flex items-center gap-3 text-sm">
@@ -524,14 +686,17 @@ function Dashboard({ status, onLock, onReload, toast }) {
       </section>
 
       <section className="bg-white rounded-3xl border border-black/5 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-black/5">
+        <div className="px-6 py-4 border-b border-black/5 flex items-center justify-between">
           <h3 className="font-extrabold tracking-tight text-brand-950 text-sm">Últimos lançamentos</h3>
+          {bank !== 'all' && <span className="text-[11px] font-bold text-brand-600">{bank}</span>}
         </div>
-        {(data.recent || []).length === 0 ? (
+        {(data.recent || []).filter((t) => bank === 'all' || t.connector === bank).length === 0 ? (
           <p className="px-6 py-8 text-sm font-medium text-slate-400 text-center">Sem lançamentos no período.</p>
         ) : (
           <div className="divide-y divide-black/5">
-            {data.recent.map((t) => (
+            {data.recent
+              .filter((t) => bank === 'all' || t.connector === bank)
+              .map((t) => (
               <div key={t.id} className="px-6 py-3 flex items-center gap-3 text-sm">
                 {t.direction === 'in' ? (
                   <ArrowDownRight size={15} className="text-brand-600 shrink-0" />
