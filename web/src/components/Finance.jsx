@@ -202,14 +202,32 @@ function CredentialsForm({ onSaved, toast }) {
 
 /* ------------------------------- Dashboard -------------------------------- */
 
+// Ícones próprios dos bancos (em web/public/banks). Têm prioridade sobre a
+// imagem da Pluggy, que no plano gratuito é sempre o logo do agregador.
+const LOCAL_BANK_ICONS = {
+  inter: '/banks/inter.jpg',
+  nubank: '/banks/nubank.png',
+  'mercado pago': '/banks/mercado-pago.png'
+};
+
+function localBankIcon(name) {
+  const key = String(name || '')
+    .trim()
+    .toLowerCase();
+  return LOCAL_BANK_ICONS[key] || null;
+}
+
+// Mostra, em cascata, o ícone local do banco → a imagem da Pluggy → as iniciais.
 function BankLogo({ src, name, size = 'w-9 h-9' }) {
-  const [broken, setBroken] = useState(false);
-  if (src && !broken) {
+  const candidates = [localBankIcon(name), src].filter(Boolean);
+  const [idx, setIdx] = useState(0);
+  const url = candidates[idx];
+  if (url) {
     return (
       <img
-        src={src}
+        src={url}
         alt=""
-        onError={() => setBroken(true)}
+        onError={() => setIdx((i) => i + 1)}
         className={`${size} rounded-xl object-contain bg-white border border-black/5 shrink-0`}
       />
     );
