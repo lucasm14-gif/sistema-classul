@@ -201,7 +201,55 @@ function CredentialsForm({ onSaved, toast }) {
 
 /* ------------------------------- Dashboard -------------------------------- */
 
-function StatTile({ icon: Icon, label, value, sub, tone = 'brand' }) {
+function BankLogo({ src, name, size = 'w-9 h-9' }) {
+  const [broken, setBroken] = useState(false);
+  if (src && !broken) {
+    return (
+      <img
+        src={src}
+        alt=""
+        onError={() => setBroken(true)}
+        className={`${size} rounded-xl object-contain bg-white border border-black/5 shrink-0`}
+      />
+    );
+  }
+  return (
+    <span
+      className={`${size} rounded-xl bg-brand-100 text-brand-700 text-[10px] font-extrabold flex items-center justify-center shrink-0`}
+    >
+      {(name || '?').slice(0, 2).toUpperCase()}
+    </span>
+  );
+}
+
+function ShareBar({ pct, tone = 'brand', className = '' }) {
+  const c = tone === 'flame' ? 'bg-flame-500' : tone === 'sun' ? 'bg-sun-400' : 'bg-brand-500';
+  return (
+    <span className={`block h-1.5 rounded-full bg-black/[0.06] overflow-hidden ${className}`}>
+      <span className={`block h-full ${c} rounded-full`} style={{ width: `${Math.min(100, Math.max(2, pct * 100))}%` }} />
+    </span>
+  );
+}
+
+// Variação do gasto contra o mês anterior. Subir gasto é ruim (vermelho).
+function TrendChip({ value }) {
+  if (value == null) return null;
+  const up = value > 0;
+  const pct = Math.abs(value) * 100;
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full ${
+        up ? 'bg-flame-50 text-flame-700' : 'bg-brand-100 text-brand-700'
+      }`}
+      title="Comparado ao mês anterior"
+    >
+      {up ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
+      {pct < 1000 ? pct.toFixed(0) : '999+'}%
+    </span>
+  );
+}
+
+function StatTile({ icon: Icon, label, value, sub, tone = 'brand', extra, bar }) {
   const tones = {
     brand: 'bg-brand-100 text-brand-700',
     slate: 'bg-black/[0.04] text-slate-500',
@@ -214,9 +262,11 @@ function StatTile({ icon: Icon, label, value, sub, tone = 'brand' }) {
         <span className={`w-8 h-8 rounded-xl flex items-center justify-center ${tones[tone]}`}>
           <Icon size={15} />
         </span>
-        <p className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest">{label}</p>
+        <p className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest truncate">{label}</p>
+        {extra && <span className="ml-auto shrink-0">{extra}</span>}
       </div>
       <p className="text-2xl font-extrabold tracking-tight text-brand-950 leading-none">{value}</p>
+      {bar}
       {sub && <p className="text-xs font-semibold text-slate-400 mt-1.5">{sub}</p>}
     </div>
   );
@@ -225,27 +275,49 @@ function StatTile({ icon: Icon, label, value, sub, tone = 'brand' }) {
 function ExpenseChart({ series }) {
   const [hover, setHover] = useState(null);
   const max = Math.max(...series.map((s) => s.expense), 1);
+  const totalExp = series.reduce((sum, s) => sum + s.expense, 0);
+  const totalInc = series.reduce((sum, s) => sum + s.income, 0);
+  const active = hover ? series.find((s) => s.day === hover) : null;
+
   return (
     <div className="bg-white rounded-3xl border border-black/5 shadow-sm p-6">
-      <h3 className="font-extrabold tracking-tight text-brand-950 mb-1">Gastos por dia</h3>
-      <p className="text-xs font-medium text-slate-400 mb-5">Contas + cartões</p>
-      <div className="flex items-end gap-[3px] h-40">
+      <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
+        <div>
+          <h3 className="font-extrabold tracking-tight text-brand-950">Gastos por dia</h3>
+          <p className="text-xs font-medium text-slate-400">Últimos {series.length} dias · contas + cartões</p>
+        </div>
+        <div className="text-right">
+          {active ? (
+            <>
+              <p className="text-sm font-extrabold text-brand-950 leading-none">{fmtBRL(active.expense)}</p>
+              <p className="text-[11px] font-bold text-slate-400 mt-1">{dayShort(active.day)}</p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-extrabold text-flame-700 leading-none">−{fmtBRL(totalExp)}</p>
+              <p className="text-[11px] font-bold text-brand-600 mt-1">+{fmtBRL(totalInc)} entradas</p>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="flex items-end gap-[3px] h-40" onMouseLeave={() => setHover(null)}>
         {series.map((s) => {
           const h = s.expense > 0 ? Math.max(6, (s.expense / max) * 100) : 3;
-          const show = hover === s.day || (s.expense === max && s.expense > 0);
           return (
             <div
               key={s.day}
               onMouseEnter={() => setHover(s.day)}
-              onMouseLeave={() => setHover(null)}
               title={`${dayShort(s.day)}: ${fmtBRL(s.expense)}`}
-              className="flex-1 flex flex-col items-center justify-end gap-1 h-full group cursor-default"
+              className="flex-1 flex flex-col justify-end h-full group cursor-default"
             >
-              {show && <span className="text-[9px] font-extrabold text-brand-950 whitespace-nowrap">{fmtBRL(s.expense)}</span>}
               <div
                 style={{ height: `${h}%` }}
                 className={`w-full rounded-t transition-all ${
-                  s.expense === 0 ? 'bg-black/[0.06]' : 'bg-flame-500/80 group-hover:bg-flame-600'
+                  s.expense === 0
+                    ? 'bg-black/[0.06]'
+                    : hover === s.day
+                      ? 'bg-flame-600'
+                      : 'bg-flame-500/80 group-hover:bg-flame-600'
                 }`}
               />
             </div>
@@ -264,39 +336,12 @@ function accountIcon(type) {
   return type === 'CREDIT' ? CreditCard : Landmark;
 }
 
-function BankLogo({ src, name, size = 'w-9 h-9' }) {
-  const [broken, setBroken] = useState(false);
-  if (src && !broken) {
-    return (
-      <img
-        src={src}
-        alt=""
-        onError={() => setBroken(true)}
-        className={`${size} rounded-xl object-contain bg-white border border-black/5 shrink-0`}
-      />
-    );
-  }
-  return (
-    <span className={`${size} rounded-xl bg-brand-100 text-brand-700 text-[11px] font-extrabold flex items-center justify-center shrink-0`}>
-      {(name || '?').slice(0, 2).toUpperCase()}
-    </span>
-  );
-}
-
-function ShareBar({ pct, tone = 'brand' }) {
-  const c = tone === 'flame' ? 'bg-flame-500' : tone === 'sun' ? 'bg-sun-400' : 'bg-brand-500';
-  return (
-    <span className="block h-1.5 rounded-full bg-black/[0.06] overflow-hidden">
-      <span className={`block h-full ${c} rounded-full`} style={{ width: `${Math.min(100, Math.max(2, pct * 100))}%` }} />
-    </span>
-  );
-}
-
 function Dashboard({ status, onLock, onReload, toast }) {
   const [data, setData] = useState(null);
   const [connectToken, setConnectToken] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [bank, setBank] = useState('all');
+  const [invView, setInvView] = useState('class');
 
   const handleErr = useCallback(
     (err) => {
@@ -357,6 +402,7 @@ function Dashboard({ status, onLock, onReload, toast }) {
     if (!confirm('Remover esta conexão? Os dados dela somem do painel.')) return;
     try {
       await api.financeRemoveItem(itemId);
+      setBank('all');
       await onReload();
       await load();
     } catch (err) {
@@ -393,7 +439,7 @@ function Dashboard({ status, onLock, onReload, toast }) {
   }
 
   // Sem bancos conectados
-  if (status.item_count === 0 || data?.empty) {
+  if (status.item_count === 0 || (data && !data.connectors?.length)) {
     return (
       <div className="p-4 sm:p-6 h-full overflow-y-auto">
         <LockHeader onLock={onLock} />
@@ -419,14 +465,21 @@ function Dashboard({ status, onLock, onReload, toast }) {
 
   if (!data) return <p className="p-6 text-sm font-medium text-slate-400">Carregando finanças…</p>;
 
-  const maxCat = Math.max(...(data.categories || []).map((c) => c.total), 1);
+  // Recorte ativo: consolidado ou de uma instituição. Todo o painel abaixo lê daqui.
+  const view = (bank !== 'all' && data.by_connector?.[bank]) || data.total;
+  const scope = bank === 'all' ? null : data.connectors.find((c) => c.item_id === bank);
+  const invRows = invView === 'class' ? view.investments : view.investments_by_institution;
+  const assetTotal = Math.max(view.bank_total + view.invest_total, 1);
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-5 overflow-y-auto h-full animate-fade-up">
+      {/* Cabeçalho + ações */}
       <div className="flex items-center gap-2 flex-wrap">
         <div>
           <h2 className="text-xl font-extrabold tracking-tight text-brand-950">Minhas finanças</h2>
-          <p className="text-xs font-medium text-slate-400">Consolidado via Open Finance (Pluggy).</p>
+          <p className="text-xs font-medium text-slate-400">
+            {scope ? `Filtrando por ${scope.name}` : 'Consolidado via Open Finance (Pluggy)'}
+          </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <button
@@ -452,37 +505,106 @@ function Dashboard({ status, onLock, onReload, toast }) {
         </div>
       </div>
 
+      {/* Filtro por instituição — recalcula o painel inteiro */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+        <button
+          onClick={() => setBank('all')}
+          className={`shrink-0 inline-flex items-center gap-2 rounded-2xl border px-3.5 py-2.5 transition-colors ${
+            bank === 'all'
+              ? 'bg-brand-600 border-brand-600 text-white'
+              : 'bg-white border-black/5 text-slate-600 hover:border-brand-300'
+          }`}
+        >
+          <Wallet size={16} className="shrink-0" />
+          <span className="text-left leading-tight">
+            <span className="block text-xs font-extrabold">Todos</span>
+            <span className={`block text-[10px] font-bold ${bank === 'all' ? 'text-white/70' : 'text-slate-400'}`}>
+              {fmtBRL(data.total.net_worth)}
+            </span>
+          </span>
+        </button>
+        {data.connectors.map((c) => {
+          const on = bank === c.item_id;
+          return (
+            <button
+              key={c.item_id}
+              onClick={() => setBank(on ? 'all' : c.item_id)}
+              className={`shrink-0 inline-flex items-center gap-2 rounded-2xl border px-3.5 py-2.5 transition-colors ${
+                on ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-black/5 text-slate-600 hover:border-brand-300'
+              }`}
+            >
+              <BankLogo src={c.image} name={c.name} size="w-6 h-6" />
+              <span className="text-left leading-tight">
+                <span className="block text-xs font-extrabold whitespace-nowrap">{c.name}</span>
+                <span className={`block text-[10px] font-bold ${on ? 'text-white/70' : 'text-slate-400'}`}>
+                  {fmtBRL(c.net_worth)}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Placar principal */}
+      <section className="bg-white rounded-3xl border border-black/5 shadow-sm p-6 sm:p-7">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <p className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest mb-2">
+              Patrimônio líquido{scope ? ` · ${scope.name}` : ''}
+            </p>
+            <p className="text-4xl font-extrabold tracking-tight text-brand-950 leading-none">{fmtBRL(view.net_worth)}</p>
+            <p className="text-xs font-semibold text-slate-400 mt-2">
+              {fmtBRL(view.bank_total)} em conta
+              {view.invest_total > 0 && <> · {fmtBRL(view.invest_total)} investido</>}
+              {view.credit_owed !== 0 && <> · −{fmtBRL(view.credit_owed)} em cartões</>}
+            </p>
+          </div>
+          {view.invest_total > 0 && (
+            <div className="w-full sm:w-56">
+              <div className="flex h-2 rounded-full overflow-hidden bg-black/[0.06]">
+                <span className="bg-brand-500 h-full" style={{ width: `${(view.bank_total / assetTotal) * 100}%` }} />
+                <span className="bg-sun-400 h-full" style={{ width: `${(view.invest_total / assetTotal) * 100}%` }} />
+              </div>
+              <div className="flex justify-between text-[10px] font-bold text-slate-400 mt-1.5">
+                <span className="text-brand-700">Conta {Math.round((view.bank_total / assetTotal) * 100)}%</span>
+                <span className="text-brand-800">Investido {Math.round((view.invest_total / assetTotal) * 100)}%</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatTile icon={Wallet} label="Patrimônio" value={fmtBRL(data.net_worth)} sub="contas + investimentos − cartões" />
-        <StatTile icon={Landmark} label="Em conta" value={fmtBRL(data.bank_total)} sub="saldo somado" tone="slate" />
+        <StatTile icon={Landmark} label="Em conta" value={fmtBRL(view.bank_total)} sub="saldo disponível" />
+        <StatTile
+          icon={PiggyBank}
+          label="Investido"
+          value={fmtBRL(view.invest_total)}
+          sub={view.invest_total > 0 ? `${view.investments.length} classe(s)` : 'sem investimentos'}
+          tone="sun"
+        />
         <StatTile
           icon={CreditCard}
           label="Fatura aberta"
-          value={fmtBRL(data.credit_owed)}
-          sub={`limite livre ${fmtBRL(data.credit_available)}`}
+          value={fmtBRL(view.credit_owed)}
+          sub={view.credit_limit > 0 ? `${Math.round(view.credit_usage * 100)}% do limite usado` : 'sem cartões'}
           tone="flame"
+          bar={view.credit_limit > 0 && <ShareBar pct={view.credit_usage} tone="flame" className="mt-2.5" />}
         />
         <StatTile
           icon={TrendingDown}
           label="Gasto do mês"
-          value={fmtBRL(data.month_expense)}
-          sub={`cartão ${fmtBRL(data.card_month)} · conta ${fmtBRL(data.bank_out_month)}`}
-          tone="sun"
+          value={fmtBRL(view.month_expense)}
+          sub={`cartão ${fmtBRL(view.card_month)} · conta ${fmtBRL(view.bank_out_month)}`}
+          tone="slate"
+          extra={<TrendChip value={view.expense_trend} />}
         />
       </div>
 
-      {data.invest_total > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatTile icon={PiggyBank} label="Investimentos" value={fmtBRL(data.invest_total)} sub="valor atual" />
-          <StatTile icon={ArrowUpRight} label="Entradas (mês)" value={fmtBRL(data.month_income)} sub="recebido em conta" tone="brand" />
-        </div>
-      )}
+      <ExpenseChart series={view.series || []} />
 
-      <ExpenseChart series={data.series || []} />
-
-      {/* Composição por banco / cartão / classe */}
+      {/* Composição: contas, cartões e ativos */}
       <div className="grid gap-5 lg:grid-cols-3">
-        {/* Contas bancárias */}
         <section className="bg-white rounded-3xl border border-black/5 shadow-sm p-6">
           <div className="flex items-center gap-2 mb-4">
             <span className="w-8 h-8 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center">
@@ -490,34 +612,53 @@ function Dashboard({ status, onLock, onReload, toast }) {
             </span>
             <p className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest">Contas bancárias</p>
           </div>
-          <p className="text-2xl font-extrabold tracking-tight text-brand-700 leading-none mb-5">{fmtBRL(data.bank_total)}</p>
+          <p className="text-2xl font-extrabold tracking-tight text-brand-700 leading-none mb-5">
+            {fmtBRL(view.bank_total)}
+          </p>
           <div className="space-y-4">
-            {(data.banks || []).map((b) => (
-              <button
-                key={b.name}
-                onClick={() => setBank(bank === b.name ? 'all' : b.name)}
-                className={`w-full text-left rounded-2xl transition-colors ${bank === b.name ? 'bg-brand-50' : 'hover:bg-black/[0.02]'} p-2 -m-2`}
-              >
-                <div className="flex items-center gap-3 mb-1.5">
-                  <BankLogo src={b.image} name={b.name} />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-brand-950 text-sm truncate">{b.name}</p>
-                    <p className="text-[11px] font-medium text-slate-400">
-                      {b.count} conta{b.count !== 1 ? 's' : ''} · {(b.share * 100).toFixed(1)}%
-                    </p>
-                  </div>
-                  <span className="font-extrabold text-brand-700 text-sm">{fmtBRL(b.total)}</span>
-                </div>
-                <ShareBar pct={b.share} />
-              </button>
-            ))}
-            {(data.banks || []).length === 0 && (
+            {bank === 'all'
+              ? (view.banks || []).map((b) => (
+                  <button
+                    key={b.name}
+                    onClick={() => setBank(b.item_id)}
+                    className="w-full text-left rounded-2xl hover:bg-black/[0.02] p-2 -m-2 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 mb-1.5">
+                      <BankLogo src={b.image} name={b.name} />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-brand-950 text-sm truncate">{b.name}</p>
+                        <p className="text-[11px] font-medium text-slate-400">
+                          {b.count} conta{b.count !== 1 ? 's' : ''} · {(b.share * 100).toFixed(1)}%
+                        </p>
+                      </div>
+                      <span className="font-extrabold text-brand-700 text-sm">{fmtBRL(b.total)}</span>
+                    </div>
+                    <ShareBar pct={b.share} />
+                  </button>
+                ))
+              : (view.accounts || [])
+                  .filter((a) => a.type !== 'CREDIT')
+                  .map((a) => (
+                    <div key={a.id}>
+                      <div className="flex items-center gap-3 mb-1.5">
+                        <span className="w-9 h-9 rounded-xl bg-black/[0.04] text-slate-500 flex items-center justify-center shrink-0">
+                          <Landmark size={15} />
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-brand-950 text-sm truncate">{a.name}</p>
+                          {a.number && <p className="text-[11px] font-medium text-slate-400">{a.number}</p>}
+                        </div>
+                        <span className="font-extrabold text-brand-700 text-sm">{fmtBRL(a.balance)}</span>
+                      </div>
+                      <ShareBar pct={view.bank_total > 0 ? a.balance / view.bank_total : 0} />
+                    </div>
+                  ))}
+            {(bank === 'all' ? view.banks : view.accounts.filter((a) => a.type !== 'CREDIT')).length === 0 && (
               <p className="text-sm font-medium text-slate-400 text-center py-4">Nenhuma conta.</p>
             )}
           </div>
         </section>
 
-        {/* Cartões de crédito */}
         <section className="bg-white rounded-3xl border border-black/5 shadow-sm p-6">
           <div className="flex items-center gap-2 mb-4">
             <span className="w-8 h-8 rounded-xl bg-flame-50 text-flame-700 flex items-center justify-center">
@@ -525,80 +666,106 @@ function Dashboard({ status, onLock, onReload, toast }) {
             </span>
             <p className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest">Cartões de crédito</p>
           </div>
-          <p className="text-2xl font-extrabold tracking-tight text-flame-700 leading-none mb-3">{fmtBRL(data.credit_owed)}</p>
-          {data.credit_limit > 0 && (
+          <p className="text-2xl font-extrabold tracking-tight text-flame-700 leading-none mb-3">
+            {fmtBRL(view.credit_owed)}
+          </p>
+          {view.credit_limit > 0 && (
             <>
               <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 mb-1.5">
-                <span>{Math.round((Math.max(0, data.credit_owed) / data.credit_limit) * 100)}% utilizado</span>
-                <span>Limite: {fmtBRL(data.credit_limit)}</span>
+                <span>{Math.round(view.credit_usage * 100)}% utilizado</span>
+                <span>Limite: {fmtBRL(view.credit_limit)}</span>
               </div>
-              <ShareBar pct={Math.max(0, data.credit_owed) / data.credit_limit} tone="flame" />
+              <ShareBar pct={view.credit_usage} tone="flame" />
             </>
           )}
           <div className="space-y-3 mt-5">
-            {(data.cards || []).map((c) => (
+            {(view.cards || []).map((c) => (
               <div key={c.id} className="flex items-center gap-3">
-                <span className="w-8 h-8 rounded-lg bg-black/[0.04] text-slate-500 flex items-center justify-center shrink-0">
-                  <CreditCard size={14} />
-                </span>
+                <BankLogo src={c.image} name={c.connector} size="w-8 h-8" />
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-brand-950 text-sm truncate">{c.name}</p>
-                  {c.number && <p className="text-[11px] font-medium text-slate-400">{c.number}</p>}
+                  <p className="text-[11px] font-medium text-slate-400 truncate">
+                    {c.number || c.connector}
+                    {c.due_date && ` · vence ${dateBR(c.due_date)}`}
+                  </p>
                 </div>
-                <span className="font-extrabold text-flame-700 text-sm">{fmtBRL(c.balance)}</span>
+                <span className="font-extrabold text-flame-700 text-sm shrink-0">{fmtBRL(c.balance)}</span>
               </div>
             ))}
-            {(data.cards || []).length === 0 && (
+            {(view.cards || []).length === 0 && (
               <p className="text-sm font-medium text-slate-400 text-center py-4">Nenhum cartão.</p>
             )}
           </div>
         </section>
 
-        {/* Investimentos */}
         <section className="bg-white rounded-3xl border border-black/5 shadow-sm p-6">
           <div className="flex items-center gap-2 mb-4">
             <span className="w-8 h-8 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center">
               <TrendingUp size={15} />
             </span>
             <p className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest">Investimentos</p>
+            <div className="ml-auto flex rounded-full bg-black/[0.04] p-0.5 text-[10px] font-extrabold">
+              <button
+                onClick={() => setInvView('class')}
+                className={`px-2 py-1 rounded-full transition-colors ${
+                  invView === 'class' ? 'bg-white text-brand-800 shadow-sm' : 'text-slate-400'
+                }`}
+              >
+                Classes
+              </button>
+              <button
+                onClick={() => setInvView('inst')}
+                className={`px-2 py-1 rounded-full transition-colors ${
+                  invView === 'inst' ? 'bg-white text-brand-800 shadow-sm' : 'text-slate-400'
+                }`}
+              >
+                Bancos
+              </button>
+            </div>
           </div>
-          <p className="text-2xl font-extrabold tracking-tight text-brand-700 leading-none mb-5">{fmtBRL(data.invest_total)}</p>
+          <p className="text-2xl font-extrabold tracking-tight text-brand-700 leading-none mb-5">
+            {fmtBRL(view.invest_total)}
+          </p>
           <div className="space-y-4">
-            {(data.investments || []).map((iv) => (
+            {(invRows || []).map((iv) => (
               <div key={iv.name}>
-                <div className="flex items-center gap-3 mb-1.5">
+                <div className="flex items-center gap-2 mb-1.5">
+                  {invView === 'inst' && <BankLogo src={iv.image} name={iv.name} size="w-6 h-6" />}
                   <span className="flex-1 min-w-0 font-bold text-brand-950 text-sm truncate">
                     {iv.name} <span className="text-slate-400 font-medium">({iv.count})</span>
                   </span>
-                  <span className="text-[11px] font-bold text-slate-400">{(iv.share * 100).toFixed(1)}%</span>
-                  <span className="font-extrabold text-brand-700 text-sm">{fmtBRL(iv.total)}</span>
+                  <span className="text-[11px] font-bold text-slate-400 shrink-0">{(iv.share * 100).toFixed(1)}%</span>
+                  <span className="font-extrabold text-brand-700 text-sm shrink-0">{fmtBRL(iv.total)}</span>
                 </div>
-                <ShareBar pct={iv.share} />
+                <ShareBar pct={iv.share} tone="sun" />
               </div>
             ))}
-            {(data.investments || []).length === 0 && (
+            {(invRows || []).length === 0 && (
               <p className="text-sm font-medium text-slate-400 text-center py-4">Sem investimentos.</p>
             )}
           </div>
         </section>
       </div>
 
+      {/* Categorias e faturas */}
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="bg-white rounded-3xl border border-black/5 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-black/5">
+          <div className="px-6 py-4 border-b border-black/5 flex items-center justify-between">
             <h3 className="font-extrabold tracking-tight text-brand-950 text-sm">Gastos por categoria (mês)</h3>
+            <span className="text-[11px] font-bold text-slate-400">{fmtBRL(view.month_expense)}</span>
           </div>
-          {(data.categories || []).length === 0 ? (
+          {(view.categories || []).length === 0 ? (
             <p className="px-6 py-8 text-sm font-medium text-slate-400 text-center">Sem gastos no mês ainda.</p>
           ) : (
             <div className="divide-y divide-black/5">
-              {data.categories.map((c) => (
+              {view.categories.map((c) => (
                 <div key={c.name} className="px-6 py-3 flex items-center gap-3 text-sm">
                   <span className="flex-1 min-w-0 truncate font-bold text-brand-950 capitalize">{c.name}</span>
-                  <span className="w-24 h-2 rounded-full bg-brand-100 overflow-hidden shrink-0">
-                    <span className="block h-full bg-flame-500" style={{ width: `${(c.total / maxCat) * 100}%` }} />
+                  <span className="text-[10px] font-bold text-slate-400 shrink-0">{(c.share * 100).toFixed(0)}%</span>
+                  <span className="w-20 shrink-0">
+                    <ShareBar pct={c.share} tone="flame" />
                   </span>
-                  <span className="font-extrabold text-brand-700 text-xs w-20 text-right">{fmtBRL(c.total)}</span>
+                  <span className="font-extrabold text-brand-700 text-xs w-20 text-right shrink-0">{fmtBRL(c.total)}</span>
                 </div>
               ))}
             </div>
@@ -609,18 +776,21 @@ function Dashboard({ status, onLock, onReload, toast }) {
           <div className="px-6 py-4 border-b border-black/5">
             <h3 className="font-extrabold tracking-tight text-brand-950 text-sm">Contas a pagar (cartões)</h3>
           </div>
-          {(data.upcoming || []).length === 0 ? (
+          {(view.upcoming || []).length === 0 ? (
             <p className="px-6 py-8 text-sm font-medium text-slate-400 text-center">Nenhuma fatura em aberto.</p>
           ) : (
             <div className="divide-y divide-black/5">
-              {data.upcoming.map((u, i) => (
+              {view.upcoming.map((u, i) => (
                 <div key={i} className="px-6 py-3 flex items-center gap-3 text-sm">
                   <CalendarClock size={15} className="text-flame-600 shrink-0" />
-                  <span className="flex-1 min-w-0 truncate font-bold text-brand-950">{u.connector}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-brand-950 truncate">{u.connector}</p>
+                    <p className="text-[11px] font-medium text-slate-400 truncate">{u.name}</p>
+                  </div>
                   {u.due_date && (
                     <span className="text-[11px] font-bold text-slate-400 shrink-0">vence {dateBR(u.due_date)}</span>
                   )}
-                  <span className="font-extrabold text-flame-700 text-xs w-20 text-right">{fmtBRL(u.amount)}</span>
+                  <span className="font-extrabold text-flame-700 text-xs w-20 text-right shrink-0">{fmtBRL(u.amount)}</span>
                 </div>
               ))}
             </div>
@@ -628,52 +798,23 @@ function Dashboard({ status, onLock, onReload, toast }) {
         </section>
       </div>
 
-      {/* Filtro por banco */}
-      {(data.connectors || []).length > 1 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => setBank('all')}
-            className={`inline-flex items-center gap-1.5 rounded-full text-xs font-bold px-3 py-2 transition-colors ${
-              bank === 'all' ? 'bg-brand-600 text-white' : 'bg-black/[0.04] text-slate-600 hover:bg-black/[0.07]'
-            }`}
-          >
-            Todos
-          </button>
-          {data.connectors.map((c) => (
-            <button
-              key={c.item_id}
-              onClick={() => setBank(bank === c.name ? 'all' : c.name)}
-              className={`inline-flex items-center gap-1.5 rounded-full text-xs font-bold px-3 py-2 transition-colors ${
-                bank === c.name ? 'bg-brand-600 text-white' : 'bg-black/[0.04] text-slate-600 hover:bg-black/[0.07]'
-              }`}
-            >
-              <BankLogo src={c.image} name={c.name} size="w-4 h-4" />
-              {c.name}
-            </button>
-          ))}
-        </div>
-      )}
-
+      {/* Contas e cartões (lista completa do recorte) */}
       <section className="bg-white rounded-3xl border border-black/5 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-black/5 flex items-center justify-between">
           <h3 className="font-extrabold tracking-tight text-brand-950 text-sm">Contas e cartões</h3>
-          {bank !== 'all' && <span className="text-[11px] font-bold text-brand-600">{bank}</span>}
+          <span className="text-[11px] font-bold text-slate-400">{(view.accounts || []).length} no total</span>
         </div>
         <div className="divide-y divide-black/5">
-          {(data.accounts || [])
-            .filter((a) => bank === 'all' || a.connector === bank)
-            .map((a) => {
+          {(view.accounts || []).map((a) => {
             const Icon = accountIcon(a.type);
             return (
               <div key={a.id} className="px-6 py-3 flex items-center gap-3 text-sm">
-                <span className="w-8 h-8 rounded-xl bg-black/[0.04] text-slate-500 flex items-center justify-center shrink-0">
-                  <Icon size={15} />
-                </span>
+                <BankLogo src={a.connector_image} name={a.connector} size="w-8 h-8" />
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-brand-950 truncate">{a.name}</p>
-                  <p className="text-[11px] font-medium text-slate-400 truncate">
-                    {a.connector}
-                    {a.type === 'CREDIT' ? ' · cartão' : ''}
+                  <p className="text-[11px] font-medium text-slate-400 truncate flex items-center gap-1">
+                    <Icon size={11} /> {a.connector}
+                    {a.number ? ` · ${a.number}` : ''}
                   </p>
                 </div>
                 <span className={`font-extrabold text-sm ${a.type === 'CREDIT' ? 'text-flame-700' : 'text-brand-700'}`}>
@@ -685,18 +826,17 @@ function Dashboard({ status, onLock, onReload, toast }) {
         </div>
       </section>
 
+      {/* Lançamentos */}
       <section className="bg-white rounded-3xl border border-black/5 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-black/5 flex items-center justify-between">
           <h3 className="font-extrabold tracking-tight text-brand-950 text-sm">Últimos lançamentos</h3>
-          {bank !== 'all' && <span className="text-[11px] font-bold text-brand-600">{bank}</span>}
+          {scope && <span className="text-[11px] font-bold text-brand-600">{scope.name}</span>}
         </div>
-        {(data.recent || []).filter((t) => bank === 'all' || t.connector === bank).length === 0 ? (
+        {(view.recent || []).length === 0 ? (
           <p className="px-6 py-8 text-sm font-medium text-slate-400 text-center">Sem lançamentos no período.</p>
         ) : (
           <div className="divide-y divide-black/5">
-            {data.recent
-              .filter((t) => bank === 'all' || t.connector === bank)
-              .map((t) => (
+            {view.recent.map((t) => (
               <div key={t.id} className="px-6 py-3 flex items-center gap-3 text-sm">
                 {t.direction === 'in' ? (
                   <ArrowDownRight size={15} className="text-brand-600 shrink-0" />
@@ -706,12 +846,16 @@ function Dashboard({ status, onLock, onReload, toast }) {
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-brand-950 truncate">{t.description}</p>
                   <p className="text-[11px] font-medium text-slate-400 truncate">
-                    {t.account}
+                    {t.connector} · {t.account}
                     {t.category ? ` · ${t.category}` : ''}
                   </p>
                 </div>
                 <span className="text-[11px] font-medium text-slate-400 shrink-0">{dateBR(t.date)}</span>
-                <span className={`font-extrabold text-xs w-20 text-right ${t.direction === 'in' ? 'text-brand-700' : 'text-flame-700'}`}>
+                <span
+                  className={`font-extrabold text-xs w-20 text-right shrink-0 ${
+                    t.direction === 'in' ? 'text-brand-700' : 'text-flame-700'
+                  }`}
+                >
                   {t.direction === 'in' ? '+' : '−'}
                   {fmtBRL(t.value)}
                 </span>
@@ -721,39 +865,45 @@ function Dashboard({ status, onLock, onReload, toast }) {
         )}
       </section>
 
-      {(data.connectors || []).length > 0 && (
-        <section className="bg-white rounded-3xl border border-black/5 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-black/5">
-            <h3 className="font-extrabold tracking-tight text-brand-950 text-sm">Conexões</h3>
-          </div>
-          <div className="divide-y divide-black/5">
-            {data.connectors.map((c) => (
-              <div key={c.item_id} className="px-6 py-3 flex items-center gap-3 text-sm">
-                <span className="flex-1 min-w-0 truncate font-bold text-brand-950">{c.name}</span>
-                {c.last_update && (
-                  <span className="text-[11px] font-medium text-slate-400 shrink-0">
-                    atualizado {dateBR(c.last_update)}
-                  </span>
-                )}
-                <button
-                  onClick={() => openConnect(c.item_id)}
-                  title="Reconectar / atualizar"
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-brand-700 hover:bg-black/[0.04]"
-                >
-                  <RefreshCw size={14} />
-                </button>
-                <button
-                  onClick={() => removeItem(c.item_id)}
-                  title="Remover"
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-flame-600 hover:bg-flame-50"
-                >
-                  <Trash2 size={14} />
-                </button>
+      {/* Conexões */}
+      <section className="bg-white rounded-3xl border border-black/5 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-black/5">
+          <h3 className="font-extrabold tracking-tight text-brand-950 text-sm">Conexões</h3>
+        </div>
+        <div className="divide-y divide-black/5">
+          {data.connectors.map((c) => (
+            <div key={c.item_id} className="px-6 py-3 flex items-center gap-3 text-sm">
+              <BankLogo src={c.image} name={c.name} size="w-8 h-8" />
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-brand-950 truncate">{c.name}</p>
+                <p className="text-[11px] font-medium text-slate-400 truncate">
+                  {c.account_count} conta{c.account_count !== 1 ? 's' : ''}
+                  {c.last_update ? ` · atualizado ${dateBR(c.last_update)}` : ''}
+                </p>
               </div>
-            ))}
-          </div>
-        </section>
-      )}
+              {c.error && (
+                <span className="text-[10px] font-extrabold text-flame-700 bg-flame-50 px-2 py-0.5 rounded-full shrink-0">
+                  erro
+                </span>
+              )}
+              <button
+                onClick={() => openConnect(c.item_id)}
+                title="Reconectar / atualizar"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-brand-700 hover:bg-black/[0.04]"
+              >
+                <RefreshCw size={14} />
+              </button>
+              <button
+                onClick={() => removeItem(c.item_id)}
+                title="Remover"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-flame-600 hover:bg-flame-50"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <p className="text-center text-[11px] font-medium text-slate-400 pt-1">
         Dados atualizados em {new Date(data.generated_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}.
@@ -776,6 +926,7 @@ function LockHeader({ onLock }) {
     </div>
   );
 }
+
 
 /* --------------------------------- Raiz ---------------------------------- */
 
