@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet, Sun, Moon, Zap } from 'lucide-react';
+import { KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet, Sun, Moon } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Board from './components/Board';
 import Settings from './components/Settings';
@@ -9,7 +9,7 @@ import Clients from './components/Clients';
 import BotChats from './components/BotChats';
 import Leads from './components/Leads';
 import Finance from './components/Finance';
-import Lucas from './components/Lucas';
+import Lucas, { BatSigil } from './components/Lucas';
 import UserPicker from './components/UserPicker';
 import { ToastProvider } from './components/Toast';
 import { getToken, clearToken, AuthError } from './api';
@@ -22,7 +22,6 @@ const TABS = [
   { id: 'leads', label: 'Leads', icon: MousePointerClick },
   { id: 'bot', label: 'Bot', icon: Bot },
   { id: 'finance', label: 'Finanças', icon: Wallet },
-  { id: 'lucas', label: 'Lucas', icon: Zap },
   { id: 'archived', label: 'Arquivados', icon: Archive },
   { id: 'settings', label: 'Configurações', icon: SettingsIcon }
 ];
@@ -30,6 +29,8 @@ const TABS = [
 export default function App() {
   const [authed, setAuthed] = useState(() => Boolean(getToken()));
   const [tab, setTab] = useState('board');
+  // Área pessoal do Lucas: não é uma aba — abre pelo morcego do rodapé e cobre a tela.
+  const [lucasOpen, setLucasOpen] = useState(false);
   const [dark, setDark] = useState(() => isDark());
 
   const handleAuthError = useCallback((err) => {
@@ -42,7 +43,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!authed) setTab('board');
+    if (!authed) {
+      setTab('board');
+      setLucasOpen(false);
+    }
   }, [authed]);
 
   if (!authed) {
@@ -112,12 +116,29 @@ export default function App() {
           {tab === 'leads' && <Leads onAuthError={handleAuthError} />}
           {tab === 'bot' && <BotChats onAuthError={handleAuthError} />}
           {tab === 'finance' && <Finance onAuthError={handleAuthError} />}
-          {/* Área pessoal: cobre a tela inteira (portal) quando aberta. */}
-          {tab === 'lucas' && <Lucas onAuthError={handleAuthError} onExit={() => setTab('board')} />}
           {tab === 'archived' && <Archived onAuthError={handleAuthError} />}
           {tab === 'settings' && <Settings onAuthError={handleAuthError} />}
         </main>
+
+        <footer className="shrink-0 border-t border-black/5 px-4 sm:px-6 h-10 flex items-center justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+            Classul · Placas e Brindes
+          </span>
+          {/* Entrada discreta para a área pessoal. */}
+          <button
+            onClick={() => setLucasOpen(true)}
+            aria-label="Área pessoal"
+            className="group p-1.5 -mr-1.5 text-slate-400 hover:text-brand-900 transition-colors"
+          >
+            <BatSigil
+              className="w-8 opacity-40 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500"
+              style={{ fill: 'currentColor' }}
+            />
+          </button>
+        </footer>
       </div>
+
+      {lucasOpen && <Lucas onAuthError={handleAuthError} onExit={() => setLucasOpen(false)} />}
     </ToastProvider>
   );
 }

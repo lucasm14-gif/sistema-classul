@@ -31,7 +31,7 @@ const BAT_HALF =
   'M100 14 L104 3 C106 13 110 21 116 27 C140 14 170 8 197 14 ' +
   'C176 24 170 40 166 56 C152 54 138 58 130 70 C120 74 110 80 100 92 Z';
 
-function BatSigil({ className, line = false, style }) {
+export function BatSigil({ className, line = false, style }) {
   return (
     <svg viewBox="0 0 200 100" className={className} style={style} aria-hidden="true">
       <g className={line ? 'btm-sigil-line' : 'btm-sigil-fill'}>
@@ -397,7 +397,7 @@ function Modal({ title, onClose, children }) {
     <div className="btm btm-modal-bg" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="btm-modal" role="dialog">
         <div className="btm-modal-head">
-          <BatSigil style={{ width: 30, fill: 'var(--blood-hot)' }} />
+          <BatSigil style={{ width: 30, fill: 'var(--beam-hot)' }} />
           <h3>{title}</h3>
           <button className="btm-mini" onClick={onClose} type="button" style={{ marginLeft: 'auto' }}>
             <X size={16} />
@@ -999,7 +999,7 @@ function Deck({ data, reload, onLock, onExit, notify }) {
         <div className="btm-grid">
           <section className="btm-panel btm-rise" style={{ '--d': '0.5s' }}>
             <div className="btm-panel-head">
-              <BatSigil style={{ width: 26, fill: 'var(--blood-hot)' }} />
+              <BatSigil style={{ width: 26, fill: 'var(--beam-hot)' }} />
               <h3>Missões</h3>
               <span className="btm-count">{visible.length}</span>
               <button className="btm-add" type="button" onClick={() => setTaskModal({})}>
