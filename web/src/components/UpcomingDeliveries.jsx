@@ -7,7 +7,6 @@ const STATUS_DOT = Object.fromEntries(COLUMNS.map((c) => [c.id, c.color]));
 // Painel abaixo do quadro: pedidos a entregar nos próximos 3 dias (+ atrasados).
 export default function UpcomingDeliveries({ orders, onOpen }) {
   const today = todayISO();
-  const limit = addDaysISO(today, 2); // hoje + próximos 2 = 3 dias
 
   // pedidos ainda não entregues, com data de entrega
   const pending = orders.filter(
@@ -18,8 +17,8 @@ export default function UpcomingDeliveries({ orders, onOpen }) {
     .filter((o) => o.due_date < today)
     .sort((a, b) => a.due_date.localeCompare(b.due_date));
 
-  // um "grupo" por dia dentro da janela de 3 dias
-  const days = [today, addDaysISO(today, 1), limit].map((iso) => ({
+  // um "grupo" por dia dentro da janela de 4 dias (hoje + próximos 3)
+  const days = [today, addDaysISO(today, 1), addDaysISO(today, 2), addDaysISO(today, 3)].map((iso) => ({
     iso,
     ...describeDay(iso),
     orders: pending
@@ -59,7 +58,7 @@ export default function UpcomingDeliveries({ orders, onOpen }) {
       <div className="bg-white border border-black/5 rounded-3xl shadow-sm p-4 sm:p-5">
         <div className="flex items-center gap-2 mb-3">
           <CalendarClock size={16} className="text-brand-600" />
-          <h3 className="font-extrabold tracking-tight text-brand-950 text-sm">Próximas entregas (3 dias)</h3>
+          <h3 className="font-extrabold tracking-tight text-brand-950 text-sm">Próximas entregas (4 dias)</h3>
           <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-brand-100 text-brand-700">
             {total}
           </span>
@@ -68,7 +67,11 @@ export default function UpcomingDeliveries({ orders, onOpen }) {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div
+          className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${
+            overdue.length ? 'lg:grid-cols-3 xl:grid-cols-5' : 'lg:grid-cols-4'
+          }`}
+        >
           {overdue.length > 0 && (
             <div className="bg-flame-50 border border-flame-100 rounded-2xl p-2.5">
               <div className="flex items-center gap-1.5 px-1 pb-1.5">
