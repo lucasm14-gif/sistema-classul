@@ -87,6 +87,12 @@ body {
   --tw-ring-color: #171d15;
 }
 
+/* Fundo creme fixo do corpo dos modais (Pedido, Cliente, chat do Bot) — no
+   modo escuro vira uma superfície escura atrás dos cards. */
+.dark .bg-\[\#F7F8F3\] {
+  background-color: #10150f;
+}
+
 /* Textos que eram verde-escuro precisam clarear (os mesmos tons seguem
    servindo de fundo em bg-brand-600/700, por isso não troco as variáveis). */
 .dark .text-brand-950 {
