@@ -36,11 +36,41 @@ export function formatDateBR(iso) {
   return d && m && y ? `${d}/${m}/${y}` : iso;
 }
 
+export function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function isOverdue(iso) {
   if (!iso) return false;
-  const today = new Date();
-  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(
-    today.getDate()
-  ).padStart(2, '0')}`;
-  return iso < todayIso;
+  return iso < todayISO();
+}
+
+const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+// "2026-08-05" -> { weekday: 'Terça', dayMonth: '05/08', rel: 'Hoje' | 'Amanhã' | null }
+export function describeDay(iso) {
+  if (!iso) return { weekday: '', dayMonth: '', rel: null };
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const today = todayISO();
+  const [ty, tm, td] = today.split('-').map(Number);
+  const diff = Math.round((date - new Date(ty, tm - 1, td)) / 86400000);
+  const rel = diff === 0 ? 'Hoje' : diff === 1 ? 'Amanhã' : diff === -1 ? 'Ontem' : null;
+  return { weekday: WEEKDAYS[date.getDay()], dayMonth: `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`, rel };
+}
+
+// Soma dias a uma data ISO local.
+export function addDaysISO(iso, days) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(y, m - 1, d + days);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+// "14:00" -> "14h" ; "14:30" -> "14h30"
+export function formatPickupTime(t) {
+  if (!t) return '';
+  const [h, mm] = String(t).split(':');
+  if (!h) return t;
+  return mm && mm !== '00' ? `${Number(h)}h${mm}` : `${Number(h)}h`;
 }

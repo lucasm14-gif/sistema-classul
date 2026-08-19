@@ -43,6 +43,7 @@ const emptyForm = {
   case_color: '',
   value: '',
   due_date: '',
+  pickup_time: '',
   payment_status: 'pendente'
 };
 
@@ -137,6 +138,7 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
       case_color: form.case_color,
       value: form.value,
       due_date: form.due_date,
+      pickup_time: form.pickup_time,
       payment_status: form.payment_status || 'pendente'
     };
     try {
@@ -320,6 +322,10 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
           <div className="col-span-2 sm:col-span-1">
             <label className={label}>Data de Entrega</label>
             <input type="date" className={input} value={form.due_date || ''} onChange={set('due_date')} />
+          </div>
+          <div className="col-span-2 sm:col-span-1">
+            <label className={label}>Retirada a partir das</label>
+            <input type="time" className={input} value={form.pickup_time || ''} onChange={set('pickup_time')} />
           </div>
           <div className="col-span-2 sm:col-span-1">
             <label className={label}>Valor (R$)</label>
