@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet, Sun, Moon } from 'lucide-react';
+import { KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet, Sun, Moon, Zap } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Board from './components/Board';
 import Settings from './components/Settings';
@@ -9,6 +9,7 @@ import Clients from './components/Clients';
 import BotChats from './components/BotChats';
 import Leads from './components/Leads';
 import Finance from './components/Finance';
+import Lucas from './components/Lucas';
 import UserPicker from './components/UserPicker';
 import { ToastProvider } from './components/Toast';
 import { getToken, clearToken, AuthError } from './api';
@@ -21,6 +22,7 @@ const TABS = [
   { id: 'leads', label: 'Leads', icon: MousePointerClick },
   { id: 'bot', label: 'Bot', icon: Bot },
   { id: 'finance', label: 'Finanças', icon: Wallet },
+  { id: 'lucas', label: 'Lucas', icon: Zap },
   { id: 'archived', label: 'Arquivados', icon: Archive },
   { id: 'settings', label: 'Configurações', icon: SettingsIcon }
 ];
@@ -110,6 +112,8 @@ export default function App() {
           {tab === 'leads' && <Leads onAuthError={handleAuthError} />}
           {tab === 'bot' && <BotChats onAuthError={handleAuthError} />}
           {tab === 'finance' && <Finance onAuthError={handleAuthError} />}
+          {/* Área pessoal: cobre a tela inteira (portal) quando aberta. */}
+          {tab === 'lucas' && <Lucas onAuthError={handleAuthError} onExit={() => setTab('board')} />}
           {tab === 'archived' && <Archived onAuthError={handleAuthError} />}
           {tab === 'settings' && <Settings onAuthError={handleAuthError} />}
         </main>

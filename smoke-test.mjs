@@ -349,5 +349,102 @@ check('recentes trazem os cliques com origem', leads.recent.length === 2 && lead
 r = await fetch(`${B}/leads`);
 check('leads exige Bearer', r.status === 401);
 
+
+// ---- Área pessoal do Lucas (missões e rotinas com trava por PIN) ----
+
+r = await fetch(`${B}/lucas/status`, { headers: H });
+let lucas = await r.json();
+check('lucas: começa sem PIN', lucas.has_pin === false);
+
+r = await fetch(`${B}/lucas/overview`, { headers: H });
+let lucasBody = await r.json();
+check('lucas: sem PIN a área fica trancada', r.status === 403 && lucasBody.lucas_locked === true);
+
+r = await fetch(`${B}/lucas/pin`, { method: 'POST', headers: H, body: JSON.stringify({ pin: '123' }) });
+check('lucas: PIN curto é recusado', r.status === 400);
+
+r = await fetch(`${B}/lucas/pin`, { method: 'POST', headers: H, body: JSON.stringify({ pin: '4242' }) });
+const lucasToken = (await r.json()).token;
+check('lucas: cria o PIN e devolve token', r.status === 200 && Boolean(lucasToken));
+
+r = await fetch(`${B}/lucas/unlock`, { method: 'POST', headers: H, body: JSON.stringify({ pin: '0000' }) });
+check('lucas: PIN errado não destrava', r.status === 403);
+
+r = await fetch(`${B}/lucas/unlock`, { method: 'POST', headers: H, body: JSON.stringify({ pin: '4242' }) });
+check('lucas: PIN certo destrava com o mesmo token', (await r.json()).token === lucasToken);
+
+r = await fetch(`${B}/lucas/overview`, { headers: { ...H, 'X-Lucas-Token': 'token-errado' } });
+check('lucas: token inválido continua trancado', r.status === 403);
+
+const LH = { ...H, 'X-Lucas-Token': lucasToken };
+
+r = await fetch(`${B}/lucas/tasks`, { method: 'POST', headers: LH, body: JSON.stringify({ title: '' }) });
+check('lucas: missão sem nome é recusada', r.status === 400);
+
+r = await fetch(`${B}/lucas/tasks`, {
+  method: 'POST',
+  headers: LH,
+  body: JSON.stringify({ title: 'Fechar orçamento', priority: 'critica', due_date: '2020-01-01' })
+});
+const task = await r.json();
+check('lucas: cria missão', r.status === 201 && task.priority === 'critica' && task.done_at === null);
+
+await fetch(`${B}/lucas/tasks`, {
+  method: 'POST',
+  headers: LH,
+  body: JSON.stringify({ title: 'Prioridade inventada', priority: 'urgentissima' })
+});
+
+r = await fetch(`${B}/lucas/routines`, {
+  method: 'POST',
+  headers: LH,
+  body: JSON.stringify({ title: 'Treino', time_of_day: '06:30', days: '0123456' })
+});
+const routine = await r.json();
+check('lucas: cria rotina', r.status === 201 && routine.days === '0123456');
+
+r = await fetch(`${B}/lucas/routines/${routine.id}/check`, { method: 'POST', headers: LH, body: JSON.stringify({}) });
+const checked = await r.json();
+check('lucas: marca rotina hoje', checked.ok === true && /^\d{4}-\d{2}-\d{2}$/.test(checked.day));
+// marcar de novo não duplica
+await fetch(`${B}/lucas/routines/${routine.id}/check`, { method: 'POST', headers: LH, body: JSON.stringify({}) });
+
+r = await fetch(`${B}/lucas/overview`, { headers: LH });
+const overview = await r.json();
+check('lucas: prioridade inválida vira média', overview.tasks.some((t) => t.priority === 'media'));
+check(
+  'lucas: rotina cumprida hoje entra na contagem',
+  overview.stats.routines_today === 1 && overview.stats.routines_done === 1,
+  JSON.stringify(overview.stats)
+);
+check('lucas: histórico de 28 dias por rotina', overview.routines[0].history.length === 28 && overview.routines[0].streak === 1);
+check('lucas: missão com prazo velho conta como atrasada', overview.stats.tasks_late === 1);
+
+r = await fetch(`${B}/lucas/tasks/${task.id}`, { method: 'PUT', headers: LH, body: JSON.stringify({ status: 'concluida' }) });
+const doneTask = await r.json();
+check('lucas: concluir missão grava a data', doneTask.status === 'concluida' && Boolean(doneTask.done_at));
+
+r = await fetch(`${B}/lucas/tasks/${task.id}`, { method: 'PUT', headers: LH, body: JSON.stringify({ status: 'aberta' }) });
+check('lucas: reabrir missão limpa a data', (await r.json()).done_at === null);
+
+r = await fetch(`${B}/lucas/routines/${routine.id}/check`, {
+  method: 'POST',
+  headers: LH,
+  body: JSON.stringify({ done: false })
+});
+check('lucas: desmarca rotina', r.status === 200);
+r = await fetch(`${B}/lucas/overview`, { headers: LH });
+check('lucas: contagem volta a zero', (await r.json()).stats.routines_done === 0);
+
+r = await fetch(`${B}/lucas/routines/${routine.id}`, { method: 'DELETE', headers: LH });
+check('lucas: apaga rotina', r.status === 200);
+
+r = await fetch(`${B}/settings`, { headers: H });
+const settingsAfter = await r.json();
+check('lucas: hash do PIN não vaza nas configurações', settingsAfter.lucas_pin_hash === undefined);
+
+r = await fetch(`${B}/lucas/overview`, { headers: { 'Content-Type': 'application/json', 'X-Lucas-Token': lucasToken } });
+check('lucas: token do PIN não substitui o login', r.status === 401);
+
 server.close();
 console.log('\nFim dos testes.');
