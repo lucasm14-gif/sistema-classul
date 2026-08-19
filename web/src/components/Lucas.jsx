@@ -118,6 +118,12 @@ function useScramble(text, delay = 0) {
   return out;
 }
 
+// Isola o efeito: sem isso, cada quadro da decodificação re-renderizava a tela
+// inteira (o painel com todas as missões e rotinas).
+function Scramble({ text, delay }) {
+  return useScramble(text, delay) || '\u00a0';
+}
+
 // Contador que sobe até o valor final.
 function useCountUp(value, duration = 900) {
   const [n, setN] = useState(0);
@@ -163,11 +169,14 @@ function Clock() {
 
 /* ------------------------------ Chuva e trovão ---------------------------- */
 
-function Rain() {
+function Rain({ paused }) {
   const canvasRef = useRef(null);
   const [flash, setFlash] = useState(false);
 
+  // `paused` congela a cena (editor aberto ou janela em segundo plano): sem
+  // desenhar, o navegador fica inteiro à disposição da digitação.
   useEffect(() => {
+    if (paused) return undefined;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
     const canvas = canvasRef.current;
     if (!canvas) return undefined;
@@ -219,11 +228,13 @@ function Rain() {
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
+      ctx.clearRect(0, 0, w, h);
     };
-  }, []);
+  }, [paused]);
 
   // Relâmpago de vez em quando.
   useEffect(() => {
+    if (paused) return undefined;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
     let timer = 0;
     const schedule = () => {
@@ -235,7 +246,7 @@ function Rain() {
     };
     schedule();
     return () => clearTimeout(timer);
-  }, []);
+  }, [paused]);
 
   return (
     <>
@@ -258,12 +269,6 @@ function LockScreen({ mode, onUnlocked, onExit, note }) {
 
   const current = stage === 'confirm' ? confirm : pin;
   const setCurrent = stage === 'confirm' ? setConfirm : setPin;
-
-  const title = useScramble(creating ? 'PROTOCOLO' : 'GOTHAM', 900);
-  const sub = useScramble(
-    creating ? 'DEFINA O CÓDIGO DE ACESSO' : 'ACESSO RESTRITO — SOMENTE LUCAS',
-    1400
-  );
 
   const fail = (msg) => {
     setError(msg);
@@ -321,11 +326,19 @@ function LockScreen({ mode, onUnlocked, onExit, note }) {
 
   return (
     <div className="btm-lock">
-      <BatSigil className="btm-sigil" />
+      <div className="btm-sigil-wrap">
+        <BatSigil className="btm-sigil" />
+        <BatSigil className="btm-sigil btm-sigil-ghost" line />
+      </div>
       <div>
-        <h1 className="btm-display btm-lock-title">{title || ' '}</h1>
+        <h1 className="btm-display btm-lock-title">
+          <Scramble text={creating ? 'PROTOCOLO' : 'GOTHAM'} delay={900} />
+        </h1>
         <p className="btm-lock-sub" style={{ marginTop: 14 }}>
-          {sub || ' '}
+          <Scramble
+            text={creating ? 'DEFINA O CÓDIGO DE ACESSO' : 'ACESSO RESTRITO — SOMENTE LUCAS'}
+            delay={1400}
+          />
         </p>
       </div>
 
@@ -387,11 +400,18 @@ function Boot() {
 
 /* -------------------------------- Modais ---------------------------------- */
 
+// Avisa a raiz que um editor abriu/fechou, para ela congelar o cenário.
+const overlayEvent = (delta) => window.dispatchEvent(new CustomEvent('btm-overlay', { detail: delta }));
+
 function Modal({ title, onClose, children }) {
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    overlayEvent(1);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      overlayEvent(-1);
+    };
   }, [onClose]);
   return createPortal(
     <div className="btm btm-modal-bg" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -856,7 +876,6 @@ function Deck({ data, reload, onLock, onExit, notify }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const { tasks, routines, stats, today } = data;
-  const hero = useScramble('REGISTRO DA NOITE', 200);
 
   const visible = useMemo(() => {
     const open = (t) => t.status !== 'concluida';
@@ -975,7 +994,7 @@ function Deck({ data, reload, onLock, onExit, notify }) {
         <section className="btm-hero">
           <div>
             <h2 className="btm-rise" style={{ '--d': '0.1s' }}>
-              {hero || ' '}
+              <Scramble text="REGISTRO DA NOITE" delay={200} />
             </h2>
             <p className="btm-hero-sub btm-rise" style={{ '--d': '0.25s' }}>
               {stats.tasks_open === 0
@@ -1127,6 +1146,9 @@ function Deck({ data, reload, onLock, onExit, notify }) {
 export default function Lucas({ onExit, onAuthError }) {
   useNightFonts();
   const rootRef = useRef(null);
+  const torchRef = useRef(null);
+  const [overlays, setOverlays] = useState(0);
+  const [hidden, setHidden] = useState(() => document.hidden);
   const [status, setStatus] = useState(null); // { has_pin }
   const [unlocked, setUnlocked] = useState(() => Boolean(getLucasToken()));
   const [booting, setBooting] = useState(false);
@@ -1139,17 +1161,42 @@ export default function Lucas({ onExit, onAuthError }) {
     setTimeout(() => setNotes((prev) => prev.filter((n) => n.id !== id)), 3800);
   }, []);
 
-  // Holofote que segue o cursor.
+  // Editores abertos e janela em segundo plano congelam o cenário.
+  useEffect(() => {
+    const onOverlay = (e) => setOverlays((n) => Math.max(0, n + (e.detail || 0)));
+    const onVisibility = () => setHidden(document.hidden);
+    window.addEventListener('btm-overlay', onOverlay);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('btm-overlay', onOverlay);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+
+  const frozen = overlays > 0 || hidden;
+
+  // Holofote que segue o cursor: só transform, e no máximo um por quadro.
   useEffect(() => {
     const el = rootRef.current;
-    if (!el) return undefined;
-    const move = (e) => {
-      el.style.setProperty('--mx', `${e.clientX}px`);
-      el.style.setProperty('--my', `${e.clientY}px`);
+    if (!el || frozen) return undefined;
+    let raf = 0;
+    let x = 0;
+    let y = 0;
+    const paint = () => {
+      raf = 0;
+      if (torchRef.current) torchRef.current.style.transform = `translate3d(${x}px, ${y}px, 0)`;
     };
-    el.addEventListener('mousemove', move);
-    return () => el.removeEventListener('mousemove', move);
-  }, []);
+    const move = (e) => {
+      x = e.clientX;
+      y = e.clientY;
+      if (!raf) raf = requestAnimationFrame(paint);
+    };
+    el.addEventListener('mousemove', move, { passive: true });
+    return () => {
+      el.removeEventListener('mousemove', move);
+      cancelAnimationFrame(raf);
+    };
+  }, [frozen]);
 
   useEffect(() => {
     api
@@ -1191,9 +1238,10 @@ export default function Lucas({ onExit, onAuthError }) {
   };
 
   const body = (
-    <div className="btm" ref={rootRef} style={{ '--bat-mask': BAT_MASK }}>
+    <div className={`btm${frozen ? ' paused' : ''}`} ref={rootRef} style={{ '--bat-mask': BAT_MASK }}>
       <div className="btm-spot" />
-      <Rain />
+      <div className="btm-torch" ref={torchRef} />
+      <Rain paused={frozen} />
       <div className="btm-grain" />
       <div className="btm-scan" />
       <div className="btm-vignette" />
