@@ -608,20 +608,38 @@ function createAssignmentButton() {
 // Barra lateral esquerda do WhatsApp (conversas, status, canais, configurações).
 // É o lugar mais estável para nossos botões: não muda ao abrir/fechar conversa
 // e não disputa espaço com os ícones do cabeçalho.
-const NAV_ICONS = [
-    'chats-outline', 'chats-filled', 'chat-outline', 'status-outline', 'status-refreshed',
-    'channels-outline', 'newsletter-outline', 'community-outline', 'communities-outline',
-    'settings-outline', 'settings-refreshed', 'meta-ai-outline'
-];
+const CLICKABLE = '[role="button"], button, [role="tab"], [role="listitem"] > a, a[role="link"]';
 
+// Acha a barra lateral pela FORMA, não pelo nome dos ícones (que mudam a cada
+// versão do WhatsApp): coluna estreita, alta, encostada na esquerda e com
+// vários itens clicáveis. Devolve o container mais justo que atende a isso.
 function findNavRail() {
-    const icon = document.querySelector(NAV_ICONS.map((n) => `span[data-icon="${n}"]`).join(', '));
-    const item = icon?.closest('li, button, a, div[role="button"]');
-    const container = item?.parentElement;
-    if (!container) return null;
-    // precisa ser a coluna vertical (mais alta que larga)
-    const r = container.getBoundingClientRect();
-    return r.height > r.width * 1.5 ? container : null;
+    const vh = window.innerHeight;
+    const candidatos = new Set();
+    for (const el of document.querySelectorAll(CLICKABLE)) {
+        let node = el.parentElement;
+        for (let i = 0; i < 4 && node && node !== document.body; i++) {
+            candidatos.add(node);
+            node = node.parentElement;
+        }
+    }
+
+    let melhor = null;
+    for (const node of candidatos) {
+        const r = node.getBoundingClientRect();
+        if (r.left > 130) continue;                 // encostada na esquerda
+        if (r.width < 36 || r.width > 130) continue; // estreita (coluna de ícones)
+        if (r.height < vh * 0.35) continue;          // alta
+        const itens = node.querySelectorAll(CLICKABLE).length;
+        if (itens < 3) continue;
+
+        const cs = getComputedStyle(node);
+        const emColuna = cs.display.includes('flex') && cs.flexDirection === 'column';
+        // prefere quem empilha em coluna; depois, o container mais justo
+        const score = (emColuna ? 1e6 : 0) - r.height;
+        if (!melhor || score > melhor.score) melhor = { node, score };
+    }
+    return melhor?.node || null;
 }
 
 let sidebarButtons = null;
@@ -633,8 +651,18 @@ function injectSidebarButtons() {
 
     if (!sidebarButtons) sidebarButtons = buildButtonGroup();
     sidebarButtons.classList.remove('classul-inline'); // coluna na barra lateral
-    nav.appendChild(sidebarButtons);
+    railInsertTarget(nav).appendChild(sidebarButtons);
+    console.log('[Classul] botões na barra lateral');
     return true;
+}
+
+// A barra costuma ter dois blocos (ícones em cima, ajustes/perfil embaixo).
+// Nesse caso entramos no bloco de cima, logo abaixo dos ícones principais.
+function railInsertTarget(nav) {
+    const blocos = [...nav.children].filter(
+        (k) => !k.classList.contains('classul-nav-group') && k.querySelectorAll(CLICKABLE).length >= 2
+    );
+    return blocos.length >= 2 ? blocos[0] : nav;
 }
 
 function buildButtonGroup() {
@@ -677,7 +705,10 @@ export function initChatObserver() {
         try {
             if (!injectSidebarButtons()) {
                 // depois de ~8s sem achar a barra lateral, usa o cabeçalho
-                if (++semBarraLateral > 8) injectHeaderFallback();
+                if (++semBarraLateral === 9) {
+                    console.warn('[Classul] barra lateral não encontrada; usando o cabeçalho.');
+                }
+                if (semBarraLateral > 8) injectHeaderFallback();
             } else {
                 semBarraLateral = 0;
             }
