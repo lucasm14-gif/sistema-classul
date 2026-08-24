@@ -13,7 +13,10 @@ export default defineConfig({
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: '[name].js',
-        assetFileNames: '[name].[ext]'
+        assetFileNames: '[name].[ext]',
+        // Content script não é módulo ES: o import() dinâmico (usado para adiar
+        // o React) precisa ficar embutido no mesmo arquivo.
+        inlineDynamicImports: true
       }
     },
     outDir: 'dist',

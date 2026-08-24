@@ -1,49 +1,62 @@
-import React from 'react'
-import { createRoot } from 'react-dom/client'
-import App from '../App'
-import '../index.css'
+import { eventBus } from '../utils/events';
 import { initChatObserver } from './ChatObserver';
 import { initOpenChat } from './openChat';
+import '../index.css';
 
-// Function to mount the app
-function mount() {
-    try {
-        const existingRoot = document.getElementById('wa-kanban-root');
-        if (existingRoot) return;
+// A interface (React) só é montada quando alguma janela precisa aparecer.
+// Antes ela subia junto com o WhatsApp Web e deixava o carregamento mais lento.
+let uiMounted = false;
+let mounting = null;
+
+async function ensureUI() {
+    if (uiMounted) return;
+    if (mounting) return mounting;
+
+    mounting = (async () => {
+        const [{ default: React }, { createRoot }, { default: App }] = await Promise.all([
+            import('react'),
+            import('react-dom/client'),
+            import('../App')
+        ]);
 
         const rootElement = document.createElement('div');
         rootElement.id = 'wa-kanban-root';
-
-        // Maximize Z-Index to avoid being hidden by WhatsApp layers
         rootElement.style.position = 'fixed';
         rootElement.style.top = '0';
         rootElement.style.left = '0';
-        rootElement.style.zIndex = '2147483647'; // Max Int32
+        rootElement.style.zIndex = '2147483647';
         rootElement.style.pointerEvents = 'none';
-        rootElement.style.width = '100vw';
-        rootElement.style.height = '100vh';
-
         document.body.appendChild(rootElement);
 
-        const root = createRoot(rootElement);
-        root.render(
-            <React.StrictMode>
-                <App />
-            </React.StrictMode>
-        );
+        createRoot(rootElement).render(React.createElement(App));
+        uiMounted = true;
+    })();
 
-        console.log('WhatsApp Kanban: UI Mounted');
-    } catch (err) {
-        console.error('WhatsApp Kanban: Mount Failed', err);
-    }
+    return mounting;
 }
 
-// Start
+// Espera o App registrar seu ouvinte (o React 18 renderiza de forma assíncrona).
+async function waitForAppListener(name) {
+    for (let i = 0; i < 60; i++) {
+        if ((eventBus.events[name] || []).length > 1) return true;
+        await new Promise((r) => setTimeout(r, 50));
+    }
+    return false;
+}
+
+// Ao pedir uma janela, monta a UI e reemite o evento para o App recém-criado.
+for (const name of ['SHOW_ORDER_MODAL', 'SHOW_QUICK_MESSAGES']) {
+    eventBus.on(name, async (data) => {
+        if (uiMounted) return;
+        await ensureUI();
+        await waitForAppListener(name);
+        eventBus.emit(name, data);
+    });
+}
+
 try {
-    mount();
     initChatObserver();
     initOpenChat();
-    console.log('WhatsApp Kanban: Observers Initialized');
 } catch (err) {
-    console.error('WhatsApp Kanban: Initialization Failed', err);
+    console.error('Classul: falha ao iniciar', err);
 }

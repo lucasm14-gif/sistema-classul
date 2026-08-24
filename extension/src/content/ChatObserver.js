@@ -494,6 +494,9 @@ function makeBadge(employee) {
 
 // Coloca/atualiza a etiqueta do funcionário em cada linha da lista de conversas.
 function paintChatList() {
+    // Nada marcado e nada pintado: não há o que fazer (caso mais comum).
+    if (assignmentsByName.size === 0 && !document.querySelector('.classul-assign-badge')) return;
+
     for (const row of chatListRows()) {
         const a = assignmentsByName.get(normName(rowTitle(row)));
         const existing = row.querySelector('.classul-assign-badge');
@@ -511,34 +514,15 @@ function paintChatList() {
     }
 }
 
-let listWatcherStarted = false;
-function startChatListWatcher() {
-    if (listWatcherStarted) return;
-    listWatcherStarted = true;
+let lastAssignmentsFetch = 0;
 
-    let repaintTimer = null;
-    const scheduleRepaint = () => {
-        clearTimeout(repaintTimer);
-        repaintTimer = setTimeout(paintChatList, 200);
-    };
-
-    const attach = () => {
-        const pane = chatListPane();
-        if (!pane) return false;
-        new MutationObserver(scheduleRepaint).observe(pane, { childList: true, subtree: true });
-        paintChatList();
-        console.log('[Classul] observando a lista de conversas');
-        return true;
-    };
-
-    if (!attach()) {
-        const wait = setInterval(() => {
-            if (attach()) clearInterval(wait);
-        }, 800);
-    }
-
-    refreshAssignments();
-    setInterval(refreshAssignments, 25000); // mantém sincronizado entre a equipe
+// Sincroniza as etiquetas com o servidor no máximo 1x por minuto e só com a aba visível.
+async function maybeRefreshAssignments() {
+    if (document.hidden) return;
+    const now = Date.now();
+    if (now - lastAssignmentsFetch < 60000) return;
+    lastAssignmentsFetch = now;
+    await refreshAssignments();
 }
 
 // Etiqueta "quem está atendendo" desta conversa (compartilhada entre a equipe).
@@ -608,42 +592,47 @@ function createAssignmentButton() {
     return btn;
 }
 
-export function initChatObserver() {
-    // Etiquetas de "quem está atendendo" na lista de conversas
-    startChatListWatcher();
+// Onde encaixar nossos botões: o mesmo container dos ícones nativos do WhatsApp,
+// para eles ficarem alinhados na lateral direita do cabeçalho.
+function findHeaderActions(header) {
+    const nativeIcon = header.querySelector(
+        'span[data-icon="search"], span[data-icon="menu"], span[data-icon="video-call"], ' +
+        'span[data-icon="ptt-call"], span[data-icon="chevron"], span[data-icon="x"]'
+    );
+    const nativeBtn = nativeIcon?.closest('div[role="button"], button, li');
+    if (nativeBtn?.parentElement) return nativeBtn.parentElement;
+    return header.querySelector('div[role="toolbar"]') || header.lastElementChild || header;
+}
 
-    // Injeta os botões no cabeçalho da conversa aberta (WhatsApp novo tem vários <header>).
-    const injectHeaderButtons = () => {
-        const header = document.querySelector('#main header') || document.querySelector('header');
-        if (!header || header.querySelector('.kanban-header-btn')) return;
-        const actionsContainer =
-            header.querySelector('div[role="toolbar"]') || header.lastElementChild || header;
-        actionsContainer.prepend(createImageCopyButton());
-        actionsContainer.prepend(createQuickMessagesButton());
-        actionsContainer.prepend(createOrderButton());
-        actionsContainer.prepend(createAssignmentButton());
-        console.log('[Classul] botões injetados no cabeçalho da conversa');
+function injectHeaderButtons() {
+    const header = document.querySelector('#main header');
+    if (!header || header.querySelector('.kanban-header-btn')) return;
+    const actions = findHeaderActions(header);
+    actions.prepend(createImageCopyButton());
+    actions.prepend(createQuickMessagesButton());
+    actions.prepend(createOrderButton());
+    actions.prepend(createAssignmentButton());
+}
+
+export function initChatObserver() {
+    // Um único laço leve cuida de tudo. Antes usávamos MutationObserver com
+    // subtree no app inteiro (dispara milhares de vezes/segundo no WhatsApp) e
+    // o evento DOMNodeInserted, que é obsoleto e trava o carregamento da página.
+    // Um querySelector por segundo custa praticamente nada.
+    const tick = () => {
+        if (document.hidden) return;
+        try {
+            injectHeaderButtons();
+            paintChatList();
+            maybeRefreshAssignments();
+        } catch (err) {
+            console.error('[Classul] tick:', err);
+        }
     };
 
-    // Debounce: em vez de rodar a cada mutação (pesado), agrupa em ~300ms.
-    let injectTimer = null;
-    const observer = new MutationObserver(() => {
-        clearTimeout(injectTimer);
-        injectTimer = setTimeout(injectHeaderButtons, 300);
+    tick();
+    setInterval(tick, 1000);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) tick();
     });
-
-    const appElement = document.getElementById('app'); // WhatsApp usually mounts here
-    if (appElement) {
-        observer.observe(appElement, {
-            childList: true,
-            subtree: true
-        });
-    } else {
-        // Fallback or wait
-        document.body.addEventListener('DOMNodeInserted', (e) => {
-            if (e.target.id === 'app') {
-                observer.observe(e.target, { childList: true, subtree: true });
-            }
-        });
-    }
 }

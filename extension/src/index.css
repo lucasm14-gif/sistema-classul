@@ -1,41 +1,39 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+/* CSS do content script — injetado DENTRO do WhatsApp Web.
+   Regras aqui valem para a página inteira, então tudo é escopado nos nossos
+   elementos. Nada de reset global (o preflight do Tailwind quebrava o layout
+   do WhatsApp) e nada de @import de fonte externa (bloqueava o carregamento). */
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-:root {
-    --kanban-primary: #25D366;
-    /* WhatsApp Green */
-    --kanban-primary-dark: #128C7E;
-    --kanban-text: #111b21;
-    --kanban-text-secondary: #8696a0;
-    --font-family: 'Outfit', sans-serif;
-}
-
-/* Reset for our extension elements to prevent inheriting weird WhatsApp styles */
+/* Reset apenas dentro da nossa UI, para não herdar estilos estranhos. */
 #wa-kanban-root * {
     box-sizing: border-box;
-    font-family: var(--font-family);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
-/* Header Button Injection */
+/* Botões que injetamos no cabeçalho da conversa. */
 .kanban-header-btn {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 40px;
     height: 40px;
+    flex: 0 0 auto;
     border-radius: 50%;
     border: none;
     background: transparent;
-    color: #54656f;
+    color: currentColor;
     cursor: pointer;
     margin-right: 8px;
+    padding: 0;
     transition: background 0.2s;
 }
 
 .kanban-header-btn:hover {
-    background: rgba(0, 0, 0, 0.05);
-    color: #111b21;
+    background: rgba(128, 128, 128, 0.18);
+}
+
+/* Etiqueta de "quem está atendendo" na lista de conversas. */
+.classul-assign-badge {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
 }
