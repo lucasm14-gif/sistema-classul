@@ -537,10 +537,10 @@ function createAssignmentButton() {
       <circle cx="12" cy="7" r="4"></circle>
     </svg>`;
 
-    const chatName = getActiveChatName();
-    let assignment = assignmentsByName.get(normName(chatName)) || null;
+    // O botão vive na barra lateral (fixa), então lê a conversa ativa a cada
+    // atualização em vez de guardar o valor de quando foi criado.
+    let assignment = null;
 
-    // Ícone-só (sem texto) para não alargar o cabeçalho; colorido quando atribuído.
     const render = () => {
         if (assignment && assignment.employee) {
             btn.innerHTML = userIconSvg(assignmentColor(assignment.employee));
@@ -550,11 +550,24 @@ function createAssignmentButton() {
             btn.title = 'Marcar quem está atendendo esta conversa';
         }
     };
+
+    // Chamada pelo laço principal: reflete a conversa aberta no momento.
+    btn.classulSync = () => {
+        const atual = assignmentsByName.get(normName(getActiveChatName())) || null;
+        const mudou = (atual?.employee || null) !== (assignment?.employee || null);
+        assignment = atual;
+        if (mudou || !btn.innerHTML) render();
+    };
     render();
 
     btn.onclick = async (e) => {
         e.preventDefault();
         e.stopPropagation();
+
+        if (!document.querySelector('#main')) {
+            classulToast('Abra uma conversa primeiro', '#b71f19');
+            return;
+        }
 
         const me = await getMyName();
         if (!me) {
@@ -592,26 +605,65 @@ function createAssignmentButton() {
     return btn;
 }
 
-// Onde encaixar nossos botões: o mesmo container dos ícones nativos do WhatsApp,
-// para eles ficarem alinhados na lateral direita do cabeçalho.
-function findHeaderActions(header) {
-    const nativeIcon = header.querySelector(
-        'span[data-icon="search"], span[data-icon="menu"], span[data-icon="video-call"], ' +
-        'span[data-icon="ptt-call"], span[data-icon="chevron"], span[data-icon="x"]'
-    );
-    const nativeBtn = nativeIcon?.closest('div[role="button"], button, li');
-    if (nativeBtn?.parentElement) return nativeBtn.parentElement;
-    return header.querySelector('div[role="toolbar"]') || header.lastElementChild || header;
+// Barra lateral esquerda do WhatsApp (conversas, status, canais, configurações).
+// É o lugar mais estável para nossos botões: não muda ao abrir/fechar conversa
+// e não disputa espaço com os ícones do cabeçalho.
+const NAV_ICONS = [
+    'chats-outline', 'chats-filled', 'chat-outline', 'status-outline', 'status-refreshed',
+    'channels-outline', 'newsletter-outline', 'community-outline', 'communities-outline',
+    'settings-outline', 'settings-refreshed', 'meta-ai-outline'
+];
+
+function findNavRail() {
+    const icon = document.querySelector(NAV_ICONS.map((n) => `span[data-icon="${n}"]`).join(', '));
+    const item = icon?.closest('li, button, a, div[role="button"]');
+    const container = item?.parentElement;
+    if (!container) return null;
+    // precisa ser a coluna vertical (mais alta que larga)
+    const r = container.getBoundingClientRect();
+    return r.height > r.width * 1.5 ? container : null;
 }
 
-function injectHeaderButtons() {
+let sidebarButtons = null;
+
+function injectSidebarButtons() {
+    const nav = findNavRail();
+    if (!nav) return false;
+    if (sidebarButtons && nav.contains(sidebarButtons)) return true;
+
+    if (!sidebarButtons) sidebarButtons = buildButtonGroup();
+    sidebarButtons.classList.remove('classul-inline'); // coluna na barra lateral
+    nav.appendChild(sidebarButtons);
+    return true;
+}
+
+function buildButtonGroup() {
+    const group = document.createElement('div');
+    group.className = 'classul-nav-group';
+    group.append(
+        createAssignmentButton(),
+        createOrderButton(),
+        createQuickMessagesButton(),
+        createImageCopyButton()
+    );
+    return group;
+}
+
+// Mantém o botão de atendimento coerente com a conversa aberta.
+function syncSidebarButtons() {
+    sidebarButtons?.querySelector('.classul-assign-btn')?.classulSync?.();
+}
+
+// Reserva: em versões do WhatsApp sem a barra lateral, usa o cabeçalho da conversa.
+function injectHeaderFallback() {
     const header = document.querySelector('#main header');
     if (!header || header.querySelector('.kanban-header-btn')) return;
-    const actions = findHeaderActions(header);
-    actions.prepend(createImageCopyButton());
-    actions.prepend(createQuickMessagesButton());
-    actions.prepend(createOrderButton());
-    actions.prepend(createAssignmentButton());
+    const icon = header.querySelector('span[data-icon="search"], span[data-icon="menu"]');
+    const actions = icon?.closest('div[role="button"], button, li')?.parentElement || header.lastElementChild;
+    if (!actions) return;
+    if (!sidebarButtons) sidebarButtons = buildButtonGroup();
+    sidebarButtons.classList.add('classul-inline'); // em linha no cabeçalho
+    actions.prepend(sidebarButtons);
 }
 
 export function initChatObserver() {
@@ -619,10 +671,17 @@ export function initChatObserver() {
     // subtree no app inteiro (dispara milhares de vezes/segundo no WhatsApp) e
     // o evento DOMNodeInserted, que é obsoleto e trava o carregamento da página.
     // Um querySelector por segundo custa praticamente nada.
+    let semBarraLateral = 0;
     const tick = () => {
         if (document.hidden) return;
         try {
-            injectHeaderButtons();
+            if (!injectSidebarButtons()) {
+                // depois de ~8s sem achar a barra lateral, usa o cabeçalho
+                if (++semBarraLateral > 8) injectHeaderFallback();
+            } else {
+                semBarraLateral = 0;
+            }
+            syncSidebarButtons();
             paintChatList();
             maybeRefreshAssignments();
         } catch (err) {

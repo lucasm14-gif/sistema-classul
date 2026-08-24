@@ -9,7 +9,18 @@
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
-/* Botões que injetamos no cabeçalho da conversa. */
+/* Nossos botões, empilhados na barra lateral esquerda do WhatsApp. */
+.classul-nav-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(128, 128, 128, 0.25);
+    width: 100%;
+}
+
 .kanban-header-btn {
     display: flex;
     align-items: center;
@@ -22,13 +33,23 @@
     background: transparent;
     color: currentColor;
     cursor: pointer;
-    margin-right: 8px;
+    margin: 0;
     padding: 0;
     transition: background 0.2s;
 }
 
 .kanban-header-btn:hover {
     background: rgba(128, 128, 128, 0.18);
+}
+
+/* Reserva: quando não há barra lateral, os botões vão em linha no cabeçalho. */
+.classul-nav-group.classul-inline {
+    flex-direction: row;
+    width: auto;
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+    margin-right: 8px;
 }
 
 /* Etiqueta de "quem está atendendo" na lista de conversas. */
