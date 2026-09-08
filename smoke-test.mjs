@@ -242,6 +242,38 @@ r = await fetch(`${B}/orders`, {
 const codeOrder = await r.json();
 check('pedido ganha código de retirada de 4 dígitos', /^\d{4}$/.test(codeOrder.pickup_code || ''), codeOrder.pickup_code);
 
+// ---------- Venda de estojo avulso (sem placa) ----------
+
+r = await fetch(`${B}/orders`, {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({
+    customer_name: 'Cliente Estojo',
+    case_only: 1,
+    case_color: 'Azul',
+    case_size: '14x20',
+    value: '80,00'
+  })
+});
+const caseOrder = await r.json();
+check(
+  'criar pedido só de estojo',
+  r.status === 201 && caseOrder.case_only === 1 && caseOrder.case_color === 'Azul' && caseOrder.case_size === '14x20',
+  JSON.stringify({ case_only: caseOrder.case_only, size: caseOrder.case_size })
+);
+
+// pedido comum nasce sem a marca de estojo avulso
+check('pedido comum não é estojo avulso', codeOrder.case_only === 0, String(codeOrder.case_only));
+
+// desmarcar volta a ser pedido normal
+r = await fetch(`${B}/orders/${caseOrder.id}`, {
+  method: 'PUT',
+  headers: H,
+  body: JSON.stringify({ case_only: false, product_type: 'Jota' })
+});
+const unCased = await r.json();
+check('desmarcar "só estojo" volta a pedido normal', unCased.case_only === 0 && unCased.product_type === 'Jota');
+
 r = await fetch(`${B}/orders/${codeOrder.id}/status`, { method: 'PATCH', headers: H, body: JSON.stringify({ status: 'pronto' }) });
 await r.json();
 r = await fetch(`${B}/orders/${codeOrder.id}`, { headers: H });

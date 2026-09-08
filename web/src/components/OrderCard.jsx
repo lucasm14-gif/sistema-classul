@@ -32,10 +32,19 @@ export default function OrderCard({ order, dragging, onClick }) {
               className={`w-3 h-3 rounded-full ring-2 ring-white shadow ${CASE_COLOR_DOT[order.case_color] || 'bg-slate-300'}`}
             />
           )}
-          {order.product_type && (
-            <span className="text-[9px] font-extrabold uppercase tracking-wide bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full">
-              {order.product_type}
+          {order.case_only ? (
+            <span
+              title={order.case_size ? `Estojo avulso · cabe placa ${order.case_size}` : 'Estojo avulso (sem placa)'}
+              className="text-[9px] font-extrabold uppercase tracking-wide bg-sun-100 text-yellow-800 px-2 py-0.5 rounded-full"
+            >
+              Estojo{order.case_size ? ` ${order.case_size}` : ''}
             </span>
+          ) : (
+            order.product_type && (
+              <span className="text-[9px] font-extrabold uppercase tracking-wide bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full">
+                {order.product_type}
+              </span>
+            )
           )}
         </div>
       </div>

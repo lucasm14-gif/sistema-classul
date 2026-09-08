@@ -16,10 +16,11 @@ import {
   Receipt,
   FileWarning,
   KeyRound,
-  MessageSquare
+  MessageSquare,
+  Package
 } from 'lucide-react';
 import { api, getUser } from '../api';
-import { CASE_COLORS, PRODUCT_TYPES, COLUMNS, PAYMENT_STATUSES } from '../constants';
+import { CASE_COLORS, CASE_SIZES, PRODUCT_TYPES, COLUMNS, PAYMENT_STATUSES } from '../constants';
 import { useToast } from './Toast';
 import { colorFor } from './UserPicker';
 
@@ -41,6 +42,8 @@ const emptyForm = {
   description: '',
   product_type: 'Maquina',
   case_color: '',
+  case_only: 0,
+  case_size: '',
   value: '',
   due_date: '',
   pickup_time: '',
@@ -134,8 +137,11 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
       customer_name: form.customer_name,
       phone: form.phone,
       description: form.description,
-      product_type: form.product_type,
+      // Estojo avulso não tem placa: o tipo de produção não se aplica.
+      product_type: form.case_only ? null : form.product_type,
       case_color: form.case_color,
+      case_only: form.case_only ? 1 : 0,
+      case_size: form.case_size,
       value: form.value,
       due_date: form.due_date,
       pickup_time: form.pickup_time,
@@ -356,18 +362,49 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
               })}
             </div>
           </div>
-          <div className="col-span-2 sm:col-span-1">
-            <label className={label}>Tipo</label>
-            {choice(PRODUCT_TYPES, form.product_type, (v) => setForm((f) => ({ ...f, product_type: v })))}
+          {/* Venda de estojo avulso: sem placa, então o tipo de produção some
+              e entra o tamanho de placa que o estojo comporta. */}
+          <div className="col-span-2">
+            <button
+              type="button"
+              onClick={() =>
+                setForm((f) => ({ ...f, case_only: f.case_only ? 0 : 1, product_type: f.case_only ? 'Maquina' : '' }))
+              }
+              className={`w-full flex items-center gap-2 text-xs font-bold rounded-xl border-2 px-3 py-2.5 transition-all ${
+                form.case_only
+                  ? 'bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-600/20'
+                  : 'bg-white text-slate-500 border-slate-200 hover:border-brand-300'
+              }`}
+            >
+              <Package size={14} />
+              Só estojo (sem placa)
+            </button>
           </div>
+
+          {!form.case_only && (
+            <div className="col-span-2 sm:col-span-1">
+              <label className={label}>Tipo</label>
+              {choice(PRODUCT_TYPES, form.product_type, (v) => setForm((f) => ({ ...f, product_type: v })))}
+            </div>
+          )}
+
           <div className="col-span-2 sm:col-span-1">
-            <label className={label}>Estojo</label>
+            <label className={label}>{form.case_only ? 'Cor do estojo' : 'Estojo'}</label>
             {choice(CASE_COLORS, form.case_color, (v) => setForm((f) => ({ ...f, case_color: v })), {
               Preto: 'bg-brand-950 text-white border-brand-950 shadow-md',
               Azul: 'bg-sky-100 text-sky-700 border-sky-400',
               Vermelho: 'bg-flame-100 text-flame-700 border-flame-500'
             })}
           </div>
+
+          {Boolean(form.case_only) && (
+            <div className="col-span-2 sm:col-span-1">
+              <label className={label}>
+                Tamanho <span className="normal-case tracking-normal text-slate-400">(placa que cabe)</span>
+              </label>
+              {choice(CASE_SIZES, form.case_size, (v) => setForm((f) => ({ ...f, case_size: v })))}
+            </div>
+          )}
           <div className="col-span-2">
             <label className={label}>Descrição</label>
             <textarea

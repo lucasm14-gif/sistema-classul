@@ -147,6 +147,8 @@ const ORDER_FIELDS = [
   'description',
   'product_type',
   'case_color',
+  'case_only',
+  'case_size',
   'value',
   'due_date',
   'pickup_time',
@@ -283,14 +285,16 @@ app.post('/api/orders', h(async (req, res) => {
   const pickupCode = await generatePickupCode();
   const user = currentUser(req);
   const { rows } = await q(
-    `INSERT INTO orders (customer_name, phone, description, product_type, case_color, value, due_date, pickup_time, status, client_id, payment_status, pickup_code, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13) RETURNING *`,
+    `INSERT INTO orders (customer_name, phone, description, product_type, case_color, case_only, case_size, value, due_date, pickup_time, status, client_id, payment_status, pickup_code, created_by, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15) RETURNING *`,
     [
       String(data.customer_name).trim(),
       normalizePhone(data.phone) || (data.phone ? String(data.phone) : null),
       data.description || null,
       data.product_type || null,
       data.case_color || null,
+      data.case_only ? 1 : 0,
+      data.case_size || null,
       data.value || null,
       data.due_date || null,
       data.pickup_time || null,
@@ -318,6 +322,8 @@ app.put('/api/orders/:id', h(async (req, res) => {
   if ('payment_status' in updates && !PAYMENT_STATUSES.includes(updates.payment_status)) {
     return res.status(400).json({ error: `Status de pagamento inválido. Use: ${PAYMENT_STATUSES.join(', ')}` });
   }
+  // A coluna é INTEGER; o front manda booleano.
+  if ('case_only' in updates) updates.case_only = updates.case_only ? 1 : 0;
   updates.updated_by = currentUser(req);
   const fields = Object.keys(updates);
   const sets = fields.map((f, i) => `${f} = $${i + 1}`).join(', ');
