@@ -290,6 +290,41 @@ check(
 r = await fetch(`${B}/orders/${sized.id}`, { method: 'PUT', headers: H, body: JSON.stringify({ size: '16x25' }) });
 check('editar o tamanho da placa', (await r.json()).size === '16x25');
 
+// catálogo de produtos: a plaqueta militar é registrada como produto
+r = await fetch(`${B}/orders`, {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({
+    customer_name: 'Batalhão Teste',
+    product: 'Plaqueta Militar (EB)',
+    product_type: 'Maquina',
+    size: '9x14',
+    value: '80,00'
+  })
+});
+const militar = await r.json();
+check(
+  'criar pedido de plaqueta militar',
+  r.status === 201 && militar.product === 'Plaqueta Militar (EB)' && militar.size === '9x14' && militar.case_only === 0,
+  JSON.stringify({ product: militar.product, size: militar.size })
+);
+
+// produto sem medida (troféu) é aceito normalmente
+r = await fetch(`${B}/orders`, {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({ customer_name: 'Cliente Troféu', product: 'Troféu', product_type: 'Jota' })
+});
+const trofeu = await r.json();
+check('criar pedido de troféu (sem tamanho)', r.status === 201 && trofeu.product === 'Troféu' && !trofeu.size);
+
+// trocar o produto de um pedido existente
+r = await fetch(`${B}/orders/${trofeu.id}`, { method: 'PUT', headers: H, body: JSON.stringify({ product: 'Medalhas' }) });
+check('trocar o produto do pedido', (await r.json()).product === 'Medalhas');
+
+// estojo avulso continua marcado como tal
+check('estojo avulso segue com case_only', caseOrder.case_only === 1);
+
 r = await fetch(`${B}/orders/${codeOrder.id}/status`, { method: 'PATCH', headers: H, body: JSON.stringify({ status: 'pronto' }) });
 await r.json();
 r = await fetch(`${B}/orders/${codeOrder.id}`, { headers: H });

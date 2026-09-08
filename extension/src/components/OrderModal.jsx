@@ -5,6 +5,31 @@ import { createOrder } from '../services/classul';
 
 const CASE_COLORS = ['Preto', 'Azul', 'Vermelho'];
 const PRODUCT_TYPES = ['Maquina', 'Jota', 'Sublimação'];
+// Catálogo de produtos vendidos (espelha o site classul.com.br).
+const PRODUCTS = [
+    'Placa de Homenagem',
+    'Plaqueta Militar (EB)',
+    'Placa de Inauguração',
+    'Placa Quadro Parede',
+    'Placa para Jazigo',
+    'Placa Inox Escovado',
+    'Troféu',
+    'Medalhas',
+    'Pins e Botons',
+    'Estojo avulso',
+    'Outro'
+];
+const CASE_PRODUCT = 'Estojo avulso';
+// Produtos medidos pela tabela de tamanhos de placa (os demais não usam medida).
+const SIZED_PRODUCTS = [
+    'Placa de Homenagem',
+    'Plaqueta Militar (EB)',
+    'Placa de Inauguração',
+    'Placa Quadro Parede',
+    'Placa para Jazigo',
+    'Placa Inox Escovado',
+    'Estojo avulso'
+];
 // Medidas em cm da PLACA. No estojo avulso, é a placa que cabe dentro dele
 // (não a medida externa do estojo).
 const PLATE_SIZES = ['9x14', '12x17', '14x20', '16x25', '20x30'];
@@ -34,8 +59,10 @@ const OrderModal = ({ contactData, onClose }) => {
     const [dueDate, setDueDate] = useState('');
     const [caseColor, setCaseColor] = useState('');
     const [productType, setProductType] = useState('Maquina');
-    const [caseOnly, setCaseOnly] = useState(false);
+    const [product, setProduct] = useState('');
     const [size, setSize] = useState('');
+    const caseOnly = product === CASE_PRODUCT;
+    const showSize = !product || SIZED_PRODUCTS.includes(product);
     const [value, setValue] = useState('');
     const [isSending, setIsSending] = useState(false);
 
@@ -55,8 +82,9 @@ const OrderModal = ({ contactData, onClose }) => {
                 case_color: caseColor || null,
                 // Estojo avulso não tem placa: o tipo de produção não se aplica.
                 product_type: caseOnly ? null : productType,
+                product: product || null,
                 case_only: caseOnly ? 1 : 0,
-                size: size || null,
+                size: showSize ? size || null : null,
                 value: value || null
             });
 
@@ -176,13 +204,13 @@ const OrderModal = ({ contactData, onClose }) => {
         };
     };
 
-    const renderChoiceButtons = (options, selectedValue, onSelect, selectedStyles) => (
-        <div style={choiceGroupStyle}>
+    const renderChoiceButtons = (options, selectedValue, onSelect, selectedStyles, cols = 3) => (
+        <div style={{ ...choiceGroupStyle, gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
             {options.map((option) => (
                 <button
                     key={option}
                     type="button"
-                    onClick={() => onSelect(option)}
+                    onClick={() => onSelect(selectedValue === option ? '' : option)}
                     disabled={isSending}
                     style={getChoiceButtonStyle(option, selectedValue === option, selectedStyles)}
                 >
@@ -330,27 +358,13 @@ const OrderModal = ({ contactData, onClose }) => {
                         />
                     </div>
 
-                    {/* Venda de estojo avulso: sem placa, então some o tipo de
-                        produção e entra o tamanho de placa que o estojo comporta. */}
-                    <div style={fieldCardStyle}>
-                        <button
-                            type="button"
-                            onClick={() => setCaseOnly((v) => !v)}
-                            disabled={isSending}
-                            style={{
-                                width: '100%',
-                                padding: '10px',
-                                borderRadius: '8px',
-                                fontSize: '13px',
-                                fontWeight: 'bold',
-                                cursor: isSending ? 'default' : 'pointer',
-                                border: `2px solid ${caseOnly ? '#059669' : '#ddd'}`,
-                                backgroundColor: caseOnly ? '#059669' : 'white',
-                                color: caseOnly ? '#ffffff' : '#666'
-                            }}
-                        >
-                            {caseOnly ? '✓ ' : ''}Só estojo (sem placa)
-                        </button>
+                    {/* Produto vendido. "Estojo avulso" não tem placa: some o tipo de
+                        produção e o tamanho vira o da placa que cabe dentro dele. */}
+                    <div style={{ ...fieldCardStyle, gridColumn: '1 / -1' }}>
+                        <label style={labelStyle}>
+                            Produto
+                        </label>
+                        {renderChoiceButtons(PRODUCTS, product, setProduct, null, 3)}
                     </div>
 
                     <div style={fieldCardStyle}>
@@ -372,21 +386,23 @@ const OrderModal = ({ contactData, onClose }) => {
                     {!caseOnly && (
                         <div style={fieldCardStyle}>
                             <label style={labelStyle}>
-                                Tipo
+                                Produção
                             </label>
                             {renderChoiceButtons(PRODUCT_TYPES, productType, setProductType)}
                         </div>
                     )}
 
-                    <div style={fieldCardStyle}>
-                        <label style={labelStyle}>
-                            Tamanho{' '}
-                            <span style={{ textTransform: 'none', color: '#999' }}>
-                                {caseOnly ? '(placa que cabe)' : 'da placa (cm)'}
-                            </span>
-                        </label>
-                        {renderChoiceButtons(PLATE_SIZES, size, setSize)}
-                    </div>
+                    {showSize && (
+                        <div style={fieldCardStyle}>
+                            <label style={labelStyle}>
+                                Tamanho{' '}
+                                <span style={{ textTransform: 'none', color: '#999' }}>
+                                    {caseOnly ? '(placa que cabe)' : 'da placa (cm)'}
+                                </span>
+                            </label>
+                            {renderChoiceButtons(PLATE_SIZES, size, setSize)}
+                        </div>
+                    )}
 
                     <div style={fieldCardStyle}>
                         <label style={labelStyle}>

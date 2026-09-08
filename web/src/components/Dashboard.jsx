@@ -25,17 +25,20 @@ function lastMonths(n = 12) {
   return out;
 }
 
-// O que foi vendido, em português claro.
+// O que foi vendido, em português claro. Pedidos antigos (sem produto)
+// caem no método de produção, que era a única informação disponível.
 function productLabel(o) {
+  if (o.product) return o.product;
   if (o.case_only) return 'Estojo avulso';
-  return o.product_type ? `Placa ${o.product_type}` : 'Placa (tipo não informado)';
+  return o.product_type ? `Placa ${o.product_type}` : 'Produto não informado';
 }
 
-// Detalhes do item: tamanho e cor, já explicados.
+// Detalhes do item: tamanho, cor e produção, já explicados.
 function soldDetails(o) {
   const parts = [];
   if (o.size) parts.push(o.case_only ? `cabe placa de ${o.size} cm` : `${o.size} cm`);
   if (o.case_color) parts.push(o.case_only ? `cor ${o.case_color}` : `estojo ${o.case_color}`);
+  if (o.product && o.product_type) parts.push(`produção ${o.product_type}`);
   return parts;
 }
 

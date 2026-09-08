@@ -1,6 +1,6 @@
 import React from 'react';
 import { Calendar, MessageCircle, Paperclip, FileWarning, CircleDollarSign, CheckCircle2, KeyRound } from 'lucide-react';
-import { CASE_COLOR_DOT, formatBRL, formatDateBR, isOverdue } from '../constants';
+import { CASE_COLOR_DOT, PRODUCT_SHORT, formatBRL, formatDateBR, isOverdue } from '../constants';
 import { openWhatsApp } from '../whatsapp';
 
 export default function OrderCard({ order, dragging, onClick }) {
@@ -32,29 +32,33 @@ export default function OrderCard({ order, dragging, onClick }) {
               className={`w-3 h-3 rounded-full ring-2 ring-white shadow ${CASE_COLOR_DOT[order.case_color] || 'bg-slate-300'}`}
             />
           )}
-          {order.case_only ? (
+          {order.size && (
             <span
-              title={order.size ? `Estojo avulso · cabe placa de ${order.size} cm` : 'Estojo avulso (sem placa)'}
-              className="text-[9px] font-extrabold uppercase tracking-wide bg-sun-100 text-yellow-800 px-2 py-0.5 rounded-full"
+              title={order.case_only ? `Cabe placa de ${order.size} cm` : `Placa de ${order.size} cm`}
+              className="text-[9px] font-extrabold tracking-wide bg-black/[0.05] text-slate-600 px-2 py-0.5 rounded-full"
             >
-              Estojo{order.size ? ` ${order.size}` : ''}
+              {order.size}
+            </span>
+          )}
+          {order.product ? (
+            <span
+              title={[order.product, order.product_type].filter(Boolean).join(' · ')}
+              className={`text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                order.case_only ? 'bg-sun-100 text-yellow-800' : 'bg-brand-50 text-brand-700'
+              }`}
+            >
+              {PRODUCT_SHORT[order.product] || order.product}
+            </span>
+          ) : order.case_only ? (
+            <span className="text-[9px] font-extrabold uppercase tracking-wide bg-sun-100 text-yellow-800 px-2 py-0.5 rounded-full">
+              Estojo
             </span>
           ) : (
-            <>
-              {order.size && (
-                <span
-                  title={`Placa de ${order.size} cm`}
-                  className="text-[9px] font-extrabold tracking-wide bg-black/[0.05] text-slate-600 px-2 py-0.5 rounded-full"
-                >
-                  {order.size}
-                </span>
-              )}
-              {order.product_type && (
-                <span className="text-[9px] font-extrabold uppercase tracking-wide bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full">
-                  {order.product_type}
-                </span>
-              )}
-            </>
+            order.product_type && (
+              <span className="text-[9px] font-extrabold uppercase tracking-wide bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full">
+                {order.product_type}
+              </span>
+            )
           )}
         </div>
       </div>

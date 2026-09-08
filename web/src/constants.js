@@ -5,6 +5,48 @@ export const COLUMNS = [
   { id: 'entregue', title: 'Enviado / Entregue', color: 'bg-slate-400', badge: 'bg-slate-200 text-slate-600', whatsapp: true }
 ];
 
+// Catálogo de produtos vendidos (espelha o site classul.com.br).
+export const PRODUCTS = [
+  'Placa de Homenagem',
+  'Plaqueta Militar (EB)',
+  'Placa de Inauguração',
+  'Placa Quadro Parede',
+  'Placa para Jazigo',
+  'Placa Inox Escovado',
+  'Troféu',
+  'Medalhas',
+  'Pins e Botons',
+  'Estojo avulso',
+  'Outro'
+];
+
+// Rótulo curto para caber no card do quadro.
+export const PRODUCT_SHORT = {
+  'Placa de Homenagem': 'Homenagem',
+  'Plaqueta Militar (EB)': 'Militar',
+  'Placa de Inauguração': 'Inauguração',
+  'Placa Quadro Parede': 'Quadro',
+  'Placa para Jazigo': 'Jazigo',
+  'Placa Inox Escovado': 'Inox',
+  'Pins e Botons': 'Pins',
+  'Estojo avulso': 'Estojo'
+};
+
+// Vendido sozinho, sem placa — muda os rótulos do formulário.
+export const CASE_PRODUCT = 'Estojo avulso';
+
+// Produtos medidos pela tabela de tamanhos de placa (os demais não usam medida).
+export const SIZED_PRODUCTS = [
+  'Placa de Homenagem',
+  'Plaqueta Militar (EB)',
+  'Placa de Inauguração',
+  'Placa Quadro Parede',
+  'Placa para Jazigo',
+  'Placa Inox Escovado',
+  'Estojo avulso'
+];
+
+// Como a peça é produzida (não confundir com o produto).
 export const PRODUCT_TYPES = ['Maquina', 'Jota', 'Sublimação'];
 export const CASE_COLORS = ['Preto', 'Azul', 'Vermelho'];
 // Medidas em cm da PLACA. No estojo avulso, é a placa que cabe dentro dele
