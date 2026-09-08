@@ -35,10 +35,10 @@ export const PRODUCT_SHORT = {
 // Vendido sozinho, sem placa — muda os rótulos do formulário.
 export const CASE_PRODUCT = 'Estojo avulso';
 
-// Produtos medidos pela tabela de tamanhos de placa (os demais não usam medida).
+// Produtos medidos pela tabela de tamanhos de placa. A plaqueta militar tem
+// tamanho único (padrão), por isso fica de fora.
 export const SIZED_PRODUCTS = [
   'Placa de Homenagem',
-  'Plaqueta Militar (EB)',
   'Placa de Inauguração',
   'Placa Quadro Parede',
   'Placa para Jazigo',

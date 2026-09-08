@@ -290,7 +290,7 @@ check(
 r = await fetch(`${B}/orders/${sized.id}`, { method: 'PUT', headers: H, body: JSON.stringify({ size: '16x25' }) });
 check('editar o tamanho da placa', (await r.json()).size === '16x25');
 
-// catálogo de produtos: a plaqueta militar é registrada como produto
+// catálogo de produtos: a plaqueta militar tem tamanho único, então vai sem medida
 r = await fetch(`${B}/orders`, {
   method: 'POST',
   headers: H,
@@ -298,14 +298,13 @@ r = await fetch(`${B}/orders`, {
     customer_name: 'Batalhão Teste',
     product: 'Plaqueta Militar (EB)',
     product_type: 'Maquina',
-    size: '9x14',
     value: '80,00'
   })
 });
 const militar = await r.json();
 check(
-  'criar pedido de plaqueta militar',
-  r.status === 201 && militar.product === 'Plaqueta Militar (EB)' && militar.size === '9x14' && militar.case_only === 0,
+  'criar pedido de plaqueta militar (tamanho único)',
+  r.status === 201 && militar.product === 'Plaqueta Militar (EB)' && !militar.size && militar.case_only === 0,
   JSON.stringify({ product: militar.product, size: militar.size })
 );
 

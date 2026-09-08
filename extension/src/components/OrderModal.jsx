@@ -20,10 +20,10 @@ const PRODUCTS = [
     'Outro'
 ];
 const CASE_PRODUCT = 'Estojo avulso';
-// Produtos medidos pela tabela de tamanhos de placa (os demais não usam medida).
+// Produtos medidos pela tabela de tamanhos de placa. A plaqueta militar tem
+// tamanho único (padrão), por isso fica de fora.
 const SIZED_PRODUCTS = [
     'Placa de Homenagem',
-    'Plaqueta Militar (EB)',
     'Placa de Inauguração',
     'Placa Quadro Parede',
     'Placa para Jazigo',
