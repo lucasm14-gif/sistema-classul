@@ -5,6 +5,8 @@ import { createOrder } from '../services/classul';
 
 const CASE_COLORS = ['Preto', 'Azul', 'Vermelho'];
 const PRODUCT_TYPES = ['Maquina', 'Jota', 'Sublimação'];
+// Tamanho do estojo = medida da PLACA que cabe dentro dele (não a medida externa).
+const CASE_SIZES = ['9x14', '12x17', '14x20', '16x25', '20x30'];
 
 const CASE_COLOR_STYLES = {
     Preto: {
@@ -31,6 +33,8 @@ const OrderModal = ({ contactData, onClose }) => {
     const [dueDate, setDueDate] = useState('');
     const [caseColor, setCaseColor] = useState('');
     const [productType, setProductType] = useState('Maquina');
+    const [caseOnly, setCaseOnly] = useState(false);
+    const [caseSize, setCaseSize] = useState('');
     const [value, setValue] = useState('');
     const [isSending, setIsSending] = useState(false);
 
@@ -48,7 +52,10 @@ const OrderModal = ({ contactData, onClose }) => {
                 phone: phone || null,
                 due_date: dueDate || null,
                 case_color: caseColor || null,
-                product_type: productType,
+                // Estojo avulso não tem placa: o tipo de produção não se aplica.
+                product_type: caseOnly ? null : productType,
+                case_only: caseOnly ? 1 : 0,
+                case_size: caseOnly ? caseSize || null : null,
                 value: value || null
             });
 
@@ -322,9 +329,32 @@ const OrderModal = ({ contactData, onClose }) => {
                         />
                     </div>
 
+                    {/* Venda de estojo avulso: sem placa, então some o tipo de
+                        produção e entra o tamanho de placa que o estojo comporta. */}
+                    <div style={fieldCardStyle}>
+                        <button
+                            type="button"
+                            onClick={() => setCaseOnly((v) => !v)}
+                            disabled={isSending}
+                            style={{
+                                width: '100%',
+                                padding: '10px',
+                                borderRadius: '8px',
+                                fontSize: '13px',
+                                fontWeight: 'bold',
+                                cursor: isSending ? 'default' : 'pointer',
+                                border: `2px solid ${caseOnly ? '#059669' : '#ddd'}`,
+                                backgroundColor: caseOnly ? '#059669' : 'white',
+                                color: caseOnly ? '#ffffff' : '#666'
+                            }}
+                        >
+                            {caseOnly ? '✓ ' : ''}Só estojo (sem placa)
+                        </button>
+                    </div>
+
                     <div style={fieldCardStyle}>
                         <label style={labelStyle}>
-                            Estojo
+                            {caseOnly ? 'Cor do estojo' : 'Estojo'}
                         </label>
                         {!caseColor && (
                             <div style={{
@@ -338,12 +368,21 @@ const OrderModal = ({ contactData, onClose }) => {
                         {renderChoiceButtons(CASE_COLORS, caseColor, setCaseColor, CASE_COLOR_STYLES)}
                     </div>
 
-                    <div style={fieldCardStyle}>
-                        <label style={labelStyle}>
-                            Tipo
-                        </label>
-                        {renderChoiceButtons(PRODUCT_TYPES, productType, setProductType)}
-                    </div>
+                    {caseOnly ? (
+                        <div style={fieldCardStyle}>
+                            <label style={labelStyle}>
+                                Tamanho <span style={{ textTransform: 'none', color: '#999' }}>(placa que cabe)</span>
+                            </label>
+                            {renderChoiceButtons(CASE_SIZES, caseSize, setCaseSize)}
+                        </div>
+                    ) : (
+                        <div style={fieldCardStyle}>
+                            <label style={labelStyle}>
+                                Tipo
+                            </label>
+                            {renderChoiceButtons(PRODUCT_TYPES, productType, setProductType)}
+                        </div>
+                    )}
 
                     <div style={fieldCardStyle}>
                         <label style={labelStyle}>
