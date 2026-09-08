@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { TrendingUp, Package, CircleDollarSign, FileWarning, CheckCircle2, Wallet, HandCoins } from 'lucide-react';
+import { TrendingUp, Package, CircleDollarSign, FileWarning, CheckCircle2, Wallet, HandCoins, ShoppingBag, Ruler } from 'lucide-react';
 import { api } from '../api';
 import { formatDateBR, parseBRL } from '../constants';
 import { useToast } from './Toast';
@@ -23,6 +23,66 @@ function lastMonths(n = 12) {
     out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   }
   return out;
+}
+
+// O que foi vendido, em português claro.
+function productLabel(o) {
+  if (o.case_only) return 'Estojo avulso';
+  return o.product_type ? `Placa ${o.product_type}` : 'Placa (tipo não informado)';
+}
+
+// Detalhes do item: tamanho e cor, já explicados.
+function soldDetails(o) {
+  const parts = [];
+  if (o.size) parts.push(o.case_only ? `cabe placa de ${o.size} cm` : `${o.size} cm`);
+  if (o.case_color) parts.push(o.case_only ? `cor ${o.case_color}` : `estojo ${o.case_color}`);
+  return parts;
+}
+
+// Agrupa os pedidos do mês somando quantidade e valor.
+function groupSales(orders, keyFn) {
+  const map = new Map();
+  for (const o of orders) {
+    const key = keyFn(o);
+    const cur = map.get(key) || { key, count: 0, total: 0 };
+    cur.count += 1;
+    cur.total += parseBRL(o.value);
+    map.set(key, cur);
+  }
+  return [...map.values()].sort((a, b) => b.total - a.total || b.count - a.count);
+}
+
+// Lista com barra proporcional — usada nos dois recortes de "O que foi vendido".
+function BreakdownList({ icon: Icon, title, hint, rows, empty }) {
+  const max = Math.max(...rows.map((r) => r.total), 1);
+  return (
+    <section className="bg-white rounded-3xl border border-black/5 shadow-sm overflow-hidden">
+      <div className="px-6 py-4 border-b border-black/5">
+        <h3 className="font-extrabold tracking-tight text-brand-950 text-sm flex items-center gap-2">
+          <Icon size={15} className="text-brand-600" /> {title}
+        </h3>
+        <p className="text-[11px] font-medium text-slate-400 mt-0.5">{hint}</p>
+      </div>
+      {rows.length === 0 ? (
+        <p className="px-6 py-8 text-sm font-medium text-slate-400 text-center">{empty}</p>
+      ) : (
+        <div className="divide-y divide-black/5">
+          {rows.map((r) => (
+            <div key={r.key} className="px-6 py-3 flex items-center gap-3 text-sm">
+              <span className="flex-1 min-w-0 truncate font-bold text-brand-950">{r.key}</span>
+              <span className="text-[11px] font-bold text-slate-400 shrink-0 w-16 text-right">
+                {r.count} {r.count === 1 ? 'pedido' : 'pedidos'}
+              </span>
+              <span className="w-20 h-2 rounded-full bg-brand-100 overflow-hidden shrink-0">
+                <span className="block h-full bg-brand-500" style={{ width: `${(r.total / max) * 100}%` }} />
+              </span>
+              <span className="font-extrabold text-brand-700 text-xs w-24 text-right">{brl(r.total)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
 function StatTile({ icon: Icon, label, value, sub, tone = 'brand' }) {
@@ -115,6 +175,10 @@ export default function Dashboard({ onAuthError }) {
   }, [load, month]);
 
   if (!stats) return <p className="p-6 text-sm font-medium text-slate-400">Carregando…</p>;
+
+  // Recortes do que foi vendido no mês selecionado.
+  const byProduct = groupSales(stats.month_orders, productLabel);
+  const bySize = groupSales(stats.month_orders, (o) => (o.size ? `${o.size} cm` : 'Sem tamanho informado'));
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-5 overflow-y-auto h-full animate-fade-up">
@@ -211,11 +275,31 @@ export default function Dashboard({ onAuthError }) {
         </section>
       )}
 
+      <div className="grid gap-5 lg:grid-cols-2">
+        <BreakdownList
+          icon={ShoppingBag}
+          title="O que foi vendido"
+          hint={`Cada produto entregue em ${monthLabel(month, true)}, com quantidade e quanto rendeu.`}
+          rows={byProduct}
+          empty="Nenhum produto entregue neste mês."
+        />
+        <BreakdownList
+          icon={Ruler}
+          title="Por tamanho"
+          hint="Medida da placa em cm — no estojo avulso, é a placa que cabe dentro dele."
+          rows={bySize}
+          empty="Nenhum tamanho registrado neste mês."
+        />
+      </div>
+
       <section className="bg-white rounded-3xl border border-black/5 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-black/5">
           <h3 className="font-extrabold tracking-tight text-brand-950 text-sm">
             Entregas de {monthLabel(month, true)}
           </h3>
+          <p className="text-[11px] font-medium text-slate-400 mt-0.5">
+            Pedido a pedido: o que era, tamanho, pagamento e nota fiscal.
+          </p>
         </div>
         {stats.month_orders.length === 0 ? (
           <p className="px-6 py-8 text-sm font-medium text-slate-400 text-center">
@@ -224,30 +308,49 @@ export default function Dashboard({ onAuthError }) {
         ) : (
           <div className="divide-y divide-black/5">
             {stats.month_orders.map((o) => (
-              <div key={o.id} className="px-6 py-3 flex items-center gap-3 text-sm">
-                <span className="font-extrabold text-brand-600 text-xs">{o.order_number}</span>
-                <span className="flex-1 min-w-0 truncate font-bold text-brand-950">{o.customer_name}</span>
-                {o.payment_status === 'pago' ? (
-                  <span className="flex items-center gap-1 text-[10px] font-extrabold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full">
-                    <Wallet size={11} /> pago
+              <div key={o.id} className="px-6 py-3 text-sm">
+                <div className="flex items-center gap-3">
+                  <span className="font-extrabold text-brand-600 text-xs">{o.order_number}</span>
+                  <span className="flex-1 min-w-0 truncate font-bold text-brand-950">{o.customer_name}</span>
+                  {o.payment_status === 'pago' ? (
+                    <span className="flex items-center gap-1 text-[10px] font-extrabold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full">
+                      <Wallet size={11} /> pago
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-[10px] font-extrabold text-flame-700 bg-flame-50 px-2 py-0.5 rounded-full">
+                      <Wallet size={11} /> {o.payment_status === 'sinal' ? 'sinal' : 'a receber'}
+                    </span>
+                  )}
+                  {o.has_invoice ? (
+                    <span className="flex items-center gap-1 text-[10px] font-extrabold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full">
+                      <CheckCircle2 size={11} /> NF
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-[10px] font-extrabold text-yellow-700 bg-sun-100 px-2 py-0.5 rounded-full">
+                      <FileWarning size={11} /> sem NF
+                    </span>
+                  )}
+                  <span className="font-extrabold text-brand-700 text-xs w-24 text-right">
+                    {brl(parseBRL(o.value))}
                   </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-[10px] font-extrabold text-flame-700 bg-flame-50 px-2 py-0.5 rounded-full">
-                    <Wallet size={11} /> {o.payment_status === 'sinal' ? 'sinal' : 'a receber'}
+                </div>
+                <p className="text-xs font-semibold text-slate-500 mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <span
+                    className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                      o.case_only ? 'bg-sun-100 text-yellow-800' : 'bg-brand-50 text-brand-700'
+                    }`}
+                  >
+                    {productLabel(o)}
                   </span>
-                )}
-                {o.has_invoice ? (
-                  <span className="flex items-center gap-1 text-[10px] font-extrabold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full">
-                    <CheckCircle2 size={11} /> NF
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-[10px] font-extrabold text-yellow-700 bg-sun-100 px-2 py-0.5 rounded-full">
-                    <FileWarning size={11} /> sem NF
-                  </span>
-                )}
-                <span className="font-extrabold text-brand-700 text-xs w-24 text-right">
-                  {brl(parseBRL(o.value))}
-                </span>
+                  {soldDetails(o).map((d) => (
+                    <span key={d} className="text-[11px] text-slate-500">
+                      · {d}
+                    </span>
+                  ))}
+                  {o.description && (
+                    <span className="text-[11px] text-slate-400 truncate max-w-full">· {o.description}</span>
+                  )}
+                </p>
               </div>
             ))}
           </div>

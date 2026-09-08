@@ -5,8 +5,9 @@ import { createOrder } from '../services/classul';
 
 const CASE_COLORS = ['Preto', 'Azul', 'Vermelho'];
 const PRODUCT_TYPES = ['Maquina', 'Jota', 'Sublimação'];
-// Tamanho do estojo = medida da PLACA que cabe dentro dele (não a medida externa).
-const CASE_SIZES = ['9x14', '12x17', '14x20', '16x25', '20x30'];
+// Medidas em cm da PLACA. No estojo avulso, é a placa que cabe dentro dele
+// (não a medida externa do estojo).
+const PLATE_SIZES = ['9x14', '12x17', '14x20', '16x25', '20x30'];
 
 const CASE_COLOR_STYLES = {
     Preto: {
@@ -34,7 +35,7 @@ const OrderModal = ({ contactData, onClose }) => {
     const [caseColor, setCaseColor] = useState('');
     const [productType, setProductType] = useState('Maquina');
     const [caseOnly, setCaseOnly] = useState(false);
-    const [caseSize, setCaseSize] = useState('');
+    const [size, setSize] = useState('');
     const [value, setValue] = useState('');
     const [isSending, setIsSending] = useState(false);
 
@@ -55,7 +56,7 @@ const OrderModal = ({ contactData, onClose }) => {
                 // Estojo avulso não tem placa: o tipo de produção não se aplica.
                 product_type: caseOnly ? null : productType,
                 case_only: caseOnly ? 1 : 0,
-                case_size: caseOnly ? caseSize || null : null,
+                size: size || null,
                 value: value || null
             });
 
@@ -368,14 +369,7 @@ const OrderModal = ({ contactData, onClose }) => {
                         {renderChoiceButtons(CASE_COLORS, caseColor, setCaseColor, CASE_COLOR_STYLES)}
                     </div>
 
-                    {caseOnly ? (
-                        <div style={fieldCardStyle}>
-                            <label style={labelStyle}>
-                                Tamanho <span style={{ textTransform: 'none', color: '#999' }}>(placa que cabe)</span>
-                            </label>
-                            {renderChoiceButtons(CASE_SIZES, caseSize, setCaseSize)}
-                        </div>
-                    ) : (
+                    {!caseOnly && (
                         <div style={fieldCardStyle}>
                             <label style={labelStyle}>
                                 Tipo
@@ -383,6 +377,16 @@ const OrderModal = ({ contactData, onClose }) => {
                             {renderChoiceButtons(PRODUCT_TYPES, productType, setProductType)}
                         </div>
                     )}
+
+                    <div style={fieldCardStyle}>
+                        <label style={labelStyle}>
+                            Tamanho{' '}
+                            <span style={{ textTransform: 'none', color: '#999' }}>
+                                {caseOnly ? '(placa que cabe)' : 'da placa (cm)'}
+                            </span>
+                        </label>
+                        {renderChoiceButtons(PLATE_SIZES, size, setSize)}
+                    </div>
 
                     <div style={fieldCardStyle}>
                         <label style={labelStyle}>

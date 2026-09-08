@@ -20,7 +20,7 @@ import {
   Package
 } from 'lucide-react';
 import { api, getUser } from '../api';
-import { CASE_COLORS, CASE_SIZES, PRODUCT_TYPES, COLUMNS, PAYMENT_STATUSES } from '../constants';
+import { CASE_COLORS, PLATE_SIZES, PRODUCT_TYPES, COLUMNS, PAYMENT_STATUSES } from '../constants';
 import { useToast } from './Toast';
 import { colorFor } from './UserPicker';
 
@@ -43,7 +43,7 @@ const emptyForm = {
   product_type: 'Maquina',
   case_color: '',
   case_only: 0,
-  case_size: '',
+  size: '',
   value: '',
   due_date: '',
   pickup_time: '',
@@ -141,7 +141,7 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
       product_type: form.case_only ? null : form.product_type,
       case_color: form.case_color,
       case_only: form.case_only ? 1 : 0,
-      case_size: form.case_size,
+      size: form.size,
       value: form.value,
       due_date: form.due_date,
       pickup_time: form.pickup_time,
@@ -397,14 +397,15 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
             })}
           </div>
 
-          {Boolean(form.case_only) && (
-            <div className="col-span-2 sm:col-span-1">
-              <label className={label}>
-                Tamanho <span className="normal-case tracking-normal text-slate-400">(placa que cabe)</span>
-              </label>
-              {choice(CASE_SIZES, form.case_size, (v) => setForm((f) => ({ ...f, case_size: v })))}
-            </div>
-          )}
+          <div className="col-span-2 sm:col-span-1">
+            <label className={label}>
+              Tamanho{' '}
+              <span className="normal-case tracking-normal text-slate-400">
+                {form.case_only ? '(placa que cabe)' : 'da placa (cm)'}
+              </span>
+            </label>
+            {choice(PLATE_SIZES, form.size, (v) => setForm((f) => ({ ...f, size: v })))}
+          </div>
           <div className="col-span-2">
             <label className={label}>Descrição</label>
             <textarea

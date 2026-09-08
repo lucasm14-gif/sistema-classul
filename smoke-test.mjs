@@ -251,15 +251,15 @@ r = await fetch(`${B}/orders`, {
     customer_name: 'Cliente Estojo',
     case_only: 1,
     case_color: 'Azul',
-    case_size: '14x20',
+    size: '14x20',
     value: '80,00'
   })
 });
 const caseOrder = await r.json();
 check(
   'criar pedido só de estojo',
-  r.status === 201 && caseOrder.case_only === 1 && caseOrder.case_color === 'Azul' && caseOrder.case_size === '14x20',
-  JSON.stringify({ case_only: caseOrder.case_only, size: caseOrder.case_size })
+  r.status === 201 && caseOrder.case_only === 1 && caseOrder.case_color === 'Azul' && caseOrder.size === '14x20',
+  JSON.stringify({ case_only: caseOrder.case_only, size: caseOrder.size })
 );
 
 // pedido comum nasce sem a marca de estojo avulso
@@ -273,6 +273,22 @@ r = await fetch(`${B}/orders/${caseOrder.id}`, {
 });
 const unCased = await r.json();
 check('desmarcar "só estojo" volta a pedido normal', unCased.case_only === 0 && unCased.product_type === 'Jota');
+
+// tamanho vale para placa comum também (não só para estojo avulso)
+r = await fetch(`${B}/orders`, {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({ customer_name: 'Placa Com Tamanho', product_type: 'Maquina', size: '20x30', case_color: 'Preto' })
+});
+const sized = await r.json();
+check(
+  'placa comum guarda o tamanho',
+  r.status === 201 && sized.case_only === 0 && sized.size === '20x30' && sized.product_type === 'Maquina',
+  JSON.stringify({ size: sized.size, product_type: sized.product_type })
+);
+
+r = await fetch(`${B}/orders/${sized.id}`, { method: 'PUT', headers: H, body: JSON.stringify({ size: '16x25' }) });
+check('editar o tamanho da placa', (await r.json()).size === '16x25');
 
 r = await fetch(`${B}/orders/${codeOrder.id}/status`, { method: 'PATCH', headers: H, body: JSON.stringify({ status: 'pronto' }) });
 await r.json();

@@ -7,8 +7,9 @@ export const COLUMNS = [
 
 export const PRODUCT_TYPES = ['Maquina', 'Jota', 'Sublimação'];
 export const CASE_COLORS = ['Preto', 'Azul', 'Vermelho'];
-// Tamanho do estojo = medida da PLACA que cabe dentro dele (não a medida externa).
-export const CASE_SIZES = ['9x14', '12x17', '14x20', '16x25', '20x30'];
+// Medidas em cm da PLACA. No estojo avulso, é a placa que cabe dentro dele
+// (não a medida externa do estojo).
+export const PLATE_SIZES = ['9x14', '12x17', '14x20', '16x25', '20x30'];
 
 export const PAYMENT_STATUSES = [
   { id: 'pendente', label: 'Pendente' },

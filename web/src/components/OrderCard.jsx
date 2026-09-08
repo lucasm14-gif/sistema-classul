@@ -34,17 +34,27 @@ export default function OrderCard({ order, dragging, onClick }) {
           )}
           {order.case_only ? (
             <span
-              title={order.case_size ? `Estojo avulso · cabe placa ${order.case_size}` : 'Estojo avulso (sem placa)'}
+              title={order.size ? `Estojo avulso · cabe placa de ${order.size} cm` : 'Estojo avulso (sem placa)'}
               className="text-[9px] font-extrabold uppercase tracking-wide bg-sun-100 text-yellow-800 px-2 py-0.5 rounded-full"
             >
-              Estojo{order.case_size ? ` ${order.case_size}` : ''}
+              Estojo{order.size ? ` ${order.size}` : ''}
             </span>
           ) : (
-            order.product_type && (
-              <span className="text-[9px] font-extrabold uppercase tracking-wide bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full">
-                {order.product_type}
-              </span>
-            )
+            <>
+              {order.size && (
+                <span
+                  title={`Placa de ${order.size} cm`}
+                  className="text-[9px] font-extrabold tracking-wide bg-black/[0.05] text-slate-600 px-2 py-0.5 rounded-full"
+                >
+                  {order.size}
+                </span>
+              )}
+              {order.product_type && (
+                <span className="text-[9px] font-extrabold uppercase tracking-wide bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full">
+                  {order.product_type}
+                </span>
+              )}
+            </>
           )}
         </div>
       </div>
