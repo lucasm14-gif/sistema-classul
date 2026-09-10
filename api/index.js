@@ -20,10 +20,14 @@ import {
   buildAuthUrl,
   exchangeCode,
   createUploadSession,
+  createUploadSessionInFolder,
+  ensurePhotosFolder,
+  downloadFile,
   getFileMeta,
   deleteFile
 } from '../lib/google.js';
 import { handleIncoming } from '../lib/bot.js';
+import { CASE_COLORS, PLATE_SIZES, PRODUCT_TYPES } from '../lib/default-content.js';
 
 const app = express();
 app.use(cors());
@@ -121,6 +125,24 @@ app.post('/api/leads/track', async (req, res) => {
     console.error('leads track:', err);
     // Nunca falha de forma barulhenta: o rastreamento não pode quebrar o site.
     res.status(204).end();
+  }
+});
+
+// Foto da extensão — público de propósito: a extensão (e o bot, via Evolution)
+// precisam baixar a imagem por URL simples. São fotos de catálogo, não sigilosas.
+app.get('/api/photos/:id', async (req, res) => {
+  try {
+    await ensureSchema();
+    const { rows } = await q('SELECT * FROM photos WHERE id = $1', [req.params.id]);
+    const photo = rows[0];
+    if (!photo) return res.status(404).json({ error: 'Foto não encontrada.' });
+    const buffer = await downloadFile(photo.drive_file_id);
+    res.setHeader('Content-Type', photo.mime_type || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=86400');
+    res.send(buffer);
+  } catch (err) {
+    console.error('foto:', err);
+    res.status(502).json({ error: err.message });
   }
 });
 
@@ -1349,6 +1371,229 @@ app.post('/api/lucas/routines/:id/check', requireLucas, h(async (req, res) => {
     await q('DELETE FROM lucas_routine_logs WHERE routine_id = $1 AND day = $2', [id, day]);
   }
   res.json({ ok: true, id, day, done });
+}));
+
+// ---------- Conteúdo da extensão (mensagens, fotos e catálogo) ----------
+
+const PHOTO_MIMES = ['image/jpeg', 'image/png', 'image/webp'];
+
+async function listQuickMessages() {
+  const { rows } = await q('SELECT * FROM quick_messages WHERE active = 1 ORDER BY sort_order ASC, id ASC');
+  return rows;
+}
+
+async function listCatalog() {
+  const { rows } = await q('SELECT * FROM catalog_products WHERE active = 1 ORDER BY sort_order ASC, id ASC');
+  return rows;
+}
+
+async function listPhotoSets(req) {
+  const { rows: sets } = await q('SELECT * FROM photo_sets ORDER BY sort_order ASC, id ASC');
+  const { rows: photos } = await q('SELECT * FROM photos ORDER BY sort_order ASC, id ASC');
+  const base = baseUrl(req);
+  return sets.map((set) => ({
+    ...set,
+    photos: photos
+      .filter((ph) => ph.set_id === set.id)
+      .map((ph) => ({ id: ph.id, name: ph.name, mime_type: ph.mime_type, url: `${base}/api/photos/${ph.id}` }))
+  }));
+}
+
+// Tudo que a extensão precisa, numa chamada só (ela consulta isso periodicamente).
+app.get('/api/extension/config', h(async (req, res) => {
+  const [messages, catalog, sets] = await Promise.all([listQuickMessages(), listCatalog(), listPhotoSets(req)]);
+  res.json({
+    quick_messages: messages.map((m) => ({ id: m.id, title: m.title, text: m.body })),
+    photo_sets: sets,
+    catalog: {
+      products: catalog.map((p) => ({
+        name: p.name,
+        short_label: p.short_label,
+        has_size: p.has_size === 1,
+        is_case: p.is_case === 1
+      })),
+      case_colors: CASE_COLORS,
+      plate_sizes: PLATE_SIZES,
+      product_types: PRODUCT_TYPES
+    }
+  });
+}));
+
+// --- Mensagens rápidas ---
+
+app.get('/api/quick-messages', h(async (req, res) => res.json(await listQuickMessages())));
+
+app.post('/api/quick-messages', h(async (req, res) => {
+  const title = String(req.body?.title || '').trim();
+  const body = String(req.body?.body || '').trim();
+  if (!title || !body) return res.status(400).json({ error: 'Informe o título e o texto da mensagem.' });
+  const { rows: max } = await q('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM quick_messages');
+  const { rows } = await q(
+    'INSERT INTO quick_messages (title, body, sort_order) VALUES ($1, $2, $3) RETURNING *',
+    [title.slice(0, 80), body, max[0].next]
+  );
+  res.status(201).json(rows[0]);
+}));
+
+app.put('/api/quick-messages/:id', h(async (req, res) => {
+  const updates = {};
+  if ('title' in req.body) updates.title = String(req.body.title || '').trim().slice(0, 80);
+  if ('body' in req.body) updates.body = String(req.body.body || '');
+  if ('sort_order' in req.body) updates.sort_order = Number(req.body.sort_order) || 0;
+  if ('active' in req.body) updates.active = req.body.active ? 1 : 0;
+  const fields = Object.keys(updates);
+  if (!fields.length) return res.status(400).json({ error: 'Nada para atualizar.' });
+  const sets = fields.map((f, i) => `${f} = $${i + 1}`).join(', ');
+  const { rows } = await q(
+    `UPDATE quick_messages SET ${sets}, updated_at = now() WHERE id = $${fields.length + 1} RETURNING *`,
+    [...Object.values(updates), req.params.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Mensagem não encontrada.' });
+  res.json(rows[0]);
+}));
+
+app.delete('/api/quick-messages/:id', h(async (req, res) => {
+  await q('DELETE FROM quick_messages WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// Reordena de uma vez (recebe os ids na ordem desejada).
+app.put('/api/quick-messages-order', h(async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  for (const [i, id] of ids.entries()) {
+    await q('UPDATE quick_messages SET sort_order = $1 WHERE id = $2', [i, id]);
+  }
+  res.json(await listQuickMessages());
+}));
+
+// --- Catálogo de produtos ---
+
+app.get('/api/catalog', h(async (req, res) => res.json(await listCatalog())));
+
+app.post('/api/catalog', h(async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Informe o nome do produto.' });
+  const { rows: max } = await q('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM catalog_products');
+  const { rows } = await q(
+    'INSERT INTO catalog_products (name, short_label, has_size, is_case, sort_order) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+    [
+      name.slice(0, 60),
+      String(req.body?.short_label || name).trim().slice(0, 20),
+      req.body?.has_size ? 1 : 0,
+      req.body?.is_case ? 1 : 0,
+      max[0].next
+    ]
+  );
+  res.status(201).json(rows[0]);
+}));
+
+app.put('/api/catalog/:id', h(async (req, res) => {
+  const updates = {};
+  if ('name' in req.body) updates.name = String(req.body.name || '').trim().slice(0, 60);
+  if ('short_label' in req.body) updates.short_label = String(req.body.short_label || '').trim().slice(0, 20);
+  if ('has_size' in req.body) updates.has_size = req.body.has_size ? 1 : 0;
+  if ('is_case' in req.body) updates.is_case = req.body.is_case ? 1 : 0;
+  if ('sort_order' in req.body) updates.sort_order = Number(req.body.sort_order) || 0;
+  if ('active' in req.body) updates.active = req.body.active ? 1 : 0;
+  const fields = Object.keys(updates);
+  if (!fields.length) return res.status(400).json({ error: 'Nada para atualizar.' });
+  const sets = fields.map((f, i) => `${f} = $${i + 1}`).join(', ');
+  const { rows } = await q(
+    `UPDATE catalog_products SET ${sets} WHERE id = $${fields.length + 1} RETURNING *`,
+    [...Object.values(updates), req.params.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Produto não encontrado.' });
+  res.json(rows[0]);
+}));
+
+app.delete('/api/catalog/:id', h(async (req, res) => {
+  // Desativa em vez de apagar: pedidos antigos guardam o nome do produto.
+  await q('UPDATE catalog_products SET active = 0 WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// --- Fotos ---
+
+app.get('/api/photo-sets', h(async (req, res) => res.json(await listPhotoSets(req))));
+
+app.post('/api/photo-sets', h(async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Informe o nome do conjunto.' });
+  const { rows: max } = await q('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM photo_sets');
+  const { rows } = await q('INSERT INTO photo_sets (name, sort_order) VALUES ($1, $2) RETURNING *', [
+    name.slice(0, 60),
+    max[0].next
+  ]);
+  res.status(201).json({ ...rows[0], photos: [] });
+}));
+
+app.put('/api/photo-sets/:id', h(async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Informe o nome do conjunto.' });
+  const { rows } = await q('UPDATE photo_sets SET name = $1 WHERE id = $2 RETURNING *', [name.slice(0, 60), req.params.id]);
+  if (!rows.length) return res.status(404).json({ error: 'Conjunto não encontrado.' });
+  res.json(rows[0]);
+}));
+
+app.delete('/api/photo-sets/:id', h(async (req, res) => {
+  const { rows: photos } = await q('SELECT * FROM photos WHERE set_id = $1', [req.params.id]);
+  for (const photo of photos) {
+    try {
+      await deleteFile(photo.drive_file_id);
+    } catch (err) {
+      console.error('Falha ao excluir foto do Drive:', err.message);
+    }
+  }
+  await q('DELETE FROM photos WHERE set_id = $1', [req.params.id]);
+  await q('DELETE FROM photo_sets WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+// Inicia o upload da foto: o navegador manda o arquivo direto para o Drive.
+app.post('/api/photo-sets/:id/photos/session', h(async (req, res) => {
+  const { rows } = await q('SELECT * FROM photo_sets WHERE id = $1', [req.params.id]);
+  if (!rows.length) return res.status(404).json({ error: 'Conjunto não encontrado.' });
+  const { name, mimeType, size } = req.body || {};
+  if (!name) return res.status(400).json({ error: 'Informe o nome do arquivo.' });
+  if (mimeType && !PHOTO_MIMES.includes(mimeType)) {
+    return res.status(400).json({ error: 'Envie uma imagem JPG, PNG ou WEBP.' });
+  }
+  try {
+    const folderId = await ensurePhotosFolder();
+    const uploadUrl = await createUploadSessionInFolder(folderId, { name, mimeType, size }, req.headers.origin);
+    res.json({ uploadUrl });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+}));
+
+// Registra a foto depois que o navegador terminou o upload.
+app.post('/api/photo-sets/:id/photos', h(async (req, res) => {
+  const { rows: sets } = await q('SELECT * FROM photo_sets WHERE id = $1', [req.params.id]);
+  if (!sets.length) return res.status(404).json({ error: 'Conjunto não encontrado.' });
+  const fileId = req.body?.file_id;
+  if (!fileId) return res.status(400).json({ error: 'Informe o file_id do Drive.' });
+  const meta = await getFileMeta(fileId);
+  const { rows: max } = await q('SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM photos WHERE set_id = $1', [
+    sets[0].id
+  ]);
+  const { rows } = await q(
+    'INSERT INTO photos (set_id, drive_file_id, name, mime_type, sort_order) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+    [sets[0].id, meta.id, meta.name, meta.mimeType || null, max[0].next]
+  );
+  res.status(201).json({ ...rows[0], url: `${baseUrl(req)}/api/photos/${rows[0].id}` });
+}));
+
+app.delete('/api/photos/:id', h(async (req, res) => {
+  const { rows } = await q('SELECT * FROM photos WHERE id = $1', [req.params.id]);
+  if (!rows.length) return res.status(404).json({ error: 'Foto não encontrada.' });
+  try {
+    await deleteFile(rows[0].drive_file_id);
+  } catch (err) {
+    console.error('Falha ao excluir do Drive (removendo só o registro):', err.message);
+  }
+  await q('DELETE FROM photos WHERE id = $1', [rows[0].id]);
+  res.json({ ok: true });
 }));
 
 // ---------- Configurações ----------

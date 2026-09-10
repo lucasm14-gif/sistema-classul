@@ -528,5 +528,98 @@ check('lucas: hash do PIN não vaza nas configurações', settingsAfter.lucas_pi
 r = await fetch(`${B}/lucas/overview`, { headers: { 'Content-Type': 'application/json', 'X-Lucas-Token': lucasToken } });
 check('lucas: token do PIN não substitui o login', r.status === 401);
 
+// ---------- Conteúdo da extensão ----------
+
+r = await fetch(`${B}/extension/config`, { headers: H });
+const cfg = await r.json();
+check(
+  'config da extensão traz mensagens semeadas',
+  cfg.quick_messages.length === 7 && cfg.quick_messages.some((m) => m.title === 'Dados Cadastrais'),
+  `${cfg.quick_messages.length} mensagens`
+);
+check(
+  'config traz o catálogo com a plaqueta militar',
+  cfg.catalog.products.length === 11 &&
+    cfg.catalog.products.find((p) => p.name === 'Plaqueta Militar (EB)')?.has_size === false &&
+    cfg.catalog.products.find((p) => p.name === 'Estojo avulso')?.is_case === true,
+  `${cfg.catalog.products.length} produtos`
+);
+check('config traz cores e tamanhos', cfg.catalog.case_colors.length === 3 && cfg.catalog.plate_sizes.length === 5);
+r = await fetch(`${B}/extension/config`);
+check('config da extensão exige Bearer', r.status === 401);
+
+// mensagens: criar, editar, reordenar e apagar
+r = await fetch(`${B}/quick-messages`, {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({ title: 'Prazo', body: 'O prazo de produção é de 5 dias úteis.' })
+});
+const qm = await r.json();
+check('criar mensagem rápida', r.status === 201 && qm.title === 'Prazo' && qm.sort_order === 7);
+
+r = await fetch(`${B}/quick-messages/${qm.id}`, {
+  method: 'PUT',
+  headers: H,
+  body: JSON.stringify({ body: 'O prazo de produção é de 7 dias úteis.' })
+});
+check('editar mensagem rápida', (await r.json()).body.includes('7 dias'));
+
+r = await fetch(`${B}/quick-messages`, { headers: H });
+const allQm = await r.json();
+r = await fetch(`${B}/quick-messages-order`, {
+  method: 'PUT',
+  headers: H,
+  body: JSON.stringify({ ids: [qm.id, ...allQm.filter((m) => m.id !== qm.id).map((m) => m.id)] })
+});
+check('reordenar mensagens', (await r.json())[0].id === qm.id);
+
+r = await fetch(`${B}/quick-messages/${qm.id}`, { method: 'DELETE', headers: H });
+check('apagar mensagem rápida', (await r.json()).ok === true);
+
+// catálogo: novo produto aparece na config da extensão
+r = await fetch(`${B}/catalog`, {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({ name: 'Chaveiro Personalizado', short_label: 'Chaveiro', has_size: false })
+});
+const novoProduto = await r.json();
+check('criar produto no catálogo', r.status === 201 && novoProduto.name === 'Chaveiro Personalizado');
+
+r = await fetch(`${B}/extension/config`, { headers: H });
+check(
+  'produto novo já aparece para a extensão',
+  (await r.json()).catalog.products.some((p) => p.name === 'Chaveiro Personalizado')
+);
+
+r = await fetch(`${B}/catalog/${novoProduto.id}`, { method: 'DELETE', headers: H });
+await r.json();
+r = await fetch(`${B}/extension/config`, { headers: H });
+check(
+  'produto desativado some da config (mas não é apagado)',
+  !(await r.json()).catalog.products.some((p) => p.name === 'Chaveiro Personalizado')
+);
+
+// conjuntos de fotos
+r = await fetch(`${B}/photo-sets`, { method: 'POST', headers: H, body: JSON.stringify({ name: 'Placa de Homenagem' }) });
+const set = await r.json();
+check('criar conjunto de fotos', r.status === 201 && set.name === 'Placa de Homenagem' && set.photos.length === 0);
+
+r = await fetch(`${B}/photo-sets/${set.id}/photos/session`, {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({ name: 'foto.jpg', mimeType: 'image/jpeg', size: 1000 })
+});
+check('upload de foto exige Drive conectado', r.status === 400 && /Google Drive/.test((await r.json()).error || ''));
+
+r = await fetch(`${B}/photo-sets/${set.id}/photos/session`, {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({ name: 'arquivo.pdf', mimeType: 'application/pdf' })
+});
+check('upload recusa arquivo que não é imagem', r.status === 400 && /imagem/.test((await r.json()).error || ''));
+
+r = await fetch(`${B}/photos/99999`);
+check('foto inexistente devolve 404 (rota pública)', r.status === 404);
+
 server.close();
 console.log('\nFim dos testes.');
