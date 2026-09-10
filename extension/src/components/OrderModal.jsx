@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Send, X, LoaderCircle } from 'lucide-react';
-import { createOrder } from '../services/classul';
+import { createOrder, getExtensionConfig } from '../services/classul';
 
-const CASE_COLORS = ['Preto', 'Azul', 'Vermelho'];
-const PRODUCT_TYPES = ['Maquina', 'Jota', 'Sublimação'];
+// Reserva: usada só enquanto o catálogo do sistema não chega.
+const FALLBACK_CASE_COLORS = ['Preto', 'Azul', 'Vermelho'];
+const FALLBACK_PRODUCT_TYPES = ['Maquina', 'Jota', 'Sublimação'];
 // Catálogo de produtos vendidos (espelha o site classul.com.br).
-const PRODUCTS = [
+const FALLBACK_PRODUCTS = [
     'Placa de Homenagem',
     'Plaqueta Militar (EB)',
     'Placa de Inauguração',
@@ -22,7 +23,7 @@ const PRODUCTS = [
 const CASE_PRODUCT = 'Estojo avulso';
 // Produtos medidos pela tabela de tamanhos de placa. A plaqueta militar tem
 // tamanho único (padrão), por isso fica de fora.
-const SIZED_PRODUCTS = [
+const FALLBACK_SIZED_PRODUCTS = [
     'Placa de Homenagem',
     'Placa de Inauguração',
     'Placa Quadro Parede',
@@ -32,7 +33,7 @@ const SIZED_PRODUCTS = [
 ];
 // Medidas em cm da PLACA. No estojo avulso, é a placa que cabe dentro dele
 // (não a medida externa do estojo).
-const PLATE_SIZES = ['9x14', '12x17', '14x20', '16x25', '20x30'];
+const FALLBACK_PLATE_SIZES = ['9x14', '12x17', '14x20', '16x25', '20x30'];
 
 const CASE_COLOR_STYLES = {
     Preto: {
@@ -61,8 +62,30 @@ const OrderModal = ({ contactData, onClose }) => {
     const [productType, setProductType] = useState('Maquina');
     const [product, setProduct] = useState('');
     const [size, setSize] = useState('');
-    const caseOnly = product === CASE_PRODUCT;
-    const showSize = !product || SIZED_PRODUCTS.includes(product);
+    const [catalog, setCatalog] = useState(null);
+
+    // Catálogo vem do sistema: produto novo cadastrado lá aparece aqui sem recarregar.
+    useEffect(() => {
+        let alive = true;
+        getExtensionConfig({ refresh: true })
+            .then((cfg) => alive && cfg?.catalog?.products?.length && setCatalog(cfg.catalog))
+            .catch(() => {});
+        return () => {
+            alive = false;
+        };
+    }, []);
+
+    const products = catalog ? catalog.products.map((p) => p.name) : FALLBACK_PRODUCTS;
+    const caseProduct = catalog ? catalog.products.find((p) => p.is_case)?.name : CASE_PRODUCT;
+    const sizedProducts = catalog
+        ? catalog.products.filter((p) => p.has_size).map((p) => p.name)
+        : FALLBACK_SIZED_PRODUCTS;
+    const caseColors = catalog?.case_colors || FALLBACK_CASE_COLORS;
+    const plateSizes = catalog?.plate_sizes || FALLBACK_PLATE_SIZES;
+    const productTypes = catalog?.product_types || FALLBACK_PRODUCT_TYPES;
+
+    const caseOnly = Boolean(caseProduct) && product === caseProduct;
+    const showSize = !product || sizedProducts.includes(product);
     const [value, setValue] = useState('');
     const [isSending, setIsSending] = useState(false);
 
@@ -364,7 +387,7 @@ const OrderModal = ({ contactData, onClose }) => {
                         <label style={labelStyle}>
                             Produto
                         </label>
-                        {renderChoiceButtons(PRODUCTS, product, setProduct, null, 3)}
+                        {renderChoiceButtons(products, product, setProduct, null, 3)}
                     </div>
 
                     <div style={fieldCardStyle}>
@@ -380,7 +403,7 @@ const OrderModal = ({ contactData, onClose }) => {
                                 Sem estojo selecionado
                             </div>
                         )}
-                        {renderChoiceButtons(CASE_COLORS, caseColor, setCaseColor, CASE_COLOR_STYLES)}
+                        {renderChoiceButtons(caseColors, caseColor, setCaseColor, CASE_COLOR_STYLES)}
                     </div>
 
                     {!caseOnly && (
@@ -388,7 +411,7 @@ const OrderModal = ({ contactData, onClose }) => {
                             <label style={labelStyle}>
                                 Produção
                             </label>
-                            {renderChoiceButtons(PRODUCT_TYPES, productType, setProductType)}
+                            {renderChoiceButtons(productTypes, productType, setProductType)}
                         </div>
                     )}
 
@@ -400,7 +423,7 @@ const OrderModal = ({ contactData, onClose }) => {
                                     {caseOnly ? '(placa que cabe)' : 'da placa (cm)'}
                                 </span>
                             </label>
-                            {renderChoiceButtons(PLATE_SIZES, size, setSize)}
+                            {renderChoiceButtons(plateSizes, size, setSize)}
                         </div>
                     )}
 

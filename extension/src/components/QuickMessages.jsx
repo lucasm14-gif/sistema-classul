@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Copy, Check } from 'lucide-react';
+import { getExtensionConfig } from '../services/classul';
 
-const defaultMessages = [
+// Reserva: usada só enquanto o sistema não responde (primeira abertura sem
+// internet, ou extensão ainda não configurada). A fonte real é a aba Extensão.
+const fallbackMessages = [
     {
         id: 1,
         title: 'Saudação Inicial',
@@ -71,6 +74,27 @@ CONTA: 06061233.0-8`
 
 const QuickMessages = ({ onClose }) => {
     const [copiedId, setCopiedId] = useState(null);
+    const [messages, setMessages] = useState(null);
+    const [loadError, setLoadError] = useState('');
+
+    // Busca a versão fresca sempre que o painel abre — é isso que faz a edição
+    // no sistema aparecer aqui na hora, sem recarregar a extensão.
+    useEffect(() => {
+        let alive = true;
+        getExtensionConfig({ refresh: true })
+            .then((cfg) => {
+                if (!alive) return;
+                setMessages(cfg.quick_messages?.length ? cfg.quick_messages : fallbackMessages);
+            })
+            .catch((err) => {
+                if (!alive) return;
+                setLoadError(err.message);
+                setMessages(fallbackMessages);
+            });
+        return () => {
+            alive = false;
+        };
+    }, []);
 
     const handleCopy = (text, id) => {
         navigator.clipboard.writeText(text).then(() => {
@@ -150,7 +174,24 @@ const QuickMessages = ({ onClose }) => {
                     flexDirection: 'column',
                     gap: '12px'
                 }}>
-                    {defaultMessages.map((msg) => (
+                    {loadError && (
+                        <div style={{
+                            backgroundColor: '#fff4e5',
+                            border: '1px solid #ffd08a',
+                            borderRadius: '10px',
+                            padding: '10px 12px',
+                            fontSize: '12px',
+                            color: '#8a5a00'
+                        }}>
+                            Mostrando as mensagens salvas no aparelho — não consegui falar com o sistema. ({loadError})
+                        </div>
+                    )}
+                    {!messages && (
+                        <div style={{ padding: '24px', textAlign: 'center', color: '#8696a0', fontSize: '13px' }}>
+                            Buscando as mensagens do sistema…
+                        </div>
+                    )}
+                    {(messages || []).map((msg) => (
                         <div
                             key={msg.id}
                             style={{

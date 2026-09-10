@@ -28,7 +28,40 @@ async function apiRequest(path, options = {}) {
   return data;
 }
 
+// Conteúdo servido pelo sistema (mensagens rápidas, fotos e catálogo).
+// Guarda uma cópia local para o painel abrir instantâneo e continuar
+// funcionando se a internet cair; a cópia é atualizada a cada busca.
+const CONFIG_CACHE_KEY = 'classulExtensionConfig';
+
+async function fetchExtensionConfig() {
+  const data = await apiRequest('/api/extension/config');
+  await chrome.storage.local.set({ [CONFIG_CACHE_KEY]: { data, at: Date.now() } });
+  return data;
+}
+
+async function getExtensionConfig({ refresh } = {}) {
+  const cached = (await chrome.storage.local.get([CONFIG_CACHE_KEY]))[CONFIG_CACHE_KEY];
+  if (!refresh && cached?.data) {
+    // devolve o que está em cache e atualiza em segundo plano
+    fetchExtensionConfig().catch(() => {});
+    return cached.data;
+  }
+  try {
+    return await fetchExtensionConfig();
+  } catch (err) {
+    if (cached?.data) return cached.data; // offline: segue com a última cópia
+    throw err;
+  }
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'getExtensionConfig') {
+    getExtensionConfig({ refresh: request.refresh })
+      .then((data) => sendResponse({ success: true, data }))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
   if (request.action === 'createOrder') {
     apiRequest('/api/orders', {
       method: 'POST',

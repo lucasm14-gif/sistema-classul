@@ -21,3 +21,23 @@ export const createOrder = async (orderData) => {
 
     return response.data;
 };
+
+// Conteúdo mantido no sistema (mensagens rápidas, fotos e catálogo).
+// O background cuida do cache e da atualização em segundo plano.
+export const getExtensionConfig = async ({ refresh = false } = {}) => {
+    const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ action: 'getExtensionConfig', refresh }, (res) => {
+            if (chrome.runtime.lastError) {
+                resolve({ success: false, error: chrome.runtime.lastError.message });
+            } else {
+                resolve(res);
+            }
+        });
+    });
+
+    if (!response || !response.success) {
+        throw new Error(response?.error || 'Não foi possível buscar as informações do sistema.');
+    }
+
+    return response.data;
+};

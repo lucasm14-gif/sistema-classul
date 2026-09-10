@@ -1,4 +1,5 @@
 import { eventBus } from '../utils/events';
+import { getExtensionConfig } from '../services/classul';
 import { getActiveChatName, getActiveChatAvatar, getActiveChatPhone, scrapePhoneFromProfile, scrapeContactFromProfile, sleep } from '../utils/dom';
 
 let currentButton = null;
@@ -183,7 +184,8 @@ function createQuickMessagesButton() {
 }
 
 // Fotos de placa de homenagem enviadas todas de uma vez na conversa aberta
-const HOMENAGEM_PHOTOS = [
+// Reserva: usada só enquanto nenhum conjunto de fotos foi cadastrado no sistema.
+const FALLBACK_PHOTOS = [
     'bot-fotos/placa-homenagem-1.jpg',
     'bot-fotos/placa-homenagem-2.jpg',
     'bot-fotos/placa-homenagem-3.jpg',
@@ -196,6 +198,32 @@ async function fetchAssetAsFile(path, name) {
     if (!response.ok) throw new Error(`Falha ao carregar ${name}: ${response.status}`);
     const blob = await response.blob();
     return new File([blob], name, { type: blob.type || 'image/jpeg' });
+}
+
+async function fetchUrlAsFile(url, name) {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Falha ao baixar ${name}: ${response.status}`);
+    const blob = await response.blob();
+    return new File([blob], name, { type: blob.type || 'image/jpeg' });
+}
+
+// Conjuntos cadastrados na aba Extensão do sistema. Enquanto não houver
+// nenhum, segue valendo o conjunto embutido (nada quebra).
+async function loadPhotoSets() {
+    try {
+        const cfg = await getExtensionConfig();
+        const sets = (cfg.photo_sets || []).filter((set) => set.photos?.length);
+        if (sets.length) return sets;
+    } catch (error) {
+        console.warn('[Classul] Não consegui buscar as fotos do sistema:', error.message);
+    }
+    return [
+        {
+            id: 'local',
+            name: 'Placa de Homenagem',
+            photos: FALLBACK_PHOTOS.map((path, i) => ({ id: `local-${i}`, name: `placa-homenagem-${i + 1}.jpg`, path }))
+        }
+    ];
 }
 
 async function waitForElement2(finder, timeout = 8000, step = 150) {
@@ -314,7 +342,64 @@ if (typeof window !== 'undefined') {
 }
 
 // Cola as 5 fotos no campo de mensagem (via script na página) e envia como FOTO normal.
-async function sendHomenagemPhotos() {
+// Menu para escolher qual conjunto enviar (só aparece se houver mais de um).
+function pickPhotoSet(anchor, sets) {
+    return new Promise((resolve) => {
+        document.querySelector('.classul-photo-menu')?.remove();
+
+        const menu = document.createElement('div');
+        menu.className = 'classul-photo-menu';
+        const rect = anchor.getBoundingClientRect();
+        menu.style.cssText = `
+            position: fixed;
+            top: ${Math.round(rect.bottom + 8)}px;
+            left: ${Math.round(Math.max(8, rect.left - 90))}px;
+            z-index: 2147483647;
+            background: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+            padding: 6px;
+            min-width: 220px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        `;
+
+        const close = (value) => {
+            document.removeEventListener('mousedown', onOutside, true);
+            menu.remove();
+            resolve(value);
+        };
+        const onOutside = (e) => {
+            if (!menu.contains(e.target)) close(null);
+        };
+
+        for (const set of sets) {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.style.cssText = `
+                display: block;
+                width: 100%;
+                text-align: left;
+                padding: 10px 12px;
+                border: 0;
+                border-radius: 8px;
+                background: transparent;
+                cursor: pointer;
+                font-size: 13px;
+                color: #111b21;
+            `;
+            item.onmouseenter = () => (item.style.background = '#f0f2f5');
+            item.onmouseleave = () => (item.style.background = 'transparent');
+            item.innerHTML = `<strong>${set.name}</strong> <span style="color:#8696a0">· ${set.photos.length} foto${set.photos.length !== 1 ? 's' : ''}</span>`;
+            item.onclick = () => close(set);
+            menu.appendChild(item);
+        }
+
+        document.body.appendChild(menu);
+        setTimeout(() => document.addEventListener('mousedown', onOutside, true), 0);
+    });
+}
+
+async function sendPhotoSet(set) {
     if (!document.querySelector('#main')) throw new Error('Abra uma conversa primeiro.');
 
     ensurePageScript();
@@ -322,7 +407,11 @@ async function sendHomenagemPhotos() {
     for (let i = 0; i < 30 && !injectReady; i++) await sleep(100);
 
     const files = await Promise.all(
-        HOMENAGEM_PHOTOS.map((path, i) => fetchAssetAsFile(path, `placa-homenagem-${i + 1}.jpg`))
+        set.photos.map((photo, i) =>
+            photo.path
+                ? fetchAssetAsFile(photo.path, photo.name)
+                : fetchUrlAsFile(photo.url, photo.name || `foto-${i + 1}.jpg`)
+        )
     );
 
     const result = await new Promise((resolve) => {
@@ -355,7 +444,7 @@ function createImageCopyButton() {
   `;
 
     btn.innerHTML = defaultIcon;
-    btn.title = "Enviar as fotos de placa de homenagem nesta conversa";
+    btn.title = "Enviar fotos nesta conversa";
     btn.className = "kanban-header-btn quick-image-btn";
     btn.style.marginRight = '8px';
     btn.onclick = async (e) => {
@@ -368,7 +457,16 @@ function createImageCopyButton() {
         btn.innerHTML = `<div style="animation: spin 1s linear infinite">⌛</div>`;
 
         try {
-            const result = await sendHomenagemPhotos();
+            const sets = await loadPhotoSets();
+            const set = sets.length === 1 ? sets[0] : await pickPhotoSet(btn, sets);
+            if (!set) {
+                btn.innerHTML = defaultIcon;
+                btn.title = originalTitle;
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                return;
+            }
+            const result = await sendPhotoSet(set);
             btn.innerHTML = `
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M20 6L9 17l-5-5"></path>

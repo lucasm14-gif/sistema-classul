@@ -125,6 +125,27 @@ export const api = {
   botConversations: () => request('/api/bot/conversations'),
   botConversation: (phone) => request(`/api/bot/conversations/${phone}`),
   botReactivate: (phone) => request(`/api/bot/conversations/${phone}/reactivate`, { method: 'POST' }),
+  // Conteúdo servido à extensão
+  getExtensionConfig: () => request('/api/extension/config'),
+  listQuickMessages: () => request('/api/quick-messages'),
+  createQuickMessage: (data) => request('/api/quick-messages', { method: 'POST', body: JSON.stringify(data) }),
+  updateQuickMessage: (id, data) =>
+    request(`/api/quick-messages/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteQuickMessage: (id) => request(`/api/quick-messages/${id}`, { method: 'DELETE' }),
+  reorderQuickMessages: (ids) => request('/api/quick-messages-order', { method: 'PUT', body: JSON.stringify({ ids }) }),
+  listCatalog: () => request('/api/catalog'),
+  createCatalogProduct: (data) => request('/api/catalog', { method: 'POST', body: JSON.stringify(data) }),
+  updateCatalogProduct: (id, data) => request(`/api/catalog/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteCatalogProduct: (id) => request(`/api/catalog/${id}`, { method: 'DELETE' }),
+  listPhotoSets: () => request('/api/photo-sets'),
+  createPhotoSet: (name) => request('/api/photo-sets', { method: 'POST', body: JSON.stringify({ name }) }),
+  updatePhotoSet: (id, name) => request(`/api/photo-sets/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+  deletePhotoSet: (id) => request(`/api/photo-sets/${id}`, { method: 'DELETE' }),
+  createPhotoSession: (setId, meta) =>
+    request(`/api/photo-sets/${setId}/photos/session`, { method: 'POST', body: JSON.stringify(meta) }),
+  registerPhoto: (setId, fileId) =>
+    request(`/api/photo-sets/${setId}/photos`, { method: 'POST', body: JSON.stringify({ file_id: fileId }) }),
+  deletePhoto: (id) => request(`/api/photos/${id}`, { method: 'DELETE' }),
   listInstances: () => request('/api/evolution/instances'),
   testMessage: (number) =>
     request('/api/evolution/test', { method: 'POST', body: JSON.stringify({ number }) }),
