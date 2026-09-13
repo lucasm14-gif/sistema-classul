@@ -45,6 +45,9 @@ const check = (name, cond, extra = '') => {
   if (!cond) process.exitCode = 1;
 };
 
+// O webhook devolve { watcher, bot }: o observador e o bot rodam lado a lado.
+// Estes testes olham só a parte do bot.
+
 // garante schema + configura o bot direto no banco
 await ensureSchema();
 await setSettings({
@@ -71,24 +74,24 @@ check('webhook com secret errado é ignorado', (await r.json()).ignored === 'sec
 
 // 2. número fora do teste é ignorado
 r = await fetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: H, body: JSON.stringify(upsert(OTHER_JID, 'oi')) });
-check('número fora do teste é ignorado', (await r.json()).ignored === 'fora do número de teste');
+check('número fora do teste é ignorado', (await r.json()).bot.ignored === 'fora do número de teste');
 
 // 3. primeira mensagem do número de teste → bot responde
 r = await fetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: H, body: JSON.stringify(upsert(TEST_JID, 'Oi, quero uma placa')) });
-let res = await r.json();
+let res = (await r.json()).bot;
 check('bot responde a primeira mensagem', res.replied === true && res.done === false, sentMessages.at(-1));
 
 // 4. bot conclui quando o modelo emite [[ATENDIDO]]
 openaiReply = 'Perfeito! Então é uma Placa de homenagem 20x30 para aposentadoria. Um atendente da Classul vai te passar arte, valor e prazo. Obrigado! 🙂\n[[ATENDIDO]]';
 r = await fetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: H, body: JSON.stringify(upsert(TEST_JID, 'Placa de homenagem 20x30 pra aposentadoria')) });
-res = await r.json();
+res = (await r.json()).bot;
 check('bot encerra ao entender o pedido', res.replied === true && res.done === true);
 check('token [[ATENDIDO]] não vai para o cliente', !sentMessages.at(-1).includes('ATENDIDO'), sentMessages.at(-1));
 
 // 5. depois de encerrado, não responde mais
 const before = sentMessages.length;
 r = await fetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: H, body: JSON.stringify(upsert(TEST_JID, 'mais uma pergunta dias depois')) });
-res = await r.json();
+res = (await r.json()).bot;
 check('não responde após encerrar', res.ignored === 'conversa já atendida' && sentMessages.length === before);
 
 // 6. conversa aparece na listagem como atendida
@@ -101,20 +104,20 @@ r = await fetch(`${B}/bot/conversations/555192462861/reactivate`, { method: 'POS
 check('reativar conversa', (await r.json()).ok === true);
 openaiReply = 'Oi de novo! Como posso ajudar? 🙂';
 r = await fetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: H, body: JSON.stringify(upsert(TEST_JID, 'voltei')) });
-check('responde após reativar', (await r.json()).replied === true);
+check('responde após reativar', (await r.json()).bot.replied === true);
 
 // 8. handoff humano: você responde manualmente (fromMe, não é eco do bot) → silencia
 r = await fetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: H, body: JSON.stringify(upsert(TEST_JID, 'Oi, é a Classul falando manualmente', true, 'HUMANO1')) });
-check('handoff humano detectado', (await r.json()).handoff === true);
+check('handoff humano detectado', (await r.json()).bot.handoff === true);
 const after = sentMessages.length;
 r = await fetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: H, body: JSON.stringify(upsert(TEST_JID, 'cliente responde depois do humano')) });
-check('bot silencia após humano assumir', (await r.json()).ignored === 'conversa já atendida' && sentMessages.length === after);
+check('bot silencia após humano assumir', (await r.json()).bot.ignored === 'conversa já atendida' && sentMessages.length === after);
 
 // 9. eco do próprio bot (fromMe com conteúdo que o bot mandou) não vira handoff
 await q("UPDATE bot_conversations SET status = 'active', handled_reason = NULL WHERE phone = '555192462861'");
 const botText = sentMessages[0];
 r = await fetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: H, body: JSON.stringify(upsert(TEST_JID, botText, true, 'ECO1')) });
-check('eco do bot não é tratado como handoff', (await r.json()).ignored === 'eco do próprio bot');
+check('eco do bot não é tratado como handoff', (await r.json()).bot.ignored === 'eco do próprio bot');
 
 // 10. bot envia foto quando o modelo emite [[FOTO:...]] e o token não vai no texto
 sentImages.length = 0;

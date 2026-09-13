@@ -150,6 +150,11 @@ export const api = {
   listWatchedChats: () => request('/api/watched-chats'),
   getWatchedChat: (phone) => request(`/api/watched-chats/${phone}`),
   unwatchChat: (phone) => request(`/api/watched-chats/${phone}`, { method: 'DELETE' }),
+  listSuggestions: () => request('/api/suggestions'),
+  acceptSuggestion: (id, data = {}) =>
+    request(`/api/suggestions/${id}/accept`, { method: 'POST', body: JSON.stringify(data) }),
+  dismissSuggestion: (id) => request(`/api/suggestions/${id}/dismiss`, { method: 'POST' }),
+  analyzeChat: (phone) => request(`/api/watched-chats/${phone}/analyze`, { method: 'POST' }),
   listInboxFiles: () => request('/api/inbox-files'),
   attachInboxFile: (id, orderId, category = 'arquivo') =>
     request(`/api/inbox-files/${id}/attach`, {

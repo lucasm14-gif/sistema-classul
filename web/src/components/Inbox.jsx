@@ -8,7 +8,13 @@ import {
   ExternalLink,
   FileText,
   RefreshCw,
-  MessageCircle
+  MessageCircle,
+  Sparkles,
+  Check,
+  X,
+  CheckCheck,
+  Quote,
+  LoaderCircle
 } from 'lucide-react';
 import { api } from '../api';
 import { useToast } from './Toast';
@@ -33,6 +39,152 @@ function formatBytes(bytes) {
   if (!Number.isFinite(n) || n <= 0) return '';
   if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const field =
+  'w-full bg-black/[0.03] border border-black/5 rounded-xl px-3 py-2 text-sm font-medium text-brand-950 outline-none focus:border-brand-400 focus:bg-white transition-colors';
+const fieldLabel = 'block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5';
+
+// Sugestão de pedido novo: os campos vêm preenchidos pela IA e são editáveis,
+// porque conversa de WhatsApp é bagunçada e a extração erra.
+function NewOrderSuggestion({ suggestion, onAccept, onDismiss }) {
+  const d = suggestion.data || {};
+  const [form, setForm] = useState({
+    customer_name: d.cliente || suggestion.chat_name || '',
+    product: d.produto || '',
+    size: d.tamanho || '',
+    value: d.valor || '',
+    due_date: d.prazo || '',
+    description: d.descricao || ''
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const accept = async () => {
+    setBusy(true);
+    await onAccept(suggestion, form);
+    setBusy(false);
+  };
+
+  return (
+    <div className="p-5 space-y-4">
+      <div className="flex items-start gap-3">
+        <span className="w-8 h-8 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center shrink-0">
+          <Sparkles size={15} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-extrabold text-brand-950 text-sm">
+            {suggestion.chat_name || formatPhoneBR(suggestion.phone)}
+          </p>
+          <p className="text-xs font-medium text-slate-500">{suggestion.summary}</p>
+          {suggestion.stage_label && (
+            <span className="inline-block mt-1.5 text-[10px] font-extrabold uppercase tracking-wide bg-black/[0.05] text-slate-500 px-2 py-0.5 rounded-full">
+              {suggestion.stage_label}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div className="sm:col-span-2">
+          <label className={fieldLabel}>Cliente</label>
+          <input className={field} value={form.customer_name} onChange={set('customer_name')} />
+        </div>
+        <div>
+          <label className={fieldLabel}>Produto</label>
+          <input className={field} value={form.product} onChange={set('product')} placeholder="não identificado" />
+        </div>
+        <div>
+          <label className={fieldLabel}>Tamanho</label>
+          <input className={field} value={form.size} onChange={set('size')} placeholder="—" />
+        </div>
+        <div>
+          <label className={fieldLabel}>Valor</label>
+          <input className={field} value={form.value} onChange={set('value')} placeholder="—" />
+        </div>
+        <div>
+          <label className={fieldLabel}>Entrega</label>
+          <input type="date" className={field} value={form.due_date || ''} onChange={set('due_date')} />
+        </div>
+        <div className="sm:col-span-2">
+          <label className={fieldLabel}>Descrição</label>
+          <textarea className={`${field} h-20 resize-none`} value={form.description} onChange={set('description')} />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => onDismiss(suggestion)}
+          className="flex items-center gap-1.5 text-xs font-extrabold text-slate-500 hover:text-flame-600 px-4 py-2.5 rounded-full transition-colors"
+        >
+          <X size={14} /> Descartar
+        </button>
+        <button
+          onClick={accept}
+          disabled={busy || !form.customer_name.trim()}
+          className="ml-auto flex items-center gap-1.5 text-xs font-extrabold text-white bg-brand-600 hover:bg-brand-700 px-5 py-2.5 rounded-full transition-colors disabled:opacity-40"
+        >
+          {busy ? <LoaderCircle size={14} className="animate-spin" /> : <Check size={14} />}
+          Criar pedido
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Aprovação da arte: o que libera a produção. Mostra a frase do cliente.
+function ApprovalSuggestion({ suggestion, onAccept, onDismiss }) {
+  const [busy, setBusy] = useState(false);
+  const accept = async () => {
+    setBusy(true);
+    await onAccept(suggestion, {});
+    setBusy(false);
+  };
+
+  return (
+    <div className="p-5 space-y-3">
+      <div className="flex items-start gap-3">
+        <span className="w-8 h-8 rounded-xl bg-sun-100 text-yellow-700 flex items-center justify-center shrink-0">
+          <CheckCheck size={15} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-extrabold text-brand-950 text-sm">
+            Arte aprovada
+            {suggestion.order && (
+              <span className="ml-2 text-brand-600">{suggestion.order.order_number}</span>
+            )}
+          </p>
+          <p className="text-xs font-medium text-slate-500">
+            {suggestion.chat_name || formatPhoneBR(suggestion.phone)} · {suggestion.summary}
+          </p>
+        </div>
+      </div>
+
+      {suggestion.data?.evidencia && (
+        <blockquote className="flex gap-2 bg-black/[0.03] rounded-2xl px-4 py-3">
+          <Quote size={13} className="text-slate-400 shrink-0 mt-0.5" />
+          <p className="text-xs font-semibold text-slate-600 italic">"{suggestion.data.evidencia}"</p>
+        </blockquote>
+      )}
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => onDismiss(suggestion)}
+          className="flex items-center gap-1.5 text-xs font-extrabold text-slate-500 hover:text-flame-600 px-4 py-2.5 rounded-full transition-colors"
+        >
+          <X size={14} /> Não é aprovação
+        </button>
+        <button
+          onClick={accept}
+          disabled={busy || !suggestion.order}
+          className="ml-auto flex items-center gap-1.5 text-xs font-extrabold text-white bg-brand-600 hover:bg-brand-700 px-5 py-2.5 rounded-full transition-colors disabled:opacity-40"
+        >
+          {busy ? <LoaderCircle size={14} className="animate-spin" /> : <Check size={14} />}
+          Mover para produção
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function FileRow({ file, orders, onAttach, onDelete }) {
@@ -105,15 +257,23 @@ export default function Inbox({ onAuthError }) {
   const [files, setFiles] = useState(null);
   const [chats, setChats] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
+  const [analyzing, setAnalyzing] = useState(null);
   const toast = useToast();
 
   const load = useCallback(
     async ({ silent } = {}) => {
       try {
-        const [f, c, o] = await Promise.all([api.listInboxFiles(), api.listWatchedChats(), api.listOrders()]);
+        const [f, c, o, sg] = await Promise.all([
+          api.listInboxFiles(),
+          api.listWatchedChats(),
+          api.listOrders(),
+          api.listSuggestions()
+        ]);
         setFiles(f);
         setChats(c);
         setOrders(o);
+        setSuggestions(sg);
       } catch (err) {
         if (!onAuthError(err) && !silent) toast(err.message, 'error');
       }
@@ -135,6 +295,46 @@ export default function Inbox({ onAuthError }) {
       toast(`Arquivo anexado ao pedido ${order?.order_number || ''}.`, 'success');
     } catch (err) {
       if (!onAuthError(err)) toast(err.message, 'error');
+    }
+  };
+
+  const acceptSuggestion = async (suggestion, form) => {
+    try {
+      const result = await api.acceptSuggestion(suggestion.id, form);
+      setSuggestions((prev) => prev.filter((x) => x.id !== suggestion.id));
+      toast(
+        suggestion.kind === 'arte_aprovada'
+          ? `${result.order.order_number} foi para Produção.`
+          : `Pedido ${result.order.order_number} criado${result.attached_files ? ` com ${result.attached_files} arquivo(s)` : ''}.`,
+        'success'
+      );
+      load({ silent: true });
+    } catch (err) {
+      if (!onAuthError(err)) toast(err.message, 'error');
+    }
+  };
+
+  const dismissSuggestion = async (suggestion) => {
+    try {
+      await api.dismissSuggestion(suggestion.id);
+      setSuggestions((prev) => prev.filter((x) => x.id !== suggestion.id));
+    } catch (err) {
+      if (!onAuthError(err)) toast(err.message, 'error');
+    }
+  };
+
+  const analyze = async (chat) => {
+    setAnalyzing(chat.phone);
+    try {
+      const result = await api.analyzeChat(chat.phone);
+      await load({ silent: true });
+      if (result.suggestion) toast('Sugestão atualizada.', 'success');
+      else if (result.error) toast(result.error, 'error');
+      else toast('Nada novo para sugerir nessa conversa.', 'info');
+    } catch (err) {
+      if (!onAuthError(err)) toast(err.message, 'error');
+    } finally {
+      setAnalyzing(null);
     }
   };
 
@@ -177,6 +377,42 @@ export default function Inbox({ onAuthError }) {
           <RefreshCw size={16} />
         </button>
       </div>
+
+      {suggestions.length > 0 && (
+        <section className={card}>
+          <div className="px-5 py-4 border-b border-black/5 flex items-center gap-2">
+            <Sparkles size={15} className="text-brand-600" />
+            <h3 className="font-extrabold tracking-tight text-brand-950 text-sm mr-auto">
+              Sugestões da conversa
+            </h3>
+            <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-brand-50 text-brand-700">
+              {suggestions.length}
+            </span>
+          </div>
+          <p className="px-5 pt-3 text-[11px] font-medium text-slate-400">
+            Lido da conversa pela IA. Confira antes de confirmar — nada entra no quadro sozinho.
+          </p>
+          <div className="divide-y divide-black/5">
+            {suggestions.map((sg) =>
+              sg.kind === 'arte_aprovada' ? (
+                <ApprovalSuggestion
+                  key={sg.id}
+                  suggestion={sg}
+                  onAccept={acceptSuggestion}
+                  onDismiss={dismissSuggestion}
+                />
+              ) : (
+                <NewOrderSuggestion
+                  key={sg.id}
+                  suggestion={sg}
+                  onAccept={acceptSuggestion}
+                  onDismiss={dismissSuggestion}
+                />
+              )
+            )}
+          </div>
+        </section>
+      )}
 
       <section className={card}>
         <div className="px-5 py-4 border-b border-black/5 flex items-center gap-2">
@@ -224,10 +460,22 @@ export default function Inbox({ onAuthError }) {
                     {c.chat_name || formatPhoneBR(c.phone)}
                   </span>
                   <span className="block text-[11px] font-medium text-slate-400">
-                    {c.messages_count} mensagem{c.messages_count !== 1 ? 's' : ''}
+                    {c.messages_count} {c.messages_count === 1 ? 'mensagem' : 'mensagens'}
                     {c.last_message_at ? ` · última ${formatWhen(c.last_message_at)}` : ''}
                   </span>
                 </span>
+                <button
+                  onClick={() => analyze(c)}
+                  disabled={analyzing === c.phone}
+                  title="Analisar a conversa agora"
+                  className="p-2 rounded-full text-brand-600 hover:bg-brand-100 transition-colors shrink-0 disabled:opacity-40"
+                >
+                  {analyzing === c.phone ? (
+                    <LoaderCircle size={16} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={16} />
+                  )}
+                </button>
                 <button
                   onClick={() => openWhatsApp(c.phone)}
                   title="Abrir no WhatsApp"

@@ -28,6 +28,7 @@ import {
 } from '../lib/google.js';
 import { handleIncoming } from '../lib/bot.js';
 import { handleWatchedMessage } from '../lib/watcher.js';
+import { analyzeChat, STAGES } from '../lib/analyst.js';
 import { CASE_COLORS, PLATE_SIZES, PRODUCT_TYPES } from '../lib/default-content.js';
 
 const app = express();
@@ -1679,6 +1680,130 @@ app.delete('/api/inbox-files/:id', h(async (req, res) => {
     console.error('Falha ao excluir do Drive (removendo só o registro):', err.message);
   }
   await q('DELETE FROM chat_files WHERE id = $1', [rows[0].id]);
+  res.json({ ok: true });
+}));
+
+// ---------- Sugestões do analista ----------
+
+function serializeSuggestion(row) {
+  let data = {};
+  try {
+    data = JSON.parse(row.data || '{}');
+  } catch {
+    data = {};
+  }
+  return { ...row, data, stage_label: STAGES[row.stage] || row.stage || null };
+}
+
+app.get('/api/suggestions', h(async (req, res) => {
+  const status = req.query.status === 'todas' ? null : req.query.status || 'pendente';
+  const { rows } = await q(
+    status
+      ? 'SELECT * FROM order_suggestions WHERE status = $1 ORDER BY created_at DESC, id DESC'
+      : 'SELECT * FROM order_suggestions ORDER BY created_at DESC, id DESC',
+    status ? [status] : []
+  );
+  const orderIds = [...new Set(rows.map((r) => r.order_id).filter(Boolean))];
+  const orderMap = new Map();
+  for (const id of orderIds) {
+    const order = await getOrder(id);
+    if (order) orderMap.set(id, serializeOrder(order));
+  }
+  res.json(rows.map((r) => ({ ...serializeSuggestion(r), order: orderMap.get(r.order_id) || null })));
+}));
+
+// Roda o analista na hora (o botão "Analisar agora").
+app.post('/api/watched-chats/:phone/analyze', h(async (req, res) => {
+  const phone = normalizePhone(req.params.phone) || String(req.params.phone).replace(/\D/g, '');
+  const result = await analyzeChat(phone, { force: true });
+  res.json(result.suggestion ? { ...result, suggestion: serializeSuggestion(result.suggestion) } : result);
+}));
+
+// Aceitar: cria o pedido sugerido, ou manda o pedido existente para produção
+// quando a sugestão é de arte aprovada.
+app.post('/api/suggestions/:id/accept', h(async (req, res) => {
+  const { rows } = await q('SELECT * FROM order_suggestions WHERE id = $1', [req.params.id]);
+  const suggestion = rows[0];
+  if (!suggestion) return res.status(404).json({ error: 'Sugestão não encontrada.' });
+  if (suggestion.status !== 'pendente') return res.status(400).json({ error: 'Essa sugestão já foi resolvida.' });
+
+  const user = currentUser(req);
+  const data = serializeSuggestion(suggestion).data;
+
+  if (suggestion.kind === 'arte_aprovada') {
+    const order = await getOrder(suggestion.order_id);
+    if (!order) return res.status(404).json({ error: 'O pedido dessa sugestão não existe mais.' });
+    await q(
+      "UPDATE orders SET status = 'producao', delivered_at = NULL, updated_at = now(), updated_by = $2 WHERE id = $1",
+      [order.id, user]
+    );
+    await q(
+      'INSERT INTO order_comments (order_id, author, body) VALUES ($1, $2, $3)',
+      [order.id, user, `Arte aprovada pelo cliente no WhatsApp.${data.evidencia ? `\n"${data.evidencia}"` : ''}`]
+    );
+    await q(
+      "UPDATE order_suggestions SET status = 'aceita', resolved_at = now(), resolved_by = $2 WHERE id = $1",
+      [suggestion.id, user]
+    );
+    return res.json({ ok: true, order: serializeOrder(await getOrder(order.id)) });
+  }
+
+  // Novo pedido: o corpo pode trazer correções feitas por você na tela.
+  const body = req.body || {};
+  const customerName = String(body.customer_name || data.cliente || suggestion.chat_name || '').trim();
+  if (!customerName) return res.status(400).json({ error: 'Informe o nome do cliente.' });
+
+  const client = await findOrCreateClient(customerName, suggestion.phone);
+  const pickupCode = await generatePickupCode();
+  const descricao = [data.descricao, data.quantidade ? `Quantidade: ${data.quantidade}` : null]
+    .filter(Boolean)
+    .join('\n');
+
+  const { rows: created } = await q(
+    `INSERT INTO orders (customer_name, phone, description, product, size, value, due_date, status, client_id, payment_status, pickup_code, created_by, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'novo', $8, 'pendente', $9, $10, $10) RETURNING *`,
+    [
+      customerName,
+      suggestion.phone,
+      body.description ?? descricao ?? null,
+      body.product ?? data.produto ?? null,
+      body.size ?? data.tamanho ?? null,
+      body.value ?? data.valor ?? null,
+      body.due_date ?? data.prazo ?? null,
+      client?.id || null,
+      pickupCode,
+      user
+    ]
+  );
+  const order = created[0];
+
+  // Arquivos já recebidos deste cliente passam a ser anexos do pedido novo.
+  const { rows: pendingFiles } = await q(
+    'SELECT * FROM chat_files WHERE phone = $1 AND attached_order_id IS NULL',
+    [suggestion.phone]
+  );
+  for (const file of pendingFiles) {
+    await q(
+      `INSERT INTO attachments (order_id, drive_file_id, name, mime_type, size, web_view_link, category)
+       VALUES ($1, $2, $3, $4, $5, $6, 'material')`,
+      [order.id, file.drive_file_id, file.name, file.mime_type, file.size, file.web_view_link]
+    );
+    await q('UPDATE chat_files SET attached_order_id = $1 WHERE id = $2', [order.id, file.id]);
+  }
+
+  await q(
+    "UPDATE order_suggestions SET status = 'aceita', order_id = $2, resolved_at = now(), resolved_by = $3 WHERE id = $1",
+    [suggestion.id, order.id, user]
+  );
+  res.status(201).json({ ok: true, order: serializeOrder(order), attached_files: pendingFiles.length });
+}));
+
+app.post('/api/suggestions/:id/dismiss', h(async (req, res) => {
+  const { rowCount } = await q(
+    "UPDATE order_suggestions SET status = 'descartada', resolved_at = now(), resolved_by = $2 WHERE id = $1 AND status = 'pendente'",
+    [req.params.id, currentUser(req)]
+  );
+  if (!rowCount) return res.status(404).json({ error: 'Sugestão não encontrada ou já resolvida.' });
   res.json({ ok: true });
 }));
 
