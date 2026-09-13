@@ -621,5 +621,79 @@ check('upload recusa arquivo que não é imagem', r.status === 400 && /imagem/.t
 r = await fetch(`${B}/photos/99999`);
 check('foto inexistente devolve 404 (rota pública)', r.status === 404);
 
+// ---------- Observador de conversas (watcher) ----------
+
+r = await fetch(`${B}/settings`, { headers: H });
+const secret = (await r.json()).bot_webhook_secret;
+
+const upsert = (phone, message, extra = {}) =>
+  fetch(`${B}/bot/webhook?secret=${secret}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      event: 'messages.upsert',
+      data: {
+        key: { remoteJid: `${phone}@s.whatsapp.net`, id: `m-${Math.random().toString(16).slice(2)}`, fromMe: false },
+        pushName: 'Cliente Observado',
+        message,
+        ...extra
+      }
+    })
+  });
+
+// conversa NÃO acompanhada é ignorada (é isso que segura o custo)
+r = await upsert('5551911112222', { conversation: 'oi, quero um orçamento' });
+let hook = await r.json();
+check('mensagem de conversa não acompanhada é ignorada', /não acompanhada/.test(hook.watcher?.ignored || ''), JSON.stringify(hook.watcher));
+
+// marcar a conversa
+r = await fetch(`${B}/watched-chats/5551911112222`, {
+  method: 'PUT',
+  headers: H,
+  body: JSON.stringify({ name: 'Cliente Observado' })
+});
+check('marcar conversa para acompanhar', (await r.json()).watched === true);
+
+// agora a mensagem é capturada — mesmo com o bot desligado
+r = await upsert('5551911112222', { conversation: 'preciso de 3 placas 14x20' });
+hook = await r.json();
+check(
+  'mensagem capturada mesmo com o bot desligado',
+  hook.watcher?.watched === true && /desativado/.test(hook.bot?.ignored || ''),
+  JSON.stringify(hook)
+);
+
+r = await fetch(`${B}/watched-chats/5551911112222`, { headers: H });
+const watched = await r.json();
+check(
+  'histórico da conversa guardado',
+  watched.watched === true && watched.messages.length === 1 && /3 placas/.test(watched.messages[0].body),
+  `${watched.messages.length} mensagem(ns)`
+);
+
+// legenda de foto entra como texto e o tipo de mídia é registrado
+r = await upsert('5551911112222', { imageMessage: { caption: 'a arte é essa', mimetype: 'image/jpeg' } });
+hook = await r.json();
+check('foto registrada como mídia', hook.watcher?.media === 'imagem', JSON.stringify(hook.watcher));
+check(
+  'falha ao baixar mídia não derruba o webhook',
+  Boolean(hook.watcher?.file?.error),
+  hook.watcher?.file?.error?.slice(0, 60)
+);
+
+r = await fetch(`${B}/watched-chats`, { headers: H });
+const watchedList = await r.json();
+check('listar conversas acompanhadas', watchedList.length === 1 && watchedList[0].messages_count === 2);
+
+// caixa de entrada de arquivos
+r = await fetch(`${B}/inbox-files`, { headers: H });
+check('caixa de entrada começa vazia', (await r.json()).length === 0);
+
+// deixar de acompanhar
+r = await fetch(`${B}/watched-chats/5551911112222`, { method: 'DELETE', headers: H });
+check('parar de acompanhar', (await r.json()).ok === true);
+r = await upsert('5551911112222', { conversation: 'mais uma' });
+check('depois de desmarcar volta a ignorar', /não acompanhada/.test((await r.json()).watcher?.ignored || ''));
+
 server.close();
 console.log('\nFim dos testes.');

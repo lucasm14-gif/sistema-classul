@@ -27,6 +27,7 @@ import {
   deleteFile
 } from '../lib/google.js';
 import { handleIncoming } from '../lib/bot.js';
+import { handleWatchedMessage } from '../lib/watcher.js';
 import { CASE_COLORS, PLATE_SIZES, PRODUCT_TYPES } from '../lib/default-content.js';
 
 const app = express();
@@ -92,8 +93,16 @@ app.all('/api/bot/webhook', async (req, res) => {
     if (req.method !== 'POST' || !event.includes('messages.upsert')) {
       return res.status(200).json({ ignored: 'evento ignorado', event });
     }
-    const result = await handleIncoming(req.body, baseUrl(req));
-    res.status(200).json(result);
+    // Observador e bot são independentes: um só escuta, o outro responde.
+    // Um erro em qualquer um deles não pode derrubar o webhook.
+    const [watched, bot] = await Promise.allSettled([
+      handleWatchedMessage(req.body),
+      handleIncoming(req.body, baseUrl(req))
+    ]);
+    res.status(200).json({
+      watcher: watched.status === 'fulfilled' ? watched.value : { error: watched.reason?.message },
+      bot: bot.status === 'fulfilled' ? bot.value : { error: bot.reason?.message }
+    });
   } catch (err) {
     console.error('bot webhook:', err);
     res.status(200).json({ error: err.message });
@@ -1593,6 +1602,83 @@ app.delete('/api/photos/:id', h(async (req, res) => {
     console.error('Falha ao excluir do Drive (removendo só o registro):', err.message);
   }
   await q('DELETE FROM photos WHERE id = $1', [rows[0].id]);
+  res.json({ ok: true });
+}));
+
+// ---------- Conversas acompanhadas (observador do WhatsApp) ----------
+
+app.get('/api/watched-chats', h(async (req, res) => {
+  const { rows } = await q('SELECT * FROM watched_chats ORDER BY last_message_at DESC NULLS LAST, phone ASC');
+  const { rows: counts } = await q('SELECT phone, COUNT(*)::int AS n FROM chat_messages GROUP BY phone');
+  const map = new Map(counts.map((r) => [r.phone, r.n]));
+  res.json(rows.map((r) => ({ ...r, messages_count: map.get(r.phone) || 0 })));
+}));
+
+app.get('/api/watched-chats/:phone', h(async (req, res) => {
+  const phone = normalizePhone(req.params.phone) || String(req.params.phone).replace(/\D/g, '');
+  const { rows } = await q('SELECT * FROM watched_chats WHERE phone = $1', [phone]);
+  if (!rows.length) return res.json({ phone, watched: false });
+  const { rows: messages } = await q(
+    'SELECT * FROM chat_messages WHERE phone = $1 ORDER BY id ASC LIMIT 300',
+    [phone]
+  );
+  res.json({ ...rows[0], watched: true, messages });
+}));
+
+app.put('/api/watched-chats/:phone', h(async (req, res) => {
+  const phone = normalizePhone(req.params.phone) || String(req.params.phone).replace(/\D/g, '');
+  if (!phone) return res.status(400).json({ error: 'Telefone inválido.' });
+  const { rows } = await q(
+    `INSERT INTO watched_chats (phone, chat_name, added_by) VALUES ($1, $2, $3)
+     ON CONFLICT (phone) DO UPDATE SET chat_name = COALESCE(EXCLUDED.chat_name, watched_chats.chat_name)
+     RETURNING *`,
+    [phone, req.body?.name ? String(req.body.name).slice(0, 120) : null, currentUser(req)]
+  );
+  res.json({ ...rows[0], watched: true });
+}));
+
+app.delete('/api/watched-chats/:phone', h(async (req, res) => {
+  const phone = normalizePhone(req.params.phone) || String(req.params.phone).replace(/\D/g, '');
+  await q('DELETE FROM watched_chats WHERE phone = $1', [phone]);
+  res.json({ ok: true, watched: false });
+}));
+
+// --- Arquivos recebidos que ainda não têm pedido ---
+
+app.get('/api/inbox-files', h(async (req, res) => {
+  const { rows } = await q(
+    'SELECT * FROM chat_files WHERE attached_order_id IS NULL ORDER BY created_at DESC, id DESC'
+  );
+  res.json(rows);
+}));
+
+// Move o arquivo da caixa de entrada para um pedido (vira anexo dele).
+app.post('/api/inbox-files/:id/attach', h(async (req, res) => {
+  const { rows } = await q('SELECT * FROM chat_files WHERE id = $1', [req.params.id]);
+  const file = rows[0];
+  if (!file) return res.status(404).json({ error: 'Arquivo não encontrado.' });
+  if (file.attached_order_id) return res.status(400).json({ error: 'Esse arquivo já foi anexado a um pedido.' });
+  const order = await getOrder(req.body?.order_id);
+  if (!order) return res.status(404).json({ error: 'Pedido não encontrado.' });
+  const category = req.body?.category === 'nota_fiscal' ? 'nota_fiscal' : 'arquivo';
+  const { rows: created } = await q(
+    `INSERT INTO attachments (order_id, drive_file_id, name, mime_type, size, web_view_link, category)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [order.id, file.drive_file_id, file.name, file.mime_type, file.size, file.web_view_link, category]
+  );
+  await q('UPDATE chat_files SET attached_order_id = $1 WHERE id = $2', [order.id, file.id]);
+  res.status(201).json(created[0]);
+}));
+
+app.delete('/api/inbox-files/:id', h(async (req, res) => {
+  const { rows } = await q('SELECT * FROM chat_files WHERE id = $1', [req.params.id]);
+  if (!rows.length) return res.status(404).json({ error: 'Arquivo não encontrado.' });
+  try {
+    await deleteFile(rows[0].drive_file_id);
+  } catch (err) {
+    console.error('Falha ao excluir do Drive (removendo só o registro):', err.message);
+  }
+  await q('DELETE FROM chat_files WHERE id = $1', [rows[0].id]);
   res.json({ ok: true });
 }));
 
