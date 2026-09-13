@@ -206,8 +206,10 @@ const OrderModal = ({ contactData, onClose }) => {
         gap: '8px'
     };
 
-    const getChoiceButtonStyle = (option, isSelected, selectedStyles = {}) => {
-        const activeStyle = selectedStyles[option] || {
+    // Atenção: o parâmetro pode chegar como null (não só undefined), então o
+    // valor padrão do JS não cobre — daí o `selectedStyles &&`.
+    const getChoiceButtonStyle = (option, isSelected, selectedStyles) => {
+        const activeStyle = (selectedStyles && selectedStyles[option]) || {
             backgroundColor: '#059669',
             borderColor: '#059669',
             color: '#ffffff'
