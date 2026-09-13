@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet, Sun, Moon, Puzzle } from 'lucide-react';
+import { KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Board from './components/Board';
 import Settings from './components/Settings';
@@ -9,6 +9,7 @@ import Clients from './components/Clients';
 import BotChats from './components/BotChats';
 import Leads from './components/Leads';
 import Extension from './components/Extension';
+import Inbox from './components/Inbox';
 import Finance from './components/Finance';
 import Lucas, { BatSigil } from './components/Lucas';
 import UserPicker from './components/UserPicker';
@@ -22,6 +23,7 @@ const TABS = [
   { id: 'dashboard', label: 'Faturamento', icon: ChartColumn },
   { id: 'leads', label: 'Leads', icon: MousePointerClick },
   { id: 'bot', label: 'Bot', icon: Bot },
+  { id: 'inbox', label: 'Recebidos', icon: InboxIcon },
   { id: 'extension', label: 'Extensão', icon: Puzzle },
   { id: 'finance', label: 'Finanças', icon: Wallet },
   { id: 'archived', label: 'Arquivados', icon: Archive },
@@ -117,6 +119,7 @@ export default function App() {
           {tab === 'dashboard' && <Dashboard onAuthError={handleAuthError} />}
           {tab === 'leads' && <Leads onAuthError={handleAuthError} />}
           {tab === 'bot' && <BotChats onAuthError={handleAuthError} />}
+          {tab === 'inbox' && <Inbox onAuthError={handleAuthError} />}
           {tab === 'extension' && <Extension onAuthError={handleAuthError} />}
           {tab === 'finance' && <Finance onAuthError={handleAuthError} />}
           {tab === 'archived' && <Archived onAuthError={handleAuthError} />}

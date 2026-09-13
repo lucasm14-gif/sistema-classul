@@ -146,6 +146,17 @@ export const api = {
   registerPhoto: (setId, fileId) =>
     request(`/api/photo-sets/${setId}/photos`, { method: 'POST', body: JSON.stringify({ file_id: fileId }) }),
   deletePhoto: (id) => request(`/api/photos/${id}`, { method: 'DELETE' }),
+  // Observador de conversas do WhatsApp
+  listWatchedChats: () => request('/api/watched-chats'),
+  getWatchedChat: (phone) => request(`/api/watched-chats/${phone}`),
+  unwatchChat: (phone) => request(`/api/watched-chats/${phone}`, { method: 'DELETE' }),
+  listInboxFiles: () => request('/api/inbox-files'),
+  attachInboxFile: (id, orderId, category = 'arquivo') =>
+    request(`/api/inbox-files/${id}/attach`, {
+      method: 'POST',
+      body: JSON.stringify({ order_id: orderId, category })
+    }),
+  deleteInboxFile: (id) => request(`/api/inbox-files/${id}`, { method: 'DELETE' }),
   listInstances: () => request('/api/evolution/instances'),
   testMessage: (number) =>
     request('/api/evolution/test', { method: 'POST', body: JSON.stringify({ number }) }),

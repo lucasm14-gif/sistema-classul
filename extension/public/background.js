@@ -62,6 +62,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  // Conversas acompanhadas (observador)
+  if (request.action === 'getWatched') {
+    apiRequest('/api/watched-chats/' + encodeURIComponent(request.phone))
+      .then((data) => sendResponse({ success: true, data }))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (request.action === 'setWatched') {
+    apiRequest('/api/watched-chats/' + encodeURIComponent(request.phone), {
+      method: 'PUT',
+      body: JSON.stringify({ name: request.name })
+    })
+      .then((data) => sendResponse({ success: true, data }))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (request.action === 'clearWatched') {
+    apiRequest('/api/watched-chats/' + encodeURIComponent(request.phone), { method: 'DELETE' })
+      .then((data) => sendResponse({ success: true, data }))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
   if (request.action === 'createOrder') {
     apiRequest('/api/orders', {
       method: 'POST',

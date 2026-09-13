@@ -624,6 +624,101 @@ async function maybeRefreshAssignments() {
 }
 
 // Etiqueta "quem está atendendo" desta conversa (compartilhada entre a equipe).
+// Botão de acompanhar: liga o observador nesta conversa. Só as conversas
+// marcadas aqui são gravadas e têm os arquivos baixados para o Drive.
+function eyeIconSvg(color, filled) {
+    return `
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="${filled ? color : 'none'}" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path>
+      <circle cx="12" cy="12" r="3" fill="${filled ? '#ffffff' : 'none'}"></circle>
+    </svg>
+  `;
+}
+
+function createWatchButton() {
+    const btn = document.createElement('button');
+    btn.className = 'kanban-header-btn classul-watch-btn';
+    btn.style.marginRight = '8px';
+    let watching = false;
+
+    const render = () => {
+        btn.innerHTML = eyeIconSvg(watching ? '#3a7a2a' : 'currentColor', watching);
+        btn.title = watching
+            ? 'Acompanhando: mensagens e arquivos desta conversa vão para o sistema. Clique para parar.'
+            : 'Acompanhar esta conversa no sistema (guarda o histórico e salva os arquivos)';
+    };
+    render();
+
+    // Descobre o telefone mesmo quando o contato não está salvo.
+    const resolvePhone = async () => {
+        let phone = getActiveChatPhone();
+        if (!phone) {
+            try {
+                phone = await scrapePhoneFromProfile();
+            } catch {
+                phone = null;
+            }
+        }
+        return phone;
+    };
+
+    // Reflete a conversa aberta: consulta o sistema ao trocar de conversa.
+    let lastChecked = null;
+    btn.classulSync = async () => {
+        const name = getActiveChatName();
+        if (name === lastChecked) return;
+        lastChecked = name;
+        watching = false;
+        render();
+        const phone = getActiveChatPhone();
+        if (!phone) return;
+        const r = await bgSend({ action: 'getWatched', phone });
+        if (r?.success) {
+            watching = Boolean(r.data?.watched);
+            render();
+        }
+    };
+
+    btn.onclick = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!document.querySelector('#main')) {
+            classulToast('Abra uma conversa primeiro', '#b71f19');
+            return;
+        }
+
+        const name = getActiveChatName();
+        const phone = await resolvePhone();
+        if (!phone) {
+            classulToast('Não consegui descobrir o telefone desta conversa', '#b71f19');
+            return;
+        }
+
+        if (watching) {
+            const r = await bgSend({ action: 'clearWatched', phone });
+            if (r?.success) {
+                watching = false;
+                render();
+                classulToast('Parei de acompanhar esta conversa');
+            } else {
+                classulToast('Erro: ' + (r?.error || 'sem conexão'), '#b71f19');
+            }
+        } else {
+            const r = await bgSend({ action: 'setWatched', phone, name });
+            if (r?.success) {
+                watching = true;
+                render();
+                classulToast(`✓ Acompanhando "${name}" — arquivos vão para o sistema`, '#3a7a2a');
+            } else {
+                classulToast('Erro: ' + (r?.error || 'sem conexão'), '#b71f19');
+            }
+        }
+    };
+
+    return btn;
+}
+
 function createAssignmentButton() {
     const btn = document.createElement('button');
     btn.className = 'kanban-header-btn classul-assign-btn';
@@ -768,6 +863,7 @@ function buildButtonGroup() {
     group.className = 'classul-nav-group';
     group.append(
         createAssignmentButton(),
+        createWatchButton(),
         createOrderButton(),
         createQuickMessagesButton(),
         createImageCopyButton()
@@ -778,6 +874,7 @@ function buildButtonGroup() {
 // Mantém o botão de atendimento coerente com a conversa aberta.
 function syncSidebarButtons() {
     sidebarButtons?.querySelector('.classul-assign-btn')?.classulSync?.();
+    sidebarButtons?.querySelector('.classul-watch-btn')?.classulSync?.();
 }
 
 // Reserva: em versões do WhatsApp sem a barra lateral, usa o cabeçalho da conversa.
