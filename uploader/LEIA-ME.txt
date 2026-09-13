@@ -10,12 +10,26 @@ Fica de olho numa pasta do seu computador. Quando você salva um arquivo lá
 Como ele sabe de qual cliente é o arquivo
 -----------------------------------------
 Ele CRIA UMA PASTA PARA CADA PEDIDO EM ABERTO, com o número e o nome do
-cliente. Sua pasta de artes vai ficar assim, sozinha:
+cliente, DENTRO DA PASTA QUE VOCÊ ESCOLHEU no config.json.
 
-    Artes\
+Por padrão essa pasta é "Classul Artes", dentro da sua pasta de usuário:
+
+    Windows:  C:\Users\SEU-NOME\Classul Artes
+    Mac:      /Users/seu-nome/Classul Artes
+
+E por dentro ela vai ficar assim, sozinha:
+
+    Classul Artes\
         0042 - Dona Marta\
         0043 - Batalhao 3 BE\
         0044 - Joaquim Ferreira\
+
+Se preferir outro lugar (um HD externo, uma pasta que você já usa), é só
+trocar o caminho em "pasta" no config.json. Ele cria a pasta se não existir.
+
+IMPORTANTE: essas pastas ficam NO SEU COMPUTADOR. Elas não são as pastas do
+Google Drive. O arquivo que você salva aqui é enviado para o Drive da Classul
+e aparece no pedido — mas quem organiza o Drive é o sistema, não você.
 
 Você só salva dentro da pasta do cliente. Não precisa decorar número nenhum
 nem renomear arquivo: o arquivo é do pedido daquela pasta.
@@ -56,8 +70,8 @@ Como instalar
 3. Abra o "config.json" no bloco de notas e preencha:
 
       "apiToken": a senha que você usa para entrar no sistema
-      "pasta":    onde ficam as artes (ele cria as pastas dos clientes
-                  dentro dela)
+      "pasta":    onde ficam as artes no SEU computador (ele cria as
+                  pastas dos clientes dentro dela)
 
 4. Abra de novo o arquivo do passo 2. Pronto — pode deixar essa janela
    aberta enquanto trabalha.

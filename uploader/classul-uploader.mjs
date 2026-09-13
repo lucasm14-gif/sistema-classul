@@ -48,7 +48,9 @@ function carregarConfig() {
     const exemplo = {
       apiUrl: 'https://sistema-classul.vercel.app',
       apiToken: 'a senha do sistema (a mesma que você usa para entrar)',
-      pasta: os.platform() === 'win32' ? 'C:\\\\Classul\\\\Artes' : path.join(os.homedir(), 'Classul', 'Artes')
+      // Na pasta do usuário: funciona igual no Windows e no Mac, e não esbarra
+      // em permissão de administrador como a raiz do C:.
+      pasta: path.join(os.homedir(), 'Classul Artes')
     };
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(exemplo, null, 2));
     console.log(
