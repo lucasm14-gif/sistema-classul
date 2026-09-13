@@ -24,6 +24,8 @@ const ESTADO_PATH = path.join(AQUI, '.enviados.json');
 // grava várias vezes enquanto você trabalha, e não queremos subir pela metade.
 const SEGUNDOS_PARADO_PADRAO = 8;
 const INTERVALO_MS_PADRAO = 4000;
+// De quanto em quanto tempo busca os pedidos novos para criar as pastas.
+const SINCRONIZAR_A_CADA_MS_PADRAO = 60000;
 // Arquivos temporários que programas de arte deixam para trás.
 const IGNORAR = [/^~/, /^\./, /\.tmp$/i, /\.bak$/i, /\.crdownload$/i, /\.part$/i];
 
@@ -62,6 +64,7 @@ function carregarConfig() {
   config.apiUrl = String(config.apiUrl || '').replace(/\/+$/, '');
   config.segundosParado = Number(config.segundosParado ?? SEGUNDOS_PARADO_PADRAO);
   config.intervaloMs = Number(config.intervaloMs ?? INTERVALO_MS_PADRAO);
+  config.sincronizarACadaMs = Number(config.sincronizarACadaMs ?? SINCRONIZAR_A_CADA_MS_PADRAO);
   return config;
 }
 
@@ -92,7 +95,7 @@ const TIPOS = {
   '.psd': 'image/vnd.adobe.photoshop'
 };
 
-async function enviar(config, arquivo) {
+async function enviar(config, arquivo, orderId) {
   const nome = path.basename(arquivo);
   const tamanho = fs.statSync(arquivo).size;
   const mimeType = TIPOS[path.extname(nome).toLowerCase()] || 'application/octet-stream';
@@ -100,7 +103,7 @@ async function enviar(config, arquivo) {
   // 1. pede a URL de upload (o sistema decide se vai para um pedido ou para Recebidos)
   const sessao = await api(config, '/api/uploads/session', {
     method: 'POST',
-    body: JSON.stringify({ name: nome, mimeType, size: tamanho })
+    body: JSON.stringify({ name: nome, mimeType, size: tamanho, order_id: orderId || null })
   });
 
   // 2. manda o arquivo DIRETO para o Google (não passa pelo servidor: sem limite de tamanho)
@@ -125,6 +128,62 @@ function deveIgnorar(nome) {
   return IGNORAR.some((re) => re.test(nome));
 }
 
+// Tira do nome os caracteres que Windows e Mac não aceitam em pasta.
+function nomeSeguro(texto) {
+  return String(texto || '')
+    .replace(/[\\/:*?"<>|]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60);
+}
+
+// Cria uma pasta para cada pedido em aberto, com o nome do cliente, para você
+// só salvar dentro da pasta certa — sem precisar decorar número de pedido.
+// Nunca apaga nem renomeia pasta: os arquivos são seus.
+async function sincronizarPastas(config) {
+  let pedidos;
+  try {
+    pedidos = await api(config, '/api/orders');
+  } catch (err) {
+    log(`Não consegui buscar os pedidos: ${err.message}`);
+    return new Map();
+  }
+
+  const porNumero = new Map();
+  const existentes = new Set(
+    fs
+      .readdirSync(config.pasta, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+  );
+
+  for (const pedido of pedidos) {
+    if (pedido.status === 'entregue') continue; // já saiu; não precisa de pasta nova
+    const numero = String(pedido.order_number || '').replace('#', '');
+    porNumero.set(numero, pedido.id);
+
+    // já existe uma pasta começando por esse número? então respeita a que está lá
+    const jaTem = [...existentes].some((nome) => nome.replace('#', '').startsWith(numero));
+    if (jaTem) continue;
+
+    const nome = `${numero} - ${nomeSeguro(pedido.customer_name)}`;
+    try {
+      fs.mkdirSync(path.join(config.pasta, nome));
+      existentes.add(nome);
+      log(`Criei a pasta "${nome}"`);
+    } catch (err) {
+      if (err.code !== 'EEXIST') log(`Não consegui criar a pasta "${nome}": ${err.message}`);
+    }
+  }
+  return porNumero;
+}
+
+// Número do pedido a partir do nome de uma pasta ou de um arquivo.
+function numeroDe(nome) {
+  const m = String(nome || '').match(/^\s*#?(\d{1,6})/);
+  return m ? String(Number(m[1])).padStart(4, '0') : null;
+}
+
 async function main() {
   const config = carregarConfig();
 
@@ -134,55 +193,92 @@ async function main() {
   }
 
   const enviados = lerJSON(ESTADO_PATH, {});
-  const vistos = new Map(); // arquivo -> { tamanho, desde }
+  const vistos = new Map(); // arquivo -> { assinatura, desde }
+  let pedidosPorNumero = new Map();
+  let ultimaSincronia = 0;
 
   log('Enviador de artes da Classul no ar.');
   log(`Vigiando: ${config.pasta}`);
-  log('Salve o .cdr aqui. Comece o nome com o número do pedido para anexar direto (ex: "0042 - dona marta.cdr").');
+  log('Salve o .cdr dentro da pasta do cliente — ela aparece sozinha para cada pedido em aberto.');
   log('Para parar, feche esta janela.');
 
-  const varrer = async () => {
-    let arquivos;
+  // Lista os arquivos da raiz e de cada subpasta de pedido (um nível só).
+  const listar = () => {
+    const achados = [];
+    let itens;
     try {
-      arquivos = fs.readdirSync(config.pasta, { withFileTypes: true });
+      itens = fs.readdirSync(config.pasta, { withFileTypes: true });
     } catch (err) {
       log(`Não consegui ler a pasta: ${err.message}`);
-      return;
+      return achados;
+    }
+    for (const item of itens) {
+      if (item.isFile() && !deveIgnorar(item.name)) {
+        achados.push({ nome: item.name, rotulo: item.name, caminho: path.join(config.pasta, item.name), pasta: null });
+      } else if (item.isDirectory() && !deveIgnorar(item.name)) {
+        const sub = path.join(config.pasta, item.name);
+        let dentro = [];
+        try {
+          dentro = fs.readdirSync(sub, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+        for (const f of dentro) {
+          if (!f.isFile() || deveIgnorar(f.name)) continue;
+          achados.push({
+            nome: f.name,
+            rotulo: `${item.name}/${f.name}`,
+            caminho: path.join(sub, f.name),
+            pasta: item.name
+          });
+        }
+      }
+    }
+    return achados;
+  };
+
+  const varrer = async () => {
+    // de tempos em tempos, garante uma pasta para cada pedido em aberto
+    if (Date.now() - ultimaSincronia > config.sincronizarACadaMs) {
+      pedidosPorNumero = await sincronizarPastas(config);
+      ultimaSincronia = Date.now();
     }
 
-    for (const item of arquivos) {
-      if (!item.isFile() || deveIgnorar(item.name)) continue;
-      const caminho = path.join(config.pasta, item.name);
-
+    for (const item of listar()) {
       let stat;
       try {
-        stat = fs.statSync(caminho);
+        stat = fs.statSync(item.caminho);
       } catch {
         continue;
       }
 
       const assinatura = `${stat.size}-${Math.round(stat.mtimeMs)}`;
-      if (enviados[item.name] === assinatura) continue; // já subiu esta versão
+      if (enviados[item.rotulo] === assinatura) continue; // já subiu esta versão
 
-      const anterior = vistos.get(caminho);
+      const anterior = vistos.get(item.caminho);
       if (!anterior || anterior.assinatura !== assinatura) {
         // mudou (ou apareceu agora): espera estabilizar
-        vistos.set(caminho, { assinatura, desde: Date.now() });
+        vistos.set(item.caminho, { assinatura, desde: Date.now() });
         continue;
       }
       if (Date.now() - anterior.desde < config.segundosParado * 1000) continue;
 
+      // A pasta manda: arquivo dentro de "0042 - Fulano" é do pedido #0042.
+      // Fora dela, ainda vale o número no começo do nome do arquivo.
+      const numero = numeroDe(item.pasta) || numeroDe(item.nome);
+      const orderId = numero ? pedidosPorNumero.get(numero) : null;
+
       try {
-        log(`Enviando "${item.name}"…`);
-        const { destino, substituiu } = await enviar(config, caminho);
-        enviados[item.name] = assinatura;
+        log(`Enviando "${item.rotulo}"…`);
+        const { destino, substituiu } = await enviar(config, item.caminho, orderId);
+        enviados[item.rotulo] = assinatura;
         fs.writeFileSync(ESTADO_PATH, JSON.stringify(enviados, null, 2));
-        vistos.delete(caminho);
-        log(`✓ "${item.name}" → ${destino}${substituiu ? ' (substituiu a versão anterior)' : ''}`);
+        vistos.delete(item.caminho);
+        log(`✓ "${item.rotulo}" → ${destino}${substituiu ? ' (substituiu a versão anterior)' : ''}`);
       } catch (err) {
-        log(`✗ "${item.name}": ${err.message}`);
+        log(`✗ "${item.rotulo}": ${err.message}`);
         // tenta de novo na próxima volta
-        vistos.set(caminho, { assinatura, desde: Date.now() });
+        vistos.set(item.caminho, { assinatura, desde: Date.now() });
       }
     }
   };

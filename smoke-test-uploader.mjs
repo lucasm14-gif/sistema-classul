@@ -86,6 +86,14 @@ let r = await fetch(`${B}/orders`, {
 const pedido = await r.json();
 check('pedido de teste criado', pedido.order_number === '#0001');
 
+r = await fetch(`${B}/orders`, {
+  method: 'POST',
+  headers: H,
+  body: JSON.stringify({ customer_name: 'Batalhão 3º BE / Seção', phone: '(51) 98888-7777' })
+});
+const pedido2 = await r.json();
+check('segundo pedido criado', pedido2.order_number === '#0002');
+
 // --- prepara o enviador numa pasta temporária ---
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'classul-uploader-'));
 const artes = path.join(base, 'Artes');
@@ -98,7 +106,8 @@ fs.writeFileSync(
     apiToken: 'teste-token',
     pasta: artes,
     segundosParado: 0,
-    intervaloMs: 300
+    intervaloMs: 300,
+    sincronizarACadaMs: 400
   })
 );
 
@@ -108,6 +117,7 @@ filho.stdout.on('data', (d) => saida.push(String(d)));
 filho.stderr.on('data', (d) => saida.push(String(d)));
 
 // Espera uma condição virar verdadeira (o enviador trabalha em segundo plano).
+let ok;
 const esperar = async (fn, segundos = 12) => {
   const limite = Date.now() + segundos * 1000;
   while (Date.now() < limite) {
@@ -126,9 +136,38 @@ const recebidos = async () => {
   return await res.json();
 };
 
-// --- 1. nome com o número do pedido vai direto para ele ---
+// --- 1. o enviador cria uma pasta por pedido em aberto ---
+ok = await esperar(async () => {
+  const dirs = fs.readdirSync(artes, { withFileTypes: true }).filter((d) => d.isDirectory());
+  return dirs.length === 2;
+}, 10);
+const pastas = fs.readdirSync(artes, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+check('cria uma pasta para cada pedido em aberto', ok, pastas.join(' | '));
+check(
+  'pasta traz o número e o nome do cliente',
+  pastas.some((n) => n.startsWith('0001 - Dona Marta')) && pastas.some((n) => n.startsWith('0002 - Batalhão')),
+  pastas.join(' | ')
+);
+check(
+  'caracteres proibidos em pasta são trocados',
+  pastas.some((n) => n.includes('Batalhão 3º BE - Seção')),
+  pastas.find((n) => n.startsWith('0002')) || ''
+);
+
+// --- 2. arquivo salvo dentro da pasta do cliente vai para o pedido dele ---
+const pasta2 = path.join(artes, pastas.find((n) => n.startsWith('0002')));
+fs.writeFileSync(path.join(pasta2, 'arte final.cdr'), Buffer.alloc(1500, 4));
+const anexosDo2 = async () => {
+  const res = await fetch(`${B}/orders/${pedido2.id}`, { headers: H });
+  return (await res.json()).attachments || [];
+};
+ok = await esperar(async () => (await anexosDo2()).length === 1);
+check('arquivo na pasta do cliente vai para o pedido dele (sem número no nome)', ok);
+check('nome do arquivo é preservado', (await anexosDo2())[0]?.name === 'arte final.cdr');
+
+// --- 3. na raiz, ainda vale o número no nome ---
 fs.writeFileSync(path.join(artes, '0001 - dona marta.cdr'), Buffer.alloc(2048, 7));
-let ok = await esperar(async () => (await anexosDoPedido()).length === 1);
+ok = await esperar(async () => (await anexosDoPedido()).length === 1);
 check('arquivo com número do pedido é anexado nele', ok, saida.join('').trim().split('\n').pop());
 if (!ok) {
   console.log('--- saída do enviador ---');

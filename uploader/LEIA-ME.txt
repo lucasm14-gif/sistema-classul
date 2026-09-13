@@ -6,13 +6,34 @@ O que ele faz
 Fica de olho numa pasta do seu computador. Quando você salva um arquivo lá
 (o .cdr do CorelDRAW, um PDF, uma imagem), ele sobe sozinho para o sistema.
 
-Se o nome do arquivo começar com o número do pedido, ele já entra anexado
-naquele pedido:
 
-    0042 - dona marta.cdr     -> vai direto para o pedido #0042
-    aposentadoria antonio.cdr -> cai na aba "Recebidos" do sistema
+Como ele sabe de qual cliente é o arquivo
+-----------------------------------------
+Ele CRIA UMA PASTA PARA CADA PEDIDO EM ABERTO, com o número e o nome do
+cliente. Sua pasta de artes vai ficar assim, sozinha:
 
-Nos dois casos o arquivo vai parar no Google Drive da Classul.
+    Artes\
+        0042 - Dona Marta\
+        0043 - Batalhao 3 BE\
+        0044 - Joaquim Ferreira\
+
+Você só salva dentro da pasta do cliente. Não precisa decorar número nenhum
+nem renomear arquivo: o arquivo é do pedido daquela pasta.
+
+As pastas aparecem sozinhas conforme você cria pedidos no sistema (ele
+confere a cada minuto). Pedido entregue não ganha pasta nova.
+
+Ele NUNCA apaga nem renomeia suas pastas. Se quiser organizar do seu jeito,
+pode — só mantenha o número do pedido no começo do nome da pasta.
+
+Se você salvar um arquivo SOLTO (fora das pastas), ainda funciona:
+
+    0042 - qualquer nome.cdr  -> vai para o pedido #0042 (pelo número)
+    aposentadoria antonio.cdr -> cai na aba "Recebidos" do sistema,
+                                 e você escolhe o pedido com um clique
+
+Em todos os casos o arquivo vai parar no Google Drive da Classul, junto
+com o resto do pedido.
 
 
 Antes de começar
@@ -35,7 +56,8 @@ Como instalar
 3. Abra o "config.json" no bloco de notas e preencha:
 
       "apiToken": a senha que você usa para entrar no sistema
-      "pasta":    onde você vai salvar as artes
+      "pasta":    onde ficam as artes (ele cria as pastas dos clientes
+                  dentro dela)
 
 4. Abra de novo o arquivo do passo 2. Pronto — pode deixar essa janela
    aberta enquanto trabalha.
@@ -57,6 +79,8 @@ Coisas boas de saber
 - Se você salvar de novo o mesmo arquivo no mesmo pedido, a versão antiga é
   substituída — não vira um monte de cópia.
 - Arquivos temporários (que começam com ~ ou .) são ignorados.
+- Ele olha a pasta principal e as pastas dos clientes (um nível). Pasta
+  dentro de pasta de cliente ele não olha.
 - Se a internet cair, ele tenta de novo sozinho na próxima volta.
 - A janela mostra o que está acontecendo. Se algo der errado, aparece ali
   com o motivo.
