@@ -21,6 +21,8 @@ import {
   exchangeCode,
   createUploadSession,
   createUploadSessionInFolder,
+  ensureOrderFolder,
+  ensureInboxFolder,
   ensurePhotosFolder,
   downloadFile,
   getFileMeta,
@@ -1805,6 +1807,88 @@ app.post('/api/suggestions/:id/dismiss', h(async (req, res) => {
   );
   if (!rowCount) return res.status(404).json({ error: 'Sugestão não encontrada ou já resolvida.' });
   res.json({ ok: true });
+}));
+
+// ---------- Upload da área de trabalho (arquivos do CorelDRAW) ----------
+//
+// O arquivo NÃO passa pelo servidor: devolvemos uma URL de upload do Google e
+// o programinha manda direto para lá. Isso evita o limite de tamanho da Vercel.
+
+// Descobre o pedido pelo começo do nome do arquivo ("0042 - fulano.cdr").
+async function orderFromFileName(name) {
+  const m = String(name || '').match(/^\s*#?(\d{1,6})/);
+  if (!m) return null;
+  const order = await getOrder(Number(m[1]));
+  return order && !order.archived ? order : null;
+}
+
+app.post('/api/uploads/session', h(async (req, res) => {
+  const { name, mimeType, size } = req.body || {};
+  if (!name) return res.status(400).json({ error: 'Informe o nome do arquivo.' });
+
+  // Pedido explícito no corpo tem prioridade; senão tenta pelo nome do arquivo.
+  let order = null;
+  if (req.body?.order_id) order = await getOrder(req.body.order_id);
+  if (!order) order = await orderFromFileName(name);
+
+  try {
+    const folderId = order ? await ensureOrderFolder(order) : await ensureInboxFolder();
+    const uploadUrl = await createUploadSessionInFolder(folderId, { name, mimeType, size }, req.headers.origin);
+    res.json({
+      uploadUrl,
+      order_id: order?.id || null,
+      order_number: order ? formatOrderNumber(order.id) : null,
+      target: order ? `pedido ${formatOrderNumber(order.id)}` : 'recebidos'
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+}));
+
+// Registra o arquivo depois que o upload terminou. Se já existir outro com o
+// mesmo nome no mesmo pedido, o antigo é substituído (o CorelDRAW salva várias
+// vezes e não queremos 15 cópias do mesmo trabalho).
+app.post('/api/uploads/register', h(async (req, res) => {
+  const fileId = req.body?.file_id;
+  if (!fileId) return res.status(400).json({ error: 'Informe o file_id do Drive.' });
+  const meta = await getFileMeta(fileId);
+  const order = req.body?.order_id ? await getOrder(req.body.order_id) : null;
+
+  if (order) {
+    const { rows: previous } = await q(
+      'SELECT * FROM attachments WHERE order_id = $1 AND name = $2 AND drive_file_id <> $3',
+      [order.id, meta.name, meta.id]
+    );
+    for (const old of previous) {
+      try {
+        await deleteFile(old.drive_file_id);
+      } catch (err) {
+        console.error('Falha ao excluir versão anterior no Drive:', err.message);
+      }
+      await q('DELETE FROM attachments WHERE id = $1', [old.id]);
+    }
+    const { rows } = await q(
+      `INSERT INTO attachments (order_id, drive_file_id, name, mime_type, size, web_view_link, category)
+       VALUES ($1, $2, $3, $4, $5, $6, 'arte') RETURNING *`,
+      [order.id, meta.id, meta.name, meta.mimeType || null, meta.size ? Number(meta.size) : null, meta.webViewLink || null]
+    );
+    return res.status(201).json({ ...rows[0], replaced: previous.length, order_number: formatOrderNumber(order.id) });
+  }
+
+  const { rows } = await q(
+    `INSERT INTO chat_files (phone, chat_name, drive_file_id, name, mime_type, size, web_view_link)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [
+      'arquivo-local',
+      req.body?.source || 'Computador',
+      meta.id,
+      meta.name,
+      meta.mimeType || null,
+      meta.size ? Number(meta.size) : null,
+      meta.webViewLink || null
+    ]
+  );
+  res.status(201).json(rows[0]);
 }));
 
 // ---------- Configurações ----------

@@ -1,0 +1,62 @@
+ENVIADOR DE ARTES DA CLASSUL
+============================
+
+O que ele faz
+-------------
+Fica de olho numa pasta do seu computador. Quando você salva um arquivo lá
+(o .cdr do CorelDRAW, um PDF, uma imagem), ele sobe sozinho para o sistema.
+
+Se o nome do arquivo começar com o número do pedido, ele já entra anexado
+naquele pedido:
+
+    0042 - dona marta.cdr     -> vai direto para o pedido #0042
+    aposentadoria antonio.cdr -> cai na aba "Recebidos" do sistema
+
+Nos dois casos o arquivo vai parar no Google Drive da Classul.
+
+
+Antes de começar
+----------------
+Precisa ter o Node.js instalado (é grátis): https://nodejs.org
+Baixe a versão "LTS" e instale normalmente, avançando.
+
+
+Como instalar
+-------------
+1. Coloque esta pasta num lugar fixo do computador
+   (ex: Documentos\Classul Enviador).
+
+2. Abra o arquivo do seu sistema:
+      Windows -> "Classul - Enviar artes (Windows).cmd"
+      Mac     -> "Classul - Enviar artes (Mac).command"
+
+   Na primeira vez ele cria um arquivo "config.json" e fecha.
+
+3. Abra o "config.json" no bloco de notas e preencha:
+
+      "apiToken": a senha que você usa para entrar no sistema
+      "pasta":    onde você vai salvar as artes
+
+4. Abra de novo o arquivo do passo 2. Pronto — pode deixar essa janela
+   aberta enquanto trabalha.
+
+
+Para iniciar junto com o computador (opcional)
+----------------------------------------------
+Windows: aperte Win+R, digite  shell:startup  e dê Enter. Arraste para
+         dentro dessa pasta um ATALHO do arquivo .cmd.
+
+Mac:     Ajustes do Sistema > Geral > Itens de Início de Sessão >
+         botão "+" > escolha o arquivo .command.
+
+
+Coisas boas de saber
+--------------------
+- Ele espera o arquivo parar de mudar por 8 segundos antes de subir, então
+  pode salvar quantas vezes quiser enquanto trabalha.
+- Se você salvar de novo o mesmo arquivo no mesmo pedido, a versão antiga é
+  substituída — não vira um monte de cópia.
+- Arquivos temporários (que começam com ~ ou .) são ignorados.
+- Se a internet cair, ele tenta de novo sozinho na próxima volta.
+- A janela mostra o que está acontecendo. Se algo der errado, aparece ali
+  com o motivo.
