@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { LoaderCircle, Save, Plug, Send, List, HardDrive, CheckCircle2, XCircle, Bot, Link2 } from 'lucide-react';
 import { api } from '../api';
+import HermesSettings from './HermesSettings';
 import { useToast } from './Toast';
 
 const label = 'block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-2';
@@ -343,6 +344,9 @@ export default function Settings({ onAuthError }) {
           </p>
         </div>
       </section>
+
+      {/* Hermes (bot na VPS) */}
+      <HermesSettings onAuthError={onAuthError} />
 
       {/* Mensagens automáticas */}
       <section className="bg-white rounded-3xl shadow-sm border border-black/5 p-6 sm:p-7">

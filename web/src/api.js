@@ -125,6 +125,12 @@ export const api = {
   botConversations: () => request('/api/bot/conversations'),
   botConversation: (phone) => request(`/api/bot/conversations/${phone}`),
   botReactivate: (phone) => request(`/api/bot/conversations/${phone}/reactivate`, { method: 'POST' }),
+  // ---- Hermes (bot na VPS) ----
+  hermesConfig: () => request('/api/hermes/config'),
+  hermesSaveConfig: (data) => request('/api/hermes/config', { method: 'PUT', body: JSON.stringify(data) }),
+  hermesRotateToken: () => request('/api/hermes/rotate-token', { method: 'POST' }),
+  hermesTest: () => request('/api/hermes/test', { method: 'POST' }),
+  hermesEvents: (limit = 40) => request(`/api/hermes/events?limit=${limit}`),
   // Conteúdo servido à extensão
   getExtensionConfig: () => request('/api/extension/config'),
   listQuickMessages: () => request('/api/quick-messages'),

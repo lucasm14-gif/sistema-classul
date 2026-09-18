@@ -136,6 +136,15 @@ npm run build        # gera a pasta extension/dist
 - Variáveis disponíveis: `{nome}`, `{pedido}`, `{produto}`, `{valor}`, `{entrega}`, `{descricao}`.
 - O histórico de envios (com sucesso/erro) aparece ao abrir o pedido no Kanban.
 
+## Hermes (bot na VPS)
+
+O bot Hermes controla o sistema por um catálogo de ferramentas (tool calling): cria e move
+pedidos, consulta clientes, manda WhatsApp e recebe avisos do que muda aqui. Pode inclusive
+assumir o pré-atendimento no lugar do bot interno.
+
+Passo a passo, endpoints e exemplos de código: **[HERMES.md](HERMES.md)**.
+Ligar e pegar a chave: Configurações → *Hermes (bot na VPS)*.
+
 ## API (resumo técnico)
 
 Todas as rotas exigem header `Authorization: Bearer <API_TOKEN>`.

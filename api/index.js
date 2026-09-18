@@ -28,6 +28,22 @@ import {
   getFileMeta,
   deleteFile
 } from '../lib/google.js';
+import {
+  ORDER_FIELDS,
+  PAYMENT_STATUSES,
+  serializeOrder,
+  getOrder,
+  getClient,
+  createOrder,
+  updateOrderFields,
+  moveOrderStatus,
+  parseValueBRL,
+  monthKeySP,
+  dayKeySP,
+  OrderError
+} from '../lib/orders.js';
+import { TOOLS, toolsFor, runTool, forwardIncomingToHermes } from '../lib/hermes.js';
+import { notifyHermes, logHermes } from '../lib/hermes-events.js';
 import { handleIncoming } from '../lib/bot.js';
 import { handleWatchedMessage } from '../lib/watcher.js';
 import { analyzeChat, STAGES } from '../lib/analyst.js';
@@ -96,12 +112,18 @@ app.all('/api/bot/webhook', async (req, res) => {
     if (req.method !== 'POST' || !event.includes('messages.upsert')) {
       return res.status(200).json({ ignored: 'evento ignorado', event });
     }
-    // Observador e bot são independentes: um só escuta, o outro responde.
+    // Quem faz o pré-atendimento: o bot de IA daqui, o Hermes na VPS, ou ninguém.
+    const engine = settings.bot_engine || 'interno';
+    const atendimento =
+      engine === 'hermes'
+        ? forwardIncomingToHermes(req.body)
+        : engine === 'off'
+          ? Promise.resolve({ ignored: 'pré-atendimento desligado' })
+          : handleIncoming(req.body, baseUrl(req));
+
+    // Observador e atendimento são independentes: um só escuta, o outro responde.
     // Um erro em qualquer um deles não pode derrubar o webhook.
-    const [watched, bot] = await Promise.allSettled([
-      handleWatchedMessage(req.body),
-      handleIncoming(req.body, baseUrl(req))
-    ]);
+    const [watched, bot] = await Promise.allSettled([handleWatchedMessage(req.body), atendimento]);
     res.status(200).json({
       watcher: watched.status === 'fulfilled' ? watched.value : { error: watched.reason?.message },
       bot: bot.status === 'fulfilled' ? bot.value : { error: bot.reason?.message }
@@ -109,6 +131,68 @@ app.all('/api/bot/webhook', async (req, res) => {
   } catch (err) {
     console.error('bot webhook:', err);
     res.status(200).json({ error: err.message });
+  }
+});
+
+// ---------- Hermes (bot na VPS) ----------
+// Ficam antes do Bearer do sistema de propósito: o Hermes entra com a chave
+// própria dele, que pode ser trocada sem mexer no login de ninguém.
+
+async function requireHermes(req, res) {
+  await ensureSchema();
+  const settings = await getSettings();
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : String(req.headers['x-hermes-token'] || '');
+  if (!settings.hermes_token || token !== settings.hermes_token) {
+    res.status(401).json({ ok: false, error: 'Chave do Hermes inválida ou ausente.' });
+    return null;
+  }
+  if (settings.hermes_enabled !== '1') {
+    res.status(403).json({ ok: false, error: 'A conexão com o Hermes está desligada nas configurações do sistema.' });
+    return null;
+  }
+  return settings;
+}
+
+// Teste de vida: o Hermes chama para saber se a chave está valendo.
+app.get('/api/hermes/ping', async (req, res) => {
+  try {
+    const settings = await requireHermes(req, res);
+    if (!settings) return;
+    res.json({ ok: true, sistema: 'Classul', ferramentas: TOOLS.length, pre_atendimento: settings.bot_engine || 'interno' });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Catálogo de ferramentas. ?format=openai ou ?format=anthropic devolve pronto
+// para colar no SDK; sem format, vem o schema puro.
+app.get('/api/hermes/tools', async (req, res) => {
+  try {
+    if (!(await requireHermes(req, res))) return;
+    res.json({ ok: true, total: TOOLS.length, tools: toolsFor(String(req.query.format || '')) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Executa uma ferramenta. Erros de regra voltam como ok:false (HTTP 200) para
+// o laço de tool calling do Hermes poder mostrar o motivo ao modelo e seguir.
+app.post('/api/hermes/call', async (req, res) => {
+  try {
+    if (!(await requireHermes(req, res))) return;
+    const { tool, args } = req.body || {};
+    if (!tool) return res.status(400).json({ ok: false, error: 'Informe o nome da ferramenta em "tool".' });
+    try {
+      const result = await runTool(String(tool), args || {});
+      await logHermes('entrada', tool, { args, result });
+      res.json({ ok: true, tool, result });
+    } catch (err) {
+      await logHermes('entrada', tool, { args, ok: false, error: err.message });
+      res.json({ ok: false, tool, error: err.message });
+    }
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
@@ -132,6 +216,7 @@ app.post('/api/leads/track', async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [page, label, referrer, userAgent, utmSource, utmMedium, utmCampaign]
     );
+    await notifyHermes('lead.novo', { pagina: page, botao: label, origem: utmSource, campanha: utmCampaign });
     res.status(204).end();
   } catch (err) {
     console.error('leads track:', err);
@@ -175,27 +260,6 @@ app.use('/api', async (req, res, next) => {
   }
 });
 
-const ORDER_FIELDS = [
-  'customer_name',
-  'phone',
-  'description',
-  'product_type',
-  'case_color',
-  'case_only',
-  'case_size',
-  'size',
-  'product',
-  'value',
-  'due_date',
-  'pickup_time',
-  'payment_status'
-];
-const PAYMENT_STATUSES = ['pendente', 'sinal', 'pago'];
-
-function serializeOrder(order) {
-  return { ...order, order_number: formatOrderNumber(order.id) };
-}
-
 // Nome do funcionário que está fazendo a ação (vem do header, salvo no dispositivo).
 function currentUser(req) {
   const u = req.headers['x-classul-user'];
@@ -207,57 +271,11 @@ function chatKey(param) {
   return normalizePhone(param) || String(param || '').trim().slice(0, 80);
 }
 
-async function getOrder(id) {
-  const { rows } = await q('SELECT * FROM orders WHERE id = $1', [id]);
-  return rows[0] || null;
-}
-
-async function getClient(id) {
-  const { rows } = await q('SELECT * FROM clients WHERE id = $1', [id]);
-  return rows[0] || null;
-}
-
-// Código de retirada: 4 dígitos aleatórios, único entre os pedidos ativos.
-async function generatePickupCode() {
-  for (let i = 0; i < 25; i++) {
-    const code = String(Math.floor(1000 + Math.random() * 9000));
-    const { rows } = await q('SELECT 1 FROM orders WHERE pickup_code = $1 AND archived = 0 LIMIT 1', [code]);
-    if (!rows.length) return code;
-  }
-  return String(Math.floor(1000 + Math.random() * 9000));
-}
-
-// Vincula o pedido a um cliente existente (por telefone, depois por nome)
-// ou cria o cliente automaticamente.
-async function findOrCreateClient(name, phone) {
-  const cleanName = String(name || '').trim();
-  const normPhone = normalizePhone(phone);
-
-  if (normPhone) {
-    const { rows } = await q('SELECT * FROM clients WHERE phone = $1 ORDER BY id ASC LIMIT 1', [normPhone]);
-    if (rows.length) return rows[0];
-  }
-  if (cleanName) {
-    const { rows } = await q('SELECT * FROM clients WHERE LOWER(name) = LOWER($1) ORDER BY id ASC LIMIT 1', [cleanName]);
-    if (rows.length) {
-      // aproveita o pedido para completar o telefone do cliente
-      if (normPhone && !rows[0].phone) {
-        await q('UPDATE clients SET phone = $1, updated_at = now() WHERE id = $2', [normPhone, rows[0].id]);
-        rows[0].phone = normPhone;
-      }
-      return rows[0];
-    }
-  }
-  if (!cleanName) return null;
-  const { rows } = await q('INSERT INTO clients (name, phone) VALUES ($1, $2) RETURNING *', [cleanName, normPhone]);
-  return rows[0];
-}
-
 // Handler async com tratamento de erro centralizado.
 const h = (fn) => (req, res) =>
   Promise.resolve(fn(req, res)).catch((err) => {
-    console.error(err);
-    if (!res.headersSent) res.status(500).json({ error: err.message });
+    if (!(err instanceof OrderError)) console.error(err);
+    if (!res.headersSent) res.status(err.status || 500).json({ error: err.message });
   });
 
 // ---------- Pedidos ----------
@@ -300,106 +318,21 @@ app.get('/api/orders/:id', h(async (req, res) => {
 }));
 
 app.post('/api/orders', h(async (req, res) => {
-  const data = req.body || {};
-  if (!data.customer_name || !String(data.customer_name).trim()) {
-    return res.status(400).json({ error: 'O nome do cliente é obrigatório.' });
-  }
-  const status = STATUSES.includes(data.status) ? data.status : 'novo';
-  const paymentStatus = PAYMENT_STATUSES.includes(data.payment_status) ? data.payment_status : 'pendente';
-
-  // Vincula/cria o cliente automaticamente (ou usa o client_id informado)
-  let clientId = null;
-  if (data.client_id) {
-    const client = await getClient(data.client_id);
-    if (client) clientId = client.id;
-  }
-  if (!clientId) {
-    const client = await findOrCreateClient(data.customer_name, data.phone);
-    if (client) clientId = client.id;
-  }
-
-  const pickupCode = await generatePickupCode();
-  const user = currentUser(req);
-  const { rows } = await q(
-    `INSERT INTO orders (customer_name, phone, description, product_type, case_color, case_only, size, product, value, due_date, pickup_time, status, client_id, payment_status, pickup_code, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16) RETURNING *`,
-    [
-      String(data.customer_name).trim(),
-      normalizePhone(data.phone) || (data.phone ? String(data.phone) : null),
-      data.description || null,
-      data.product_type || null,
-      data.case_color || null,
-      data.case_only ? 1 : 0,
-      data.size || data.case_size || null,
-      data.product || null,
-      data.value || null,
-      data.due_date || null,
-      data.pickup_time || null,
-      status,
-      clientId,
-      paymentStatus,
-      pickupCode,
-      user
-    ]
-  );
-  res.status(201).json(serializeOrder(rows[0]));
+  const order = await createOrder(req.body || {}, currentUser(req));
+  res.status(201).json(order);
 }));
 
 app.put('/api/orders/:id', h(async (req, res) => {
   const order = await getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Pedido não encontrado.' });
-  const data = req.body || {};
-  const updates = {};
-  for (const field of ORDER_FIELDS) {
-    if (field in data) updates[field] = data[field] === '' ? null : data[field];
-  }
-  if ('phone' in updates && updates.phone) {
-    updates.phone = normalizePhone(updates.phone) || String(updates.phone);
-  }
-  if ('payment_status' in updates && !PAYMENT_STATUSES.includes(updates.payment_status)) {
-    return res.status(400).json({ error: `Status de pagamento inválido. Use: ${PAYMENT_STATUSES.join(', ')}` });
-  }
-  // A coluna é INTEGER; o front manda booleano.
-  if ('case_only' in updates) updates.case_only = updates.case_only ? 1 : 0;
-  updates.updated_by = currentUser(req);
-  const fields = Object.keys(updates);
-  const sets = fields.map((f, i) => `${f} = $${i + 1}`).join(', ');
-  await q(`UPDATE orders SET ${sets}, updated_at = now() WHERE id = $${fields.length + 1}`, [
-    ...Object.values(updates),
-    order.id
-  ]);
-  res.json(serializeOrder(await getOrder(order.id)));
+  res.json(await updateOrderFields(order, req.body || {}, currentUser(req)));
 }));
 
 // Mover no Kanban — dispara mensagem automática nas etapas configuradas.
 app.patch('/api/orders/:id/status', h(async (req, res) => {
   const order = await getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Pedido não encontrado.' });
-  const { status } = req.body || {};
-  if (!STATUSES.includes(status)) {
-    return res.status(400).json({ error: `Etapa inválida. Use: ${STATUSES.join(', ')}` });
-  }
-  const mover = currentUser(req);
-  // registra a data de entrega (base do faturamento)
-  if (status === 'entregue') {
-    await q(
-      'UPDATE orders SET status = $1, delivered_at = COALESCE(delivered_at, now()), updated_at = now(), updated_by = $3 WHERE id = $2',
-      [status, order.id, mover]
-    );
-  } else {
-    await q('UPDATE orders SET status = $1, delivered_at = NULL, updated_at = now(), updated_by = $3 WHERE id = $2', [
-      status,
-      order.id,
-      mover
-    ]);
-  }
-  const updated = await getOrder(order.id);
-  const notification = await notifyStatus(updated, status);
-  const { rows: invoiceRows } = await q(
-    "SELECT 1 FROM attachments WHERE order_id = $1 AND category = 'nota_fiscal' LIMIT 1",
-    [order.id]
-  );
-  res.json({ order: { ...serializeOrder(updated), has_invoice: invoiceRows.length > 0 }, notification });
+  res.json(await moveOrderStatus(order, req.body?.status, currentUser(req)));
 }));
 
 // Reenviar manualmente a mensagem de uma etapa.
@@ -585,21 +518,6 @@ app.delete('/api/clients/:id', h(async (req, res) => {
 // ---------- Faturamento ----------
 
 // Valores são texto livre ("150,00") — a soma é feita aqui, igual ao frontend.
-function parseValueBRL(v) {
-  const n = parseFloat(
-    String(v ?? '')
-      .replace(/[^\d.,]/g, '')
-      .replace(/\.(?=\d{3})/g, '')
-      .replace(',', '.')
-  );
-  return Number.isFinite(n) ? n : 0;
-}
-
-// Mês local de São Paulo no formato YYYY-MM.
-function monthKeySP(date) {
-  return new Date(date).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }).slice(0, 7);
-}
-
 app.get('/api/stats', h(async (req, res) => {
   const selected = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? req.query.month : monthKeySP(new Date());
 
@@ -672,10 +590,6 @@ app.get('/api/stats', h(async (req, res) => {
 // ---------- Leads do WhatsApp (cliques do site) ----------
 
 // Dia local de São Paulo no formato YYYY-MM-DD.
-function dayKeySP(date) {
-  return new Date(date).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
-}
-
 // Nome amigável da página a partir do caminho (igual ao painel antigo).
 function pageLabel(path) {
   const p = String(path || '').trim();
@@ -1755,29 +1669,22 @@ app.post('/api/suggestions/:id/accept', h(async (req, res) => {
   const customerName = String(body.customer_name || data.cliente || suggestion.chat_name || '').trim();
   if (!customerName) return res.status(400).json({ error: 'Informe o nome do cliente.' });
 
-  const client = await findOrCreateClient(customerName, suggestion.phone);
-  const pickupCode = await generatePickupCode();
   const descricao = [data.descricao, data.quantidade ? `Quantidade: ${data.quantidade}` : null]
     .filter(Boolean)
     .join('\n');
 
-  const { rows: created } = await q(
-    `INSERT INTO orders (customer_name, phone, description, product, size, value, due_date, status, client_id, payment_status, pickup_code, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'novo', $8, 'pendente', $9, $10, $10) RETURNING *`,
-    [
-      customerName,
-      suggestion.phone,
-      body.description ?? descricao ?? null,
-      body.product ?? data.produto ?? null,
-      body.size ?? data.tamanho ?? null,
-      body.value ?? data.valor ?? null,
-      body.due_date ?? data.prazo ?? null,
-      client?.id || null,
-      pickupCode,
-      user
-    ]
+  const order = await createOrder(
+    {
+      customer_name: customerName,
+      phone: suggestion.phone,
+      description: body.description ?? descricao ?? null,
+      product: body.product ?? data.produto ?? null,
+      size: body.size ?? data.tamanho ?? null,
+      value: body.value ?? data.valor ?? null,
+      due_date: body.due_date ?? data.prazo ?? null
+    },
+    user
   );
-  const order = created[0];
 
   // Arquivos já recebidos deste cliente passam a ser anexos do pedido novo.
   const { rows: pendingFiles } = await q(
@@ -1892,6 +1799,63 @@ app.post('/api/uploads/register', h(async (req, res) => {
 }));
 
 // ---------- Configurações ----------
+
+// ---------- Hermes: painel de controle (login do sistema) ----------
+
+app.get('/api/hermes/config', h(async (req, res) => {
+  const s = await getSettings();
+  const { rows } = await q('SELECT COUNT(*)::int AS n FROM hermes_events');
+  res.json({
+    enabled: s.hermes_enabled === '1',
+    token: s.hermes_token || '',
+    webhook_url: s.hermes_webhook_url || '',
+    engine: s.bot_engine || 'interno',
+    base_url: baseUrl(req),
+    endpoints: {
+      ping: `${baseUrl(req)}/api/hermes/ping`,
+      tools: `${baseUrl(req)}/api/hermes/tools`,
+      call: `${baseUrl(req)}/api/hermes/call`
+    },
+    tools: TOOLS.map((t) => ({ name: t.name, description: t.description })),
+    eventos: rows[0]?.n || 0
+  });
+}));
+
+app.put('/api/hermes/config', h(async (req, res) => {
+  const body = req.body || {};
+  const patch = {};
+  if ('enabled' in body) patch.hermes_enabled = body.enabled ? '1' : '0';
+  if ('webhook_url' in body) patch.hermes_webhook_url = String(body.webhook_url || '').trim();
+  if ('engine' in body) {
+    if (!['interno', 'hermes', 'off'].includes(body.engine)) {
+      return res.status(400).json({ error: 'Pré-atendimento inválido. Use: interno, hermes ou off.' });
+    }
+    patch.bot_engine = body.engine;
+  }
+  await setSettings(patch);
+  res.json({ ok: true });
+}));
+
+// Gera uma chave nova (a antiga para de funcionar na hora).
+app.post('/api/hermes/rotate-token', h(async (req, res) => {
+  const token = crypto.randomBytes(24).toString('hex');
+  await setSettings({ hermes_token: token });
+  res.json({ token });
+}));
+
+// Bate na VPS para conferir se o webhook do Hermes responde.
+app.post('/api/hermes/test', h(async (req, res) => {
+  const s = await getSettings();
+  if (!s.hermes_webhook_url) return res.status(400).json({ error: 'Informe a URL do webhook do Hermes.' });
+  if (s.hermes_enabled !== '1') return res.status(400).json({ error: 'Ligue a conexão com o Hermes antes de testar.' });
+  res.json(await notifyHermes('teste', { mensagem: 'Teste de conexão do sistema Classul.' }));
+}));
+
+app.get('/api/hermes/events', h(async (req, res) => {
+  const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+  const { rows } = await q('SELECT * FROM hermes_events ORDER BY id DESC LIMIT $1', [limit]);
+  res.json(rows);
+}));
 
 // Chaves sensíveis das abas com trava por PIN (Finanças e Lucas) nunca saem
 // pela rota geral de configurações.
