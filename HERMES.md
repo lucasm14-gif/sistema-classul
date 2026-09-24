@@ -24,7 +24,7 @@ Autenticação: `Authorization: Bearer <CHAVE_DO_HERMES>` (ou o header `X-Hermes
 ```bash
 curl -H "Authorization: Bearer $CHAVE" \
   https://sistema-classul.vercel.app/api/hermes/ping
-# {"ok":true,"sistema":"Classul","ferramentas":24,"pre_atendimento":"hermes"}
+# {"ok":true,"sistema":"Classul","ferramentas":33,"pre_atendimento":"hermes"}
 ```
 
 ### Pegar o catálogo de ferramentas
@@ -92,7 +92,7 @@ async function conversar(mensagens) {
 }
 ```
 
-### As 24 ferramentas
+### As 33 ferramentas
 
 **Pedidos** — `listar_pedidos`, `buscar_pedido` (por número, id, código de retirada de 4
 dígitos ou telefone), `criar_pedido`, `atualizar_pedido`, `mover_pedido`, `arquivar_pedido`,
@@ -110,10 +110,20 @@ automática da etapa, com o código de retirada).
 **Conversas** — `listar_conversas`, `historico_conversa`, `encerrar_conversa`,
 `reativar_conversa`.
 
+**Área pessoal do Lucas** (missões e rotinas, a tela do morcego) — `lucas_painel`,
+`lucas_criar_missao`, `lucas_atualizar_missao`, `lucas_concluir_missao`, `lucas_apagar_missao`,
+`lucas_criar_rotina`, `lucas_atualizar_rotina`, `lucas_apagar_rotina`, `lucas_marcar_rotina`.
+O Hermes entra sem o PIN (a chave dele basta) e tem controle total de lá. Missão e rotina podem
+ser apontadas pelo `id` (vem no `lucas_painel`) ou por `busca`, um trecho do título; se o
+trecho bater em mais de uma, o erro devolve as opções com id. `dias` da rotina aceita nomes
+(`["segunda","quarta"]`), dígitos (`"135"`, 0 = domingo), `"todos"`, `"dias úteis"` ou
+`"fim de semana"`.
+
 A descrição e os campos de cada uma vêm no `/api/hermes/tools` — esta lista é só o resumo.
 
-**Não existe ferramenta que apague nada.** Pedido sai do quadro por `arquivar_pedido`, que é
-reversível. Apagar de verdade continua só na mão, pela tela do sistema.
+**Nenhuma ferramenta do Classul apaga nada.** Pedido sai do quadro por `arquivar_pedido`, que
+é reversível. Apagar de verdade continua só na mão, pela tela do sistema. A exceção é a área
+pessoal do Lucas: `lucas_apagar_missao` e `lucas_apagar_rotina` apagam de vez.
 
 Um pedido criado pelo Hermes já nasce com código de retirada de 4 dígitos, cliente vinculado
 (ou criado) pelo telefone e autoria `Hermes` — exatamente como um pedido criado na tela.
@@ -186,8 +196,10 @@ Não é preciso mexer na Evolution: o webhook dela continua apontando para
   é o que fazer se a VPS for comprometida.
 - Com o interruptor desligado, nenhuma chamada do Hermes passa, mesmo com a chave certa.
 - Toda troca fica registrada (entrada e saída, com erro quando houver) e aparece no painel.
+  As chamadas `lucas_*` entram no registro só com o nome e se deu certo — sem argumentos,
+  resultado nem mensagem de erro —, porque o painel do Hermes não pede o PIN da área.
 
 ---
 
-Testes: `node smoke-test-hermes.mjs` (46 verificações, banco em memória, nada sai para a
+Testes: `node smoke-test-hermes.mjs` (64 verificações, banco em memória, nada sai para a
 internet — a Evolution é mockada e o "Hermes" é um servidor local).

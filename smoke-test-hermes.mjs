@@ -218,12 +218,70 @@ await fetch(`${B}/hermes/config`, { method: 'PUT', headers: ADMIN, body: JSON.st
 r = await fetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: ADMIN, body: JSON.stringify(upsert('mais uma')) });
 check('pré-atendimento desligado não responde ninguém', (await r.json()).bot.ignored === 'pré-atendimento desligado');
 
+// ------------------------------------------------- 7b. área pessoal do Lucas
+res = await call('lucas_criar_missao', { titulo: 'Pagar boleto do aluguel', prioridade: 'critica', prazo: '2020-01-01' });
+check('Hermes cria missão na área do Lucas', res.body.ok === true && res.body.result.priority === 'critica');
+const missaoId = res.body.result.id;
+
+res = await call('lucas_criar_missao', { titulo: '' });
+check('missão sem nome vira erro explicado', res.body.ok === false && /nome/.test(res.body.error));
+
+res = await call('lucas_criar_missao', { titulo: 'Qualquer', prioridade: 'urgentissima' });
+check('prioridade inválida vira erro explicado', res.body.ok === false && /Prioridade/.test(res.body.error));
+
+await call('lucas_criar_missao', { titulo: 'Pagar internet' });
+res = await call('lucas_concluir_missao', { busca: 'pagar' });
+check('busca ambígua devolve as opções com id', res.body.ok === false && /Use o id/.test(res.body.error));
+
+res = await call('lucas_concluir_missao', { busca: 'aluguel' });
+check('conclui missão pelo trecho do título', res.body.result.status === 'concluida' && Boolean(res.body.result.done_at));
+
+res = await call('lucas_concluir_missao', { id: missaoId, reabrir: true });
+check('reabre missão', res.body.result.status === 'aberta' && res.body.result.done_at === null);
+
+res = await call('lucas_atualizar_missao', { id: missaoId, notas: 'vence dia 10', status: 'andamento' });
+check('atualiza só o que foi enviado', res.body.result.notes === 'vence dia 10' && res.body.result.priority === 'critica');
+
+res = await call('lucas_criar_rotina', { titulo: 'Academia', horario: '06:30', dias: ['segunda', 'quarta', 'sexta'] });
+check('cria rotina com dias por nome', res.body.result.days === '135' && res.body.result.time_of_day === '06:30',
+  res.body.result.dias_texto);
+const rotinaId = res.body.result.id;
+
+res = await call('lucas_criar_rotina', { titulo: 'Ler', dias: 'dias úteis' });
+check('"dias úteis" vira segunda a sexta', res.body.result.days === '12345');
+
+res = await call('lucas_criar_rotina', { titulo: 'Meditar', dias: ['feriado'] });
+check('dia desconhecido vira erro explicado', res.body.ok === false && /Dia da semana/.test(res.body.error));
+
+res = await call('lucas_marcar_rotina', { busca: 'academia', dia: '2026-09-21' });
+check('marca rotina num dia', res.body.result.feita === true && res.body.result.dia === '2026-09-21');
+
+res = await call('lucas_atualizar_rotina', { id: rotinaId, ativa: false });
+check('pausa a rotina sem apagar', res.body.result.active === 0);
+
+res = await call('lucas_painel', { com_historico: true });
+const painel = res.body.result;
+check('painel traz missões, rotinas e números',
+  painel.missoes.length === 2 && painel.rotinas.length === 2 && painel.numeros.tasks_late === 1);
+check('painel traz o histórico quando pedido',
+  painel.rotinas.find((r) => r.id === rotinaId).historico.includes('2026-09-21'));
+
+res = await call('lucas_apagar_rotina', { id: rotinaId });
+check('apaga rotina', res.body.result.apagada.titulo === 'Academia');
+res = await call('lucas_apagar_missao', { busca: 'internet' });
+check('apaga missão', res.body.result.apagada.titulo === 'Pagar internet');
+res = await call('lucas_painel');
+check('painel reflete o que foi apagado', res.body.result.missoes.length === 1 && res.body.result.rotinas.length === 1);
+
 // ------------------------------------------------------------- 8. registro
 r = await fetch(`${B}/hermes/events?limit=100`, { headers: ADMIN });
 const eventos = await r.json();
 check('registro guarda o que o Hermes pediu', eventos.some((e) => e.direction === 'entrada' && e.name === 'criar_pedido'));
 check('registro guarda o que o sistema avisou', eventos.some((e) => e.direction === 'saida' && e.name === 'pedido.status'));
 check('registro guarda também o que deu errado', eventos.some((e) => e.ok === 0));
+const privados = eventos.filter((e) => e.name.startsWith('lucas_'));
+check('registro da área do Lucas não guarda o conteúdo',
+  privados.length > 0 && privados.every((e) => !e.args && !e.result && !JSON.stringify(e).includes('aluguel')));
 
 // --------------------------------------------------------- 9. trocar a chave
 r = await fetch(`${B}/hermes/rotate-token`, { method: 'POST', headers: ADMIN });
