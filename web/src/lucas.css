@@ -1312,6 +1312,558 @@
 
 /* ------------------------- Movimento reduzido ----------------------------- */
 
+/* --------------------------------- Ano Um --------------------------------- */
+
+.btm-views {
+  display: flex;
+  border: 1px solid var(--line);
+}
+
+.btm-views button {
+  padding: 8px 14px;
+  font-size: 9px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--bone-faint);
+  transition: all 0.2s;
+}
+
+.btm-views button:hover {
+  color: var(--bone);
+}
+
+.btm-views button.on {
+  color: var(--ink);
+  background: var(--beam-hot);
+}
+
+/* Faixa curta do ano no topo da visão "a noite". */
+.btm-yearstrip {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  margin-bottom: 20px;
+  border: 1px solid rgba(159, 208, 245, 0.22);
+  font-size: 9px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--bone-faint);
+  text-align: left;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.btm-yearstrip:hover {
+  border-color: rgba(159, 208, 245, 0.55);
+  background: rgba(61, 111, 146, 0.08);
+}
+
+.btm-yearstrip b {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  color: var(--bone);
+}
+
+.btm-yearstrip i {
+  flex: 1;
+  height: 2px;
+  background: rgba(212, 218, 225, 0.1);
+  min-width: 40px;
+}
+
+.btm-yearstrip em {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  background: var(--beam-hot);
+}
+
+.btm-kicker {
+  margin: 0 0 8px;
+  font-size: 10px;
+  letter-spacing: 0.32em;
+  color: var(--amber);
+}
+
+.btm-hero h2.btm-daynum {
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.btm-daynum small {
+  font-size: 0.42em;
+  color: var(--bone-faint);
+  letter-spacing: 0.1em;
+  margin-left: 6px;
+}
+
+.btm-countdown {
+  display: flex;
+  gap: 1px;
+  border: 1px solid rgba(159, 208, 245, 0.25);
+  background: var(--line);
+}
+
+.btm-countdown div {
+  background: var(--ink-2);
+  padding: 12px 14px 10px;
+  text-align: center;
+  min-width: 64px;
+}
+
+.btm-countdown b {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  color: var(--beam-hot);
+  text-shadow: 0 0 14px rgba(159, 208, 245, 0.35);
+}
+
+.btm-countdown div:first-child b {
+  color: var(--bone);
+}
+
+.btm-countdown span {
+  font-size: 8px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--bone-faint);
+}
+
+/* Barra do ano dividida em quatro atos. */
+.btm-acts {
+  margin-bottom: 22px;
+}
+
+.btm-acts-bar {
+  position: relative;
+  height: 6px;
+  background:
+    linear-gradient(90deg, transparent calc(25% - 1px), var(--ink) calc(25% - 1px), var(--ink) 25%, transparent 25%),
+    linear-gradient(90deg, transparent calc(50% - 1px), var(--ink) calc(50% - 1px), var(--ink) 50%, transparent 50%),
+    linear-gradient(90deg, transparent calc(75% - 1px), var(--ink) calc(75% - 1px), var(--ink) 75%, transparent 75%),
+    rgba(212, 218, 225, 0.08);
+}
+
+.btm-acts-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  min-width: 2px;
+  background: linear-gradient(90deg, var(--beam), var(--beam-hot));
+  box-shadow: 0 0 12px rgba(159, 208, 245, 0.45);
+  transition: width 1.1s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btm-acts-mark {
+  position: absolute;
+  top: -5px;
+  width: 2px;
+  height: 16px;
+  background: var(--bone);
+  transform: translateX(-1px);
+}
+
+.btm-acts-labels {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 10px;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--bone-faint);
+}
+
+.btm-acts-labels span {
+  padding-right: 8px;
+}
+
+.btm-acts-labels b {
+  font-weight: 400;
+  color: var(--bone-dim);
+  margin-right: 4px;
+}
+
+.btm-acts-labels .on,
+.btm-acts-labels .on b {
+  color: var(--beam-hot);
+}
+
+.btm-acts-labels .past {
+  color: var(--bone-dim);
+}
+
+@media (max-width: 640px) {
+  .btm-acts-labels span {
+    font-size: 8px;
+    letter-spacing: 0.12em;
+  }
+  .btm-acts-labels b {
+    display: block;
+  }
+  .btm-countdown div {
+    min-width: 0;
+    padding: 10px 9px 8px;
+  }
+  .btm-countdown b {
+    font-size: 22px;
+  }
+}
+
+.btm-vow {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px 18px 18px 16px;
+  margin-bottom: 22px;
+  border-left: 2px solid var(--amber);
+  background: linear-gradient(90deg, rgba(198, 154, 82, 0.08), transparent 70%);
+}
+
+.btm-vow > svg {
+  flex: none;
+  margin-top: 4px;
+  color: var(--amber);
+}
+
+.btm-vow blockquote,
+.btm-vow-empty {
+  flex: 1;
+  margin: 0;
+  min-width: 0;
+  white-space: pre-wrap;
+}
+
+.btm-vow blockquote {
+  font-family: var(--font-display);
+  font-size: clamp(16px, 2vw, 21px);
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+  color: var(--bone);
+}
+
+.btm-vow-empty {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  line-height: 1.8;
+  color: var(--bone-faint);
+}
+
+/* Metas do ano. */
+.btm-goal {
+  padding: 15px 16px;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+}
+
+.btm-goal-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btm-goal-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.btm-goal-pct {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--beam-hot);
+}
+
+.btm-goal .btm-task-notes {
+  margin: 0;
+}
+
+.btm-goal-bar {
+  height: 4px;
+  background: rgba(212, 218, 225, 0.08);
+}
+
+.btm-goal-bar i {
+  display: block;
+  height: 100%;
+  background: var(--beam-hot);
+  box-shadow: 0 0 10px rgba(159, 208, 245, 0.4);
+  transition: width 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btm-goal.done .btm-goal-bar i {
+  background: var(--amber);
+  box-shadow: 0 0 10px rgba(198, 154, 82, 0.45);
+}
+
+.btm-goal.done .btm-goal-pct {
+  color: var(--amber);
+}
+
+.btm-goal-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btm-mini:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.btm .btm-range {
+  width: 100%;
+  accent-color: var(--beam-hot);
+}
+
+.btm textarea.btm-tall {
+  min-height: 180px;
+}
+
+.btm-modal-note {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  line-height: 1.8;
+  color: var(--bone-dim);
+}
+
+/* Diário: cinco notas para o dia. */
+.btm-moods {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.btm-mood {
+  padding: 9px 4px 7px;
+  border: 1px solid var(--line);
+  color: var(--bone-faint);
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.btm-mood b {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.btm-mood span {
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.btm-mood:hover {
+  color: var(--bone);
+  border-color: rgba(212, 218, 225, 0.4);
+}
+
+.btm-mood.on {
+  color: var(--ink);
+  background: var(--beam-hot);
+  border-color: var(--beam-hot);
+}
+
+.btm-mood.on[data-mood="1"],
+.btm-mood.on[data-mood="2"] {
+  background: var(--bone-dim);
+  border-color: var(--bone-dim);
+}
+
+.btm-mood.on[data-mood="5"] {
+  background: var(--amber);
+  border-color: var(--amber);
+}
+
+.btm-journal-inline {
+  padding: 14px 16px 16px;
+}
+
+/* Carta lacrada. */
+.btm-letter {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 22px 18px;
+  text-align: center;
+}
+
+.btm-letter p {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  line-height: 1.9;
+  text-transform: uppercase;
+  color: var(--bone-faint);
+}
+
+.btm-seal {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px dashed var(--line);
+}
+
+.btm-seal svg {
+  width: 40px;
+  fill: rgba(212, 218, 225, 0.15);
+}
+
+.btm-seal.on {
+  border: 1px solid var(--amber);
+  background: radial-gradient(circle, rgba(198, 154, 82, 0.28), rgba(198, 154, 82, 0.06) 70%);
+  box-shadow: 0 0 22px rgba(198, 154, 82, 0.25);
+}
+
+.btm-seal.on svg {
+  fill: var(--amber);
+}
+
+.btm-letter-open {
+  padding: 18px;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.9;
+}
+
+/* Mapa do ano: uma linha por mês, uma célula por dia. */
+.btm-yearmap {
+  display: grid;
+  gap: 5px;
+  padding: 16px;
+}
+
+.btm-yearmap-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.btm-yearmap-label {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--bone-faint);
+}
+
+.btm-yearmap-cells {
+  display: grid;
+  grid-template-columns: repeat(31, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.btm-yearmap-cells > *,
+.btm-yearmap-legend i {
+  position: relative;
+  aspect-ratio: 1;
+  max-height: 22px;
+  background: rgba(212, 218, 225, 0.08);
+}
+
+.btm-yearmap-cells > .pad {
+  background: none;
+}
+
+.btm-yearmap-cells button {
+  padding: 0;
+  transition: transform 0.15s, outline-color 0.15s;
+  outline: 1px solid transparent;
+}
+
+.btm-yearmap-cells button:not(:disabled):hover {
+  transform: scale(1.35);
+  outline-color: var(--bone);
+  z-index: 1;
+}
+
+.btm-yearmap-cells button.future {
+  background: none;
+  outline: 1px solid rgba(212, 218, 225, 0.07);
+  cursor: default;
+}
+
+.btm-yearmap-cells button.today {
+  outline: 1px solid var(--beam-hot);
+  box-shadow: 0 0 10px rgba(159, 208, 245, 0.55);
+}
+
+.btm-yearmap [data-level="1"],
+.btm-yearmap-legend [data-level="1"] { background: rgba(61, 111, 146, 0.35); }
+.btm-yearmap [data-level="2"],
+.btm-yearmap-legend [data-level="2"] { background: rgba(61, 111, 146, 0.65); }
+.btm-yearmap [data-level="3"],
+.btm-yearmap-legend [data-level="3"] { background: var(--beam-hot); }
+
+.btm-yearmap-cells .noted::after,
+.btm-yearmap-legend .noted::after {
+  content: "";
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 36%;
+  height: 36%;
+  background: var(--amber);
+}
+
+.btm-yearmap-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 0 16px 16px 78px;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--bone-faint);
+}
+
+.btm-yearmap-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btm-yearmap-legend i {
+  display: inline-block;
+  width: 11px;
+}
+
+@media (max-width: 640px) {
+  .btm-yearmap {
+    padding: 12px 10px;
+  }
+  .btm-yearmap-row {
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 6px;
+  }
+  .btm-yearmap-label {
+    font-size: 8px;
+    letter-spacing: 0.06em;
+  }
+  .btm-yearmap-cells {
+    gap: 2px;
+  }
+  .btm-yearmap-legend {
+    padding-left: 10px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .btm *,
   .btm *::before,

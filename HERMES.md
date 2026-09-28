@@ -112,7 +112,8 @@ automática da etapa, com o código de retirada).
 
 **Área pessoal do Lucas** (missões e rotinas, a tela do morcego) — `lucas_painel`,
 `lucas_criar_missao`, `lucas_atualizar_missao`, `lucas_concluir_missao`, `lucas_apagar_missao`,
-`lucas_criar_rotina`, `lucas_atualizar_rotina`, `lucas_apagar_rotina`, `lucas_marcar_rotina`.
+`lucas_criar_rotina`, `lucas_atualizar_rotina`, `lucas_apagar_rotina`, `lucas_marcar_rotina`,
+`lucas_ano` (o Ano Um: dia do ano, metas e diário), `lucas_diario`, `lucas_meta`.
 O Hermes entra sem o PIN (a chave dele basta) e tem controle total de lá. Missão e rotina podem
 ser apontadas pelo `id` (vem no `lucas_painel`) ou por `busca`, um trecho do título; se o
 trecho bater em mais de uma, o erro devolve as opções com id. `dias` da rotina aceita nomes

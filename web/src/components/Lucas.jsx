@@ -12,7 +12,10 @@ import {
   Flame,
   Clock3,
   RefreshCw,
-  Power
+  Power,
+  Minus,
+  Mail,
+  Feather
 } from 'lucide-react';
 import { api, LucasLockError, getLucasToken, setLucasToken } from '../api';
 import '../lucas.css';
@@ -860,6 +863,654 @@ function RoutineRow({ routine, today, onCheck, onEdit, onDelete }) {
   );
 }
 
+/* --------------------------------- Ano Um ---------------------------------- */
+// O ano de foco: 28/09/2026 → 28/09/2027. Contagem, juramento, metas, diário,
+// mapa dos 365 dias e uma carta lacrada que só abre no fim.
+
+const MOODS = [
+  { id: 1, label: 'afundou' },
+  { id: 2, label: 'pesado' },
+  { id: 3, label: 'de pé' },
+  { id: 4, label: 'firme' },
+  { id: 5, label: 'imparável' }
+];
+
+const ACTS = ['o começo', 'a disciplina', 'a prova', 'o retorno'];
+const ROMAN = ['I', 'II', 'III', 'IV'];
+
+const GOAL_AREAS = [
+  { id: 'corpo', label: 'corpo' },
+  { id: 'mente', label: 'mente' },
+  { id: 'dinheiro', label: 'dinheiro' },
+  { id: 'trabalho', label: 'trabalho' },
+  { id: 'relacoes', label: 'relações' },
+  { id: 'espirito', label: 'espírito' },
+  { id: 'outro', label: 'outro' }
+];
+const AREA_LABEL = Object.fromEntries(GOAL_AREAS.map((a) => [a.id, a.label]));
+
+const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+function dotDay(key) {
+  if (!key) return '';
+  const [y, m, d] = key.split('-');
+  return `${d}.${m}.${y}`;
+}
+
+// Contagem regressiva até a meia-noite do último dia (fuso de São Paulo, -03:00).
+function Countdown({ end }) {
+  const target = useMemo(() => Date.parse(`${end}T00:00:00-03:00`), [end]);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const left = Math.max(0, target - now);
+  const parts = [
+    ['dias', Math.floor(left / 86400000)],
+    ['horas', Math.floor(left / 3600000) % 24],
+    ['min', Math.floor(left / 60000) % 60],
+    ['seg', Math.floor(left / 1000) % 60]
+  ];
+  return (
+    <div className="btm-countdown" title={`até ${dotDay(end)}`}>
+      {parts.map(([label, value]) => (
+        <div key={label}>
+          <b>{String(value).padStart(label === 'dias' ? 3 : 2, '0')}</b>
+          <span>{label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function VowModal({ vow, onClose, onSaved, notify }) {
+  const [text, setText] = useState(vow || '');
+  const [busy, setBusy] = useState(false);
+  const save = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.lucasUpdateYear({ vow: text });
+      await onSaved();
+      onClose();
+    } catch (err) {
+      notify(err.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal title="juramento" onClose={onClose}>
+      <form className="btm-form" onSubmit={save}>
+        <div className="btm-field">
+          <label>por que este ano existe</label>
+          <textarea
+            className="btm-input btm-tall"
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="o que você promete a si mesmo até 28.09.2027"
+          />
+        </div>
+        <div className="btm-actions" style={{ padding: 0 }}>
+          <button type="button" className="btm-btn" onClick={onClose}>
+            cancelar
+          </button>
+          <button type="submit" className="btm-btn primary" disabled={busy}>
+            {busy ? 'salvando…' : 'jurar'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function LetterModal({ year, onClose, onSaved, notify }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const save = async (e) => {
+    e.preventDefault();
+    if (!text.trim()) return notify('a carta está vazia', 'err');
+    if (year.letter_written && !window.confirm('Isso substitui a carta lacrada que já existe. Continuar?')) {
+      return undefined;
+    }
+    setBusy(true);
+    try {
+      await api.lucasUpdateYear({ letter: text });
+      await onSaved();
+      notify('carta lacrada até 28.09.2027');
+      onClose();
+    } catch (err) {
+      notify(err.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+    return undefined;
+  };
+  return (
+    <Modal title={`carta para ${dotDay(year.end)}`} onClose={onClose}>
+      <form className="btm-form" onSubmit={save}>
+        <p className="btm-modal-note">
+          escreva para o lucas que vai existir daqui a um ano. depois de lacrada, a carta some da tela e
+          só volta a abrir em {dotDay(year.end)}.
+        </p>
+        <div className="btm-field">
+          <label>carta</label>
+          <textarea
+            className="btm-input btm-tall"
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="lucas, se você está lendo isso…"
+          />
+        </div>
+        <div className="btm-actions" style={{ padding: 0 }}>
+          <button type="button" className="btm-btn" onClick={onClose}>
+            cancelar
+          </button>
+          <button type="submit" className="btm-btn primary" disabled={busy}>
+            {busy ? 'lacrando…' : 'lacrar carta'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function GoalModal({ goal, onClose, onSaved, notify }) {
+  const [form, setForm] = useState(() => ({
+    title: goal?.title || '',
+    area: goal?.area || 'corpo',
+    why: goal?.why || '',
+    progress: goal?.progress ?? 0
+  }));
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const save = async (e) => {
+    e.preventDefault();
+    if (!form.title.trim()) return notify('dê um nome à meta', 'err');
+    setBusy(true);
+    try {
+      if (goal) await api.lucasUpdateGoal(goal.id, form);
+      else await api.lucasCreateGoal(form);
+      await onSaved();
+      onClose();
+    } catch (err) {
+      notify(err.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+    return undefined;
+  };
+
+  return (
+    <Modal title={goal ? 'editar meta' : 'nova meta do ano'} onClose={onClose}>
+      <form className="btm-form" onSubmit={save}>
+        <div className="btm-field">
+          <label>meta</label>
+          <input
+            className="btm-input"
+            autoFocus
+            value={form.title}
+            onChange={(e) => set('title', e.target.value)}
+            placeholder="onde você quer estar em 28.09.2027"
+          />
+        </div>
+        <div className="btm-field">
+          <label>área</label>
+          <div className="btm-seg">
+            {GOAL_AREAS.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                className={`btm-chip${form.area === a.id ? ' on' : ''}`}
+                onClick={() => set('area', a.id)}
+              >
+                {a.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="btm-field">
+          <label>por que importa</label>
+          <textarea
+            className="btm-input"
+            value={form.why}
+            onChange={(e) => set('why', e.target.value)}
+            placeholder="o motivo que vai te segurar nos dias ruins"
+          />
+        </div>
+        <div className="btm-field">
+          <label>progresso · {form.progress}%</label>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="5"
+            className="btm-range"
+            value={form.progress}
+            onChange={(e) => set('progress', Number(e.target.value))}
+          />
+        </div>
+        <div className="btm-actions" style={{ padding: 0 }}>
+          <button type="button" className="btm-btn" onClick={onClose}>
+            cancelar
+          </button>
+          <button type="submit" className="btm-btn primary" disabled={busy}>
+            {busy ? 'salvando…' : 'salvar'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// Formulário do diário, usado no painel de hoje e no modal de dias passados.
+function JournalForm({ day, entry, onSaved, notify, compact, onCancel }) {
+  const [mood, setMood] = useState(entry?.mood ?? null);
+  const [note, setNote] = useState(entry?.note || '');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setMood(entry?.mood ?? null);
+    setNote(entry?.note || '');
+  }, [entry?.mood, entry?.note, day]);
+
+  const dirty = (entry?.mood ?? null) !== mood || (entry?.note || '') !== note;
+
+  const save = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.lucasSaveJournal({ day, mood, note });
+      await onSaved();
+      notify('registro do dia gravado');
+    } catch (err) {
+      notify(err.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className={`btm-form${compact ? ' btm-journal-inline' : ''}`} onSubmit={save}>
+      <div className="btm-field">
+        <label>como foi o dia</label>
+        <div className="btm-moods">
+          {MOODS.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              data-mood={m.id}
+              className={`btm-mood${mood === m.id ? ' on' : ''}`}
+              onClick={() => setMood(mood === m.id ? null : m.id)}
+            >
+              <b>{m.id}</b>
+              <span>{m.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="btm-field">
+        <label>registro</label>
+        <textarea
+          className="btm-input"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="o que você fez por você hoje? o que aprendeu? o que evitou?"
+        />
+      </div>
+      <div className="btm-actions" style={{ padding: 0 }}>
+        {onCancel && (
+          <button type="button" className="btm-btn" onClick={onCancel}>
+            fechar
+          </button>
+        )}
+        <button type="submit" className="btm-btn primary" disabled={busy || !dirty}>
+          {busy ? 'gravando…' : dirty ? 'gravar' : 'gravado'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function JournalModal({ day, onClose, onSaved, notify }) {
+  const [entry, setEntry] = useState(null);
+  useEffect(() => {
+    api
+      .lucasJournal(day)
+      .then(setEntry)
+      .catch((err) => notify(err.message, 'err'));
+  }, [day, notify]);
+  const weekday = DAY_NAMES[weekdayOf(day)];
+  return (
+    <Modal title={`${weekday} · ${dotDay(day)}`} onClose={onClose}>
+      {entry ? (
+        <JournalForm
+          day={day}
+          entry={entry}
+          notify={notify}
+          onCancel={onClose}
+          onSaved={async () => {
+            await onSaved();
+            onClose();
+          }}
+        />
+      ) : (
+        <p className="btm-hint" style={{ padding: 20 }}>
+          abrindo…
+        </p>
+      )}
+    </Modal>
+  );
+}
+
+function GoalRow({ goal, onStep, onEdit, onDelete }) {
+  const done = Boolean(goal.done_at);
+  return (
+    <div className={`btm-goal${done ? ' done' : ''}`}>
+      <div className="btm-goal-top">
+        <span className="btm-tag">{AREA_LABEL[goal.area] || goal.area}</span>
+        <p className="btm-goal-title">{goal.title}</p>
+        <b className="btm-goal-pct">{goal.progress}%</b>
+      </div>
+      {goal.why && <p className="btm-task-notes">{goal.why}</p>}
+      <div className="btm-goal-bar">
+        <i style={{ width: `${goal.progress}%` }} />
+      </div>
+      <div className="btm-goal-actions">
+        <button className="btm-mini" type="button" title="-10%" onClick={() => onStep(goal, -10)} disabled={goal.progress <= 0}>
+          <Minus size={14} />
+        </button>
+        <button className="btm-mini" type="button" title="+10%" onClick={() => onStep(goal, 10)} disabled={goal.progress >= 100}>
+          <Plus size={14} />
+        </button>
+        {done && <span className="btm-streak">cumprida</span>}
+        <span style={{ flex: 1 }} />
+        <button className="btm-mini" title="editar" type="button" onClick={() => onEdit(goal)}>
+          <Pencil size={14} />
+        </button>
+        <button className="btm-mini danger" title="apagar" type="button" onClick={() => onDelete(goal)}>
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Os 365 dias em linhas por mês. Brilho = rotinas cumpridas; ponto âmbar = diário.
+function YearMap({ days, today, onPick }) {
+  const months = useMemo(() => {
+    const groups = [];
+    for (const d of days) {
+      const key = d.day.slice(0, 7);
+      let g = groups[groups.length - 1];
+      if (!g || g.key !== key) {
+        const [y, m] = key.split('-');
+        g = { key, label: `${MONTHS[Number(m) - 1]} ${y.slice(2)}`, lead: Number(d.day.slice(8)) - 1, days: [] };
+        groups.push(g);
+      }
+      g.days.push(d);
+    }
+    return groups;
+  }, [days]);
+
+  return (
+    <div className="btm-yearmap">
+      {months.map((m) => (
+        <div key={m.key} className="btm-yearmap-row">
+          <span className="btm-yearmap-label">{m.label}</span>
+          <div className="btm-yearmap-cells">
+            {Array.from({ length: m.lead }).map((_, i) => (
+              <i key={`pad${i}`} className="pad" />
+            ))}
+            {m.days.map((d) => {
+              const cls = [
+                d.future ? 'future' : '',
+                d.day === today ? 'today' : '',
+                d.mood || d.has_note ? 'noted' : ''
+              ]
+                .filter(Boolean)
+                .join(' ');
+              const tip = d.future
+                ? dotDay(d.day)
+                : `${dotDay(d.day)} — rotinas ${d.routines_done}/${d.routines_total}${
+                    d.mood ? ` · ${MOODS[d.mood - 1].label}` : ''
+                  }`;
+              return (
+                <button
+                  key={d.day}
+                  type="button"
+                  className={cls}
+                  data-level={d.level}
+                  title={tip}
+                  disabled={d.future}
+                  onClick={() => onPick(d.day)}
+                />
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function YearView({ year, reload, notify }) {
+  const [vowModal, setVowModal] = useState(false);
+  const [letterModal, setLetterModal] = useState(false);
+  const [goalModal, setGoalModal] = useState(null);
+  const [journalDay, setJournalDay] = useState(null);
+
+  const { stats } = year;
+  const actIndex = Math.max(year.act, 1) - 1;
+
+  const stepGoal = async (goal, delta) => {
+    try {
+      const progress = Math.min(100, Math.max(0, goal.progress + delta));
+      await api.lucasUpdateGoal(goal.id, { progress });
+      if (progress === 100) notify('meta cumprida');
+      await reload();
+    } catch (err) {
+      notify(err.message, 'err');
+    }
+  };
+
+  const removeGoal = async (goal) => {
+    if (!window.confirm(`Apagar a meta "${goal.title}"?`)) return;
+    try {
+      await api.lucasDeleteGoal(goal.id);
+      await reload();
+    } catch (err) {
+      notify(err.message, 'err');
+    }
+  };
+
+  return (
+    <>
+      <section className="btm-hero btm-year-hero">
+        <div>
+          <p className="btm-kicker btm-rise">
+            <Scramble text={`ANO UM · ATO ${ROMAN[actIndex]} — ${ACTS[actIndex].toUpperCase()}`} delay={150} />
+          </p>
+          <h2 className="btm-rise btm-daynum" style={{ '--d': '0.1s' }}>
+            {year.started ? (
+              <>
+                dia {String(year.day_number).padStart(3, '0')}
+                <small>/{year.total_days}</small>
+              </>
+            ) : (
+              <>faltam {year.days_to_start}</>
+            )}
+          </h2>
+          <p className="btm-hero-sub btm-rise" style={{ '--d': '0.25s' }}>
+            {year.finished
+              ? 'o ano terminou. abra a carta.'
+              : `semana ${year.week} de 53 · ${year.days_left} dias até ${dotDay(year.end)} · ${year.pct}% do caminho`}
+          </p>
+        </div>
+        <div className="btm-rise" style={{ '--d': '0.35s' }}>
+          <Countdown end={year.end} />
+        </div>
+      </section>
+
+      <section className="btm-acts btm-rise" style={{ '--d': '0.4s' }}>
+        <div className="btm-acts-bar">
+          <i style={{ width: `${year.pct}%` }} />
+          <span className="btm-acts-mark" style={{ left: `${year.pct}%` }} />
+        </div>
+        <div className="btm-acts-labels">
+          {ACTS.map((a, i) => (
+            <span key={a} className={i === actIndex ? 'on' : i < actIndex ? 'past' : ''}>
+              <b>ato {ROMAN[i]}</b> {a}
+            </span>
+          ))}
+        </div>
+      </section>
+
+      <section className="btm-vow btm-rise" style={{ '--d': '0.45s' }}>
+        <Feather size={16} />
+        {year.vow ? (
+          <blockquote>{year.vow}</blockquote>
+        ) : (
+          <p className="btm-vow-empty">escreva o seu juramento: por que este ano existe e o que você promete a si mesmo.</p>
+        )}
+        <button className="btm-chip" type="button" onClick={() => setVowModal(true)}>
+          {year.vow ? 'reescrever' : 'jurar'}
+        </button>
+      </section>
+
+      <section className="btm-stats btm-rise" style={{ '--d': '0.5s' }}>
+        <Stat label="dias vividos" value={year.started ? year.day_number : 0} />
+        <Stat label="dias restantes" value={year.days_left} tone="hot" />
+        <Stat label="dias no diário" value={stats.journal_days} tone="amber" />
+        <Stat label="sequência diário" value={stats.journal_streak} />
+        <Stat label="dias completos" value={stats.full_days} />
+        <Stat label="metas cumpridas" value={stats.goals_done} tone="hot" />
+      </section>
+
+      <div className="btm-grid">
+        <section className="btm-panel btm-rise" style={{ '--d': '0.55s' }}>
+          <div className="btm-panel-head">
+            <BatSigil style={{ width: 26, fill: 'var(--beam-hot)' }} />
+            <h3>Metas do ano</h3>
+            <span className="btm-count">
+              {stats.goals_done}/{stats.goals_total} · média {stats.goals_avg}%
+            </span>
+            <button className="btm-add" type="button" onClick={() => setGoalModal({})}>
+              <Plus size={12} /> nova
+            </button>
+          </div>
+          {year.goals.length === 0 ? (
+            <div className="btm-empty">
+              <BatSigil />
+              <div>defina quem você vai ser em {dotDay(year.end)}</div>
+            </div>
+          ) : (
+            year.goals.map((g, i) => (
+              <div key={g.id} className="btm-rise" style={{ '--d': `${0.05 * i}s` }}>
+                <GoalRow goal={g} onStep={stepGoal} onEdit={(x) => setGoalModal({ goal: x })} onDelete={removeGoal} />
+              </div>
+            ))
+          )}
+        </section>
+
+        <div style={{ display: 'grid', gap: 22 }}>
+          <section className="btm-panel btm-rise" style={{ '--d': '0.6s' }}>
+            <div className="btm-panel-head">
+              <BatSigil style={{ width: 26, fill: 'var(--amber)' }} />
+              <h3>Diário de hoje</h3>
+              <span className="btm-count">
+                {stats.mood_avg ? `média ${stats.mood_avg}` : prettyDay(year.today)}
+              </span>
+            </div>
+            {year.started && !year.finished ? (
+              <JournalForm day={year.today} entry={year.today_entry} onSaved={reload} notify={notify} compact />
+            ) : (
+              <div className="btm-empty">{year.finished ? 'o ano terminou' : 'o ano ainda não começou'}</div>
+            )}
+          </section>
+
+          <section className="btm-panel btm-rise" style={{ '--d': '0.7s' }}>
+            <div className="btm-panel-head">
+              <Mail size={16} style={{ color: 'var(--amber)' }} />
+              <h3>Carta para {dotDay(year.end)}</h3>
+            </div>
+            {year.finished && year.letter ? (
+              <div className="btm-letter-open">{year.letter}</div>
+            ) : (
+              <div className="btm-letter">
+                <div className={`btm-seal${year.letter_written ? ' on' : ''}`}>
+                  <BatSigil />
+                </div>
+                <p>
+                  {year.letter_written
+                    ? `lacrada em ${prettyDay(dayOfTimestamp(year.letter_at))} · abre em ${dotDay(year.end)}`
+                    : 'escreva para o lucas do fim do ano. ela fica lacrada até lá.'}
+                </p>
+                {!year.finished && (
+                  <button className="btm-chip" type="button" onClick={() => setLetterModal(true)}>
+                    {year.letter_written ? 'reescrever' : 'escrever carta'}
+                  </button>
+                )}
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+
+      <section className="btm-panel btm-rise" style={{ '--d': '0.75s', marginTop: 22 }}>
+        <div className="btm-panel-head">
+          <h3>Mapa do ano</h3>
+          <span className="btm-count">
+            {year.total_days} dias · clique num dia vivido para abrir o diário
+          </span>
+        </div>
+        <YearMap days={year.days} today={year.today} onPick={setJournalDay} />
+        <div className="btm-yearmap-legend">
+          <span>
+            <i data-level="0" /> nada
+          </span>
+          <span>
+            <i data-level="1" />
+            <i data-level="2" />
+            <i data-level="3" /> rotinas cumpridas
+          </span>
+          <span>
+            <i className="noted" data-level="0" /> com diário
+          </span>
+        </div>
+      </section>
+
+      {vowModal && <VowModal vow={year.vow} onClose={() => setVowModal(false)} onSaved={reload} notify={notify} />}
+      {letterModal && (
+        <LetterModal year={year} onClose={() => setLetterModal(false)} onSaved={reload} notify={notify} />
+      )}
+      {goalModal && (
+        <GoalModal goal={goalModal.goal} onClose={() => setGoalModal(null)} onSaved={reload} notify={notify} />
+      )}
+      {journalDay && (
+        <JournalModal day={journalDay} onClose={() => setJournalDay(null)} onSaved={reload} notify={notify} />
+      )}
+    </>
+  );
+}
+
+const dayOfTimestamp = (ts) =>
+  ts ? new Date(ts).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) : '';
+
+const VIEW_KEY = 'classul_lucas_view';
+
+function readView() {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'noite' ? 'noite' : 'ano';
+  } catch {
+    return 'ano';
+  }
+}
+
 const FILTERS = [
   { id: 'ativas', label: 'em aberto' },
   { id: 'criticas', label: 'críticas' },
@@ -869,6 +1520,8 @@ const FILTERS = [
 ];
 
 function Deck({ data, reload, onLock, onExit, notify }) {
+  const [view, setViewState] = useState(readView);
+  const [year, setYear] = useState(null);
   const [filter, setFilter] = useState('ativas');
   const [taskModal, setTaskModal] = useState(null); // {task} | {}
   const [routineModal, setRoutineModal] = useState(null);
@@ -913,7 +1566,7 @@ function Deck({ data, reload, onLock, onExit, notify }) {
   const checkRoutine = async (routine, done) => {
     try {
       await api.lucasCheckRoutine(routine.id, today, done);
-      await reload();
+      await reloadAll();
     } catch (err) {
       notify(err.message, 'err');
     }
@@ -929,9 +1582,35 @@ function Deck({ data, reload, onLock, onExit, notify }) {
     }
   };
 
+  const loadYear = useCallback(async () => {
+    try {
+      setYear(await api.lucasYear());
+    } catch (err) {
+      notify(err.message, 'err');
+    }
+  }, [notify]);
+
+  useEffect(() => {
+    loadYear();
+  }, [loadYear]);
+
+  const setView = (v) => {
+    setViewState(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* só uma preferência */
+    }
+  };
+
+  // Rotinas marcadas mudam o mapa do ano; o "atualizar" recarrega os dois.
+  const reloadAll = useCallback(async () => {
+    await Promise.all([reload(), loadYear()]);
+  }, [reload, loadYear]);
+
   const refresh = async () => {
     setRefreshing(true);
-    await reload();
+    await reloadAll();
     setTimeout(() => setRefreshing(false), 500);
   };
 
@@ -960,6 +1639,26 @@ function Deck({ data, reload, onLock, onExit, notify }) {
             <p>protocolo pessoal</p>
           </div>
         </div>
+        <div className="btm-views" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'noite'}
+            className={view === 'noite' ? 'on' : ''}
+            onClick={() => setView('noite')}
+          >
+            a noite
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'ano'}
+            className={view === 'ano' ? 'on' : ''}
+            onClick={() => setView('ano')}
+          >
+            ano um
+          </button>
+        </div>
         <Clock />
         <button className="btm-icon-btn" title="atualizar" type="button" onClick={refresh}>
           <RefreshCw size={16} className={refreshing ? 'btm-spin' : ''} />
@@ -984,140 +1683,166 @@ function Deck({ data, reload, onLock, onExit, notify }) {
                 : 'nenhuma missão atrasada — a cidade dorme tranquila'}
               {' • '}
               {stats.tasks_critical} crítica(s) na fila • {stats.routines_done}/{stats.routines_today} rotinas
-              cumpridas hoje • {prettyDay(today)} •
+              cumpridas hoje •{' '}
+              {year?.started && !year.finished
+                ? `ano um: dia ${year.day_number} de ${year.total_days}, faltam ${year.days_left} • `
+                : ''}
+              {prettyDay(today)} •
             </span>
           ))}
         </div>
       </div>
 
       <div className="btm-scroll">
-        <section className="btm-hero">
-          <div>
-            <h2 className="btm-rise" style={{ '--d': '0.1s' }}>
-              <Scramble text="REGISTRO DA NOITE" delay={200} />
-            </h2>
-            <p className="btm-hero-sub btm-rise" style={{ '--d': '0.25s' }}>
-              {stats.tasks_open === 0
-                ? 'nenhuma missão em aberto. aproveite o silêncio.'
-                : `${stats.tasks_open} missão(ões) em aberto · ${stats.tasks_done_today} concluída(s) hoje`}
-            </p>
-          </div>
-          <div className="btm-rise" style={{ '--d': '0.35s' }}>
-            <Ring done={stats.routines_done} total={stats.routines_today} />
-          </div>
-        </section>
-
-        <section className="btm-stats btm-rise" style={{ '--d': '0.4s' }}>
-          <Stat label="em aberto" value={stats.tasks_open} />
-          <Stat label="críticas" value={stats.tasks_critical} tone="hot" />
-          <Stat label="atrasadas" value={stats.tasks_late} tone="hot" />
-          <Stat label="feitas hoje" value={stats.tasks_done_today} tone="amber" />
-          <Stat label="rotinas hoje" value={stats.routines_today} />
-        </section>
-
-        <div className="btm-grid">
-          <section className="btm-panel btm-rise" style={{ '--d': '0.5s' }}>
-            <div className="btm-panel-head">
-              <BatSigil style={{ width: 26, fill: 'var(--beam-hot)' }} />
-              <h3>Missões</h3>
-              <span className="btm-count">{visible.length}</span>
-              <button className="btm-add" type="button" onClick={() => setTaskModal({})}>
-                <Plus size={12} /> nova
+        {view === 'ano' ? (
+          year ? (
+            <YearView year={year} reload={loadYear} notify={notify} />
+          ) : (
+            <div className="btm-empty">abrindo o ano…</div>
+          )
+        ) : (
+          <>
+            {year?.started && !year.finished && (
+              <button type="button" className="btm-yearstrip btm-rise" onClick={() => setView('ano')}>
+                <span>ano um</span>
+                <b>
+                  dia {year.day_number}/{year.total_days}
+                </b>
+                <i>
+                  <em style={{ width: `${year.pct}%` }} />
+                </i>
+                <span>faltam {year.days_left}</span>
               </button>
-            </div>
-            <div className="btm-filters">
-              {FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  className={`btm-chip${filter === f.id ? ' on' : ''}`}
-                  onClick={() => setFilter(f.id)}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            {visible.length === 0 ? (
-              <div className="btm-empty">
-                <BatSigil />
-                <div>nada por aqui</div>
-              </div>
-            ) : (
-              visible.map((task, i) => (
-                <div key={task.id} className="btm-rise" style={{ '--d': `${0.05 * i}s` }}>
-                  <TaskRow
-                    task={task}
-                    today={today}
-                    onToggle={toggleTask}
-                    onEdit={(t) => setTaskModal({ task: t })}
-                    onDelete={removeTask}
-                  />
-                </div>
-              ))
             )}
-          </section>
-
-          <div style={{ display: 'grid', gap: 22 }}>
-            <section className="btm-panel btm-rise" style={{ '--d': '0.6s' }}>
-              <div className="btm-panel-head">
-                <BatSigil style={{ width: 26, fill: 'var(--amber)' }} />
-                <h3>Rotinas</h3>
-                <span className="btm-count">
-                  {stats.routines_done}/{stats.routines_today} hoje
-                </span>
-                <button className="btm-add" type="button" onClick={() => setRoutineModal({})}>
-                  <Plus size={12} /> nova
-                </button>
+            <section className="btm-hero">
+              <div>
+                <h2 className="btm-rise" style={{ '--d': '0.1s' }}>
+                  <Scramble text="REGISTRO DA NOITE" delay={200} />
+                </h2>
+                <p className="btm-hero-sub btm-rise" style={{ '--d': '0.25s' }}>
+                  {stats.tasks_open === 0
+                    ? 'nenhuma missão em aberto. aproveite o silêncio.'
+                    : `${stats.tasks_open} missão(ões) em aberto · ${stats.tasks_done_today} concluída(s) hoje`}
+                </p>
               </div>
-              {routines.length === 0 ? (
-                <div className="btm-empty">
-                  <BatSigil />
-                  <div>sem rotinas ainda</div>
-                </div>
-              ) : (
-                routines.map((r, i) => (
-                  <div key={r.id} className="btm-rise" style={{ '--d': `${0.05 * i}s` }}>
-                    <RoutineRow
-                      routine={r}
-                      today={today}
-                      onCheck={checkRoutine}
-                      onEdit={(x) => setRoutineModal({ routine: x })}
-                      onDelete={removeRoutine}
-                    />
-                  </div>
-                ))
-              )}
-              {todayRoutines.length > 0 && (
-                <div className="btm-empty" style={{ padding: '12px 16px', textAlign: 'left' }}>
-                  {stats.routines_done === stats.routines_today
-                    ? 'todas as rotinas de hoje cumpridas'
-                    : `faltam ${stats.routines_today - stats.routines_done} de hoje`}
-                </div>
-              )}
+              <div className="btm-rise" style={{ '--d': '0.35s' }}>
+                <Ring done={stats.routines_done} total={stats.routines_today} />
+              </div>
             </section>
 
-            <section className="btm-panel btm-rise" style={{ '--d': '0.7s' }}>
-              <div className="btm-panel-head">
-                <h3>Registro</h3>
-                <span className="btm-count">28 dias</span>
-              </div>
-              {heat.length === 0 ? (
-                <div className="btm-empty">sem histórico</div>
-              ) : (
-                <div className="btm-heat">
-                  {heat.map((h, i) => (
-                    <i
-                      key={h.day}
-                      data-level={h.level}
-                      style={{ '--d': `${0.012 * i}s` }}
-                      title={`${prettyDay(h.day)} — ${h.done}/${h.total}`}
-                    />
+            <section className="btm-stats btm-rise" style={{ '--d': '0.4s' }}>
+              <Stat label="em aberto" value={stats.tasks_open} />
+              <Stat label="críticas" value={stats.tasks_critical} tone="hot" />
+              <Stat label="atrasadas" value={stats.tasks_late} tone="hot" />
+              <Stat label="feitas hoje" value={stats.tasks_done_today} tone="amber" />
+              <Stat label="rotinas hoje" value={stats.routines_today} />
+            </section>
+
+            <div className="btm-grid">
+              <section className="btm-panel btm-rise" style={{ '--d': '0.5s' }}>
+                <div className="btm-panel-head">
+                  <BatSigil style={{ width: 26, fill: 'var(--beam-hot)' }} />
+                  <h3>Missões</h3>
+                  <span className="btm-count">{visible.length}</span>
+                  <button className="btm-add" type="button" onClick={() => setTaskModal({})}>
+                    <Plus size={12} /> nova
+                  </button>
+                </div>
+                <div className="btm-filters">
+                  {FILTERS.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      className={`btm-chip${filter === f.id ? ' on' : ''}`}
+                      onClick={() => setFilter(f.id)}
+                    >
+                      {f.label}
+                    </button>
                   ))}
                 </div>
-              )}
-            </section>
-          </div>
-        </div>
+                {visible.length === 0 ? (
+                  <div className="btm-empty">
+                    <BatSigil />
+                    <div>nada por aqui</div>
+                  </div>
+                ) : (
+                  visible.map((task, i) => (
+                    <div key={task.id} className="btm-rise" style={{ '--d': `${0.05 * i}s` }}>
+                      <TaskRow
+                        task={task}
+                        today={today}
+                        onToggle={toggleTask}
+                        onEdit={(t) => setTaskModal({ task: t })}
+                        onDelete={removeTask}
+                      />
+                    </div>
+                  ))
+                )}
+              </section>
+
+              <div style={{ display: 'grid', gap: 22 }}>
+                <section className="btm-panel btm-rise" style={{ '--d': '0.6s' }}>
+                  <div className="btm-panel-head">
+                    <BatSigil style={{ width: 26, fill: 'var(--amber)' }} />
+                    <h3>Rotinas</h3>
+                    <span className="btm-count">
+                      {stats.routines_done}/{stats.routines_today} hoje
+                    </span>
+                    <button className="btm-add" type="button" onClick={() => setRoutineModal({})}>
+                      <Plus size={12} /> nova
+                    </button>
+                  </div>
+                  {routines.length === 0 ? (
+                    <div className="btm-empty">
+                      <BatSigil />
+                      <div>sem rotinas ainda</div>
+                    </div>
+                  ) : (
+                    routines.map((r, i) => (
+                      <div key={r.id} className="btm-rise" style={{ '--d': `${0.05 * i}s` }}>
+                        <RoutineRow
+                          routine={r}
+                          today={today}
+                          onCheck={checkRoutine}
+                          onEdit={(x) => setRoutineModal({ routine: x })}
+                          onDelete={removeRoutine}
+                        />
+                      </div>
+                    ))
+                  )}
+                  {todayRoutines.length > 0 && (
+                    <div className="btm-empty" style={{ padding: '12px 16px', textAlign: 'left' }}>
+                      {stats.routines_done === stats.routines_today
+                        ? 'todas as rotinas de hoje cumpridas'
+                        : `faltam ${stats.routines_today - stats.routines_done} de hoje`}
+                    </div>
+                  )}
+                </section>
+
+                <section className="btm-panel btm-rise" style={{ '--d': '0.7s' }}>
+                  <div className="btm-panel-head">
+                    <h3>Registro</h3>
+                    <span className="btm-count">28 dias</span>
+                  </div>
+                  {heat.length === 0 ? (
+                    <div className="btm-empty">sem histórico</div>
+                  ) : (
+                    <div className="btm-heat">
+                      {heat.map((h, i) => (
+                        <i
+                          key={h.day}
+                          data-level={h.level}
+                          style={{ '--d': `${0.012 * i}s` }}
+                          title={`${prettyDay(h.day)} — ${h.done}/${h.total}`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {taskModal && (

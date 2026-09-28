@@ -518,6 +518,50 @@ check('lucas: desmarca rotina', r.status === 200);
 r = await fetch(`${B}/lucas/overview`, { headers: LH });
 check('lucas: contagem volta a zero', (await r.json()).stats.routines_done === 0);
 
+// ---- Ano Um: contagem, juramento, carta lacrada, metas e diário ----
+r = await fetch(`${B}/lucas/year`, { headers: H });
+check('ano um: sem PIN fica trancado', r.status === 403);
+
+await fetch(`${B}/lucas/routines/${routine.id}/check`, { method: 'POST', headers: LH, body: JSON.stringify({}) });
+r = await fetch(`${B}/lucas/year`, { headers: LH });
+let yearData = await r.json();
+check(
+  'ano um: janela de 365 dias até 28/09/2027',
+  yearData.start === '2026-09-28' && yearData.end === '2027-09-28' && yearData.total_days === 365 && yearData.days.length === 365,
+  JSON.stringify({ start: yearData.start, end: yearData.end, total: yearData.total_days })
+);
+check('ano um: mapa marca a rotina cumprida hoje', yearData.days.find((d) => d.day === yearData.today)?.level === 3 || !yearData.started);
+
+r = await fetch(`${B}/lucas/year`, { method: 'PUT', headers: LH, body: JSON.stringify({ vow: 'um ano para mim', letter: 'oi, lucas do futuro' }) });
+check('ano um: grava juramento e carta', r.status === 200);
+r = await fetch(`${B}/lucas/year`, { headers: LH });
+yearData = await r.json();
+check('ano um: carta fica lacrada até o fim', yearData.vow === 'um ano para mim' && yearData.letter_written === true && yearData.letter === null);
+
+r = await fetch(`${B}/lucas/goals`, { method: 'POST', headers: LH, body: JSON.stringify({ title: 'Correr 10 km', area: 'corpo', progress: 140 }) });
+const goal = await r.json();
+check('ano um: meta criada com progresso limitado a 100 e cumprida', r.status === 201 && goal.progress === 100 && Boolean(goal.done_at));
+r = await fetch(`${B}/lucas/goals/${goal.id}`, { method: 'PUT', headers: LH, body: JSON.stringify({ progress: 40 }) });
+const goalBack = await r.json();
+check('ano um: baixar o progresso reabre a meta', goalBack.progress === 40 && goalBack.done_at === null);
+
+r = await fetch(`${B}/lucas/journal`, { method: 'PUT', headers: LH, body: JSON.stringify({ mood: 4, note: 'dia firme' }) });
+const entry = await r.json();
+check('ano um: diário de hoje gravado', entry.mood === 4 && entry.note === 'dia firme');
+r = await fetch(`${B}/lucas/journal`, { method: 'PUT', headers: LH, body: JSON.stringify({ day: '2099-01-01', note: 'x' }) });
+check('ano um: não escreve dia futuro', r.status === 400);
+r = await fetch(`${B}/lucas/year`, { headers: LH });
+yearData = await r.json();
+check(
+  'ano um: números do diário e das metas',
+  yearData.stats.journal_days === (yearData.started ? 1 : 0) && yearData.stats.goals_total === 1 && yearData.stats.goals_avg === 40,
+  JSON.stringify(yearData.stats)
+);
+r = await fetch(`${B}/lucas/journal`, { method: 'PUT', headers: LH, body: JSON.stringify({ mood: null, note: '' }) });
+check('ano um: diário vazio apaga a entrada', (await r.json()).removed === true);
+r = await fetch(`${B}/lucas/goals/${goal.id}`, { method: 'DELETE', headers: LH });
+check('ano um: apaga meta', r.status === 200);
+
 r = await fetch(`${B}/lucas/routines/${routine.id}`, { method: 'DELETE', headers: LH });
 check('lucas: apaga rotina', r.status === 200);
 

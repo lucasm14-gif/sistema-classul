@@ -45,6 +45,13 @@ import {
 import { TOOLS, toolsFor, runTool, isPrivateTool, forwardIncomingToHermes } from '../lib/hermes.js';
 import {
   lucasOverview,
+  lucasYearOverview,
+  updateLucasYear,
+  createLucasGoal,
+  updateLucasGoal,
+  deleteLucasGoal,
+  saveLucasJournal,
+  getLucasJournal,
   createLucasTask,
   updateLucasTask,
   deleteLucasTask,
@@ -1136,6 +1143,36 @@ app.delete('/api/lucas/routines/:id', requireLucas, h(async (req, res) => {
 // Marca/desmarca a rotina num dia (padrão: hoje).
 app.post('/api/lucas/routines/:id/check', requireLucas, h(async (req, res) => {
   res.json(await checkLucasRoutine(req.params.id, req.body || {}));
+}));
+
+// Ano Um: contagem do ano de foco, metas, diário, juramento e carta lacrada.
+app.get('/api/lucas/year', requireLucas, h(async (req, res) => {
+  res.json(await lucasYearOverview());
+}));
+
+app.put('/api/lucas/year', requireLucas, h(async (req, res) => {
+  res.json(await updateLucasYear(req.body || {}));
+}));
+
+app.post('/api/lucas/goals', requireLucas, h(async (req, res) => {
+  res.status(201).json(await createLucasGoal(req.body));
+}));
+
+app.put('/api/lucas/goals/:id', requireLucas, h(async (req, res) => {
+  res.json(await updateLucasGoal(req.params.id, req.body || {}));
+}));
+
+app.delete('/api/lucas/goals/:id', requireLucas, h(async (req, res) => {
+  await deleteLucasGoal(req.params.id);
+  res.json({ ok: true });
+}));
+
+app.get('/api/lucas/journal/:day', requireLucas, h(async (req, res) => {
+  res.json(await getLucasJournal(req.params.day));
+}));
+
+app.put('/api/lucas/journal', requireLucas, h(async (req, res) => {
+  res.json(await saveLucasJournal(req.body || {}));
 }));
 
 // ---------- Conteúdo da extensão (mensagens, fotos e catálogo) ----------
