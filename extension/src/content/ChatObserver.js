@@ -1,7 +1,7 @@
 import { eventBus } from '../utils/events';
 import { getExtensionConfig, contactOrders } from '../services/classul';
 import { getActiveChatName, getActiveChatPhone, scrapePhoneFromProfile, readActiveContact, sleep } from '../utils/dom';
-import { toast } from '../utils/toast';
+import { toast, extensionAlive, showReloadBanner } from '../utils/toast';
 
 let currentButton = null;
 
@@ -126,6 +126,7 @@ function createOrderButton() {
     btn.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (!extensionAlive()) return showReloadBanner();
         // Abre/fecha o painel lateral com os pedidos da conversa aberta.
         eventBus.emit('SHOW_ORDERS_PANEL', { toggle: true, contact: readActiveContact() });
     };
@@ -469,6 +470,10 @@ function createImageCopyButton() {
 }
 
 function bgSend(msg) {
+    if (!extensionAlive()) {
+        showReloadBanner();
+        return Promise.resolve(null);
+    }
     return new Promise((resolve) => {
         try {
             chrome.runtime.sendMessage(msg, (r) => resolve(chrome.runtime.lastError ? null : r));
@@ -909,8 +914,15 @@ export function initChatObserver() {
     // o evento DOMNodeInserted, que é obsoleto e trava o carregamento da página.
     // Um querySelector por segundo custa praticamente nada.
     let semBarraLateral = 0;
+    let timer = null;
     const tick = () => {
         if (document.hidden) return;
+        if (!extensionAlive()) {
+            // aba com o script antigo depois de atualizar a extensão: para tudo e avisa
+            clearInterval(timer);
+            showReloadBanner();
+            return;
+        }
         try {
             if (!injectSidebarButtons()) {
                 // depois de ~8s sem achar a barra lateral, usa o cabeçalho
@@ -931,7 +943,7 @@ export function initChatObserver() {
     };
 
     tick();
-    setInterval(tick, 1000);
+    timer = setInterval(tick, 1000);
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) tick();
     });

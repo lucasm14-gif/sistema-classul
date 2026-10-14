@@ -1,3 +1,5 @@
+import { showReloadBanner } from '../utils/toast';
+
 // Integração com o sistema Classul via background service worker
 // (o background faz o fetch para evitar CORS e guarda a configuração).
 
@@ -50,8 +52,9 @@ export const api = async (path, { method = 'GET', body } = {}) => {
                 if (chrome.runtime.lastError) resolve({ success: false, error: chrome.runtime.lastError.message });
                 else resolve(res);
             });
-        } catch (err) {
+        } catch {
             // extensão recarregada com a aba aberta: o contexto antigo morre
+            showReloadBanner();
             resolve({ success: false, error: 'Extensão atualizada — recarregue o WhatsApp (F5).' });
         }
     });

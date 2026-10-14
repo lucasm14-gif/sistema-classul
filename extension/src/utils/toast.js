@@ -13,3 +13,27 @@ export function toast(text, tone = '') {
         setTimeout(() => t.remove(), 260);
     }, 2800);
 }
+
+// A extensão foi recarregada/atualizada, mas esta aba ainda roda o script antigo:
+// o Chrome corta a ligação ("Extension context invalidated") e nada funciona
+// até recarregar a página. Avisa uma vez, de forma clara, com o botão de F5.
+export function extensionAlive() {
+    try {
+        return Boolean(chrome.runtime?.id);
+    } catch {
+        return false;
+    }
+}
+
+export function showReloadBanner() {
+    if (document.getElementById('classul-reload')) return;
+    const b = document.createElement('div');
+    b.id = 'classul-reload';
+    b.className = 'clp-toast';
+    b.style.cssText = 'bottom:auto;top:16px;padding:12px 14px 12px 18px;gap:12px;';
+    b.innerHTML =
+        '<span>A extensão Classul foi atualizada. Recarregue o WhatsApp para usar a versão nova.</span>' +
+        '<button style="border:0;border-radius:8px;padding:7px 12px;background:#62bb46;color:#fff;font-weight:700;cursor:pointer">Recarregar</button>';
+    b.querySelector('button').onclick = () => location.reload();
+    document.body.appendChild(b);
+}
