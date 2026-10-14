@@ -86,6 +86,10 @@ export default function OrdersPanel({ start, onClose }) {
     const [query, setQuery] = useState('');
     const reqId = useRef(0);
     const viewRef = useRef(view);
+    const contactRef = useRef(contact);
+    useEffect(() => {
+        contactRef.current = contact;
+    }, [contact]);
     useEffect(() => {
         viewRef.current = view;
     }, [view]);
@@ -133,6 +137,9 @@ export default function OrdersPanel({ start, onClose }) {
         const onChat = (c) => {
             setDark(isWhatsAppDark());
             if (viewRef.current.mode !== 'list') return;
+            const cur = contactRef.current;
+            // mesma conversa (ex.: o telefone acabou de ser descoberto): nada a recarregar
+            if (cur && c && cur.name === c.name && (cur.phone || null) === (c.phone || null)) return;
             setContact(c);
             setData(null);
             setQuery('');
@@ -149,25 +156,39 @@ export default function OrdersPanel({ start, onClose }) {
         };
     }, []);
 
-    // Contato não salvo: busca o nome do perfil para o pedido novo.
+    // Sem telefone (contato salvo/id oculto): abre o perfil do contato por um
+    // instante, lê o número e fecha — igual ao botão antigo, mas automático.
+    // Contato não salvo também ganha o nome do perfil para o pedido.
+    const [resolving, setResolving] = useState(false);
     useEffect(() => {
-        if (view.mode !== 'new' || !contact || !(contact.nameIsNumber || !contact.phone)) return;
+        if (!contact || contact.group || contact.profileChecked || (contact.phone && !contact.nameIsNumber)) return;
         let alive = true;
+        const chatName = contact.name;
+        setResolving(true);
         scrapeContactFromProfile()
             .then((info) => {
-                if (!alive) return;
+                if (!alive || readActiveContact()?.name !== chatName) return;
                 setContact((c) => ({
                     ...c,
                     name: c.nameIsNumber && info.name ? info.name : c.name,
                     phone: c.phone || info.phone,
-                    nameIsNumber: c.nameIsNumber && !info.name
+                    nameIsNumber: c.nameIsNumber && !info.name,
+                    profileChecked: true
                 }));
+                if (info.phone) eventBus.emit('ORDERS_CHANGED');
             })
-            .catch(() => {});
+            .catch(() => {})
+            .finally(() => alive && setResolving(false));
         return () => {
             alive = false;
         };
-    }, [view.mode]); // eslint-disable-line
+    }, [contact?.name, contact?.group]); // eslint-disable-line
+
+    // Outro computador já cadastrou o cliente: o sistema devolve o telefone dele.
+    useEffect(() => {
+        const p = data?.client?.phone;
+        if (p && contact && !contact.phone && !contact.group) setContact((c) => ({ ...c, phone: p }));
+    }, [data?.client?.phone]); // eslint-disable-line
 
     // Encaixe: encolhe o WhatsApp para o painel ficar ao lado, sem cobrir a conversa.
     useEffect(() => {
@@ -222,9 +243,9 @@ export default function OrdersPanel({ start, onClose }) {
     const title = client?.name || contact?.name || 'Pedidos';
     const subtitle = contact?.group
         ? 'Conversa em grupo'
-        : [formatPhone(contact?.phone || client?.phone), orders.length ? `${orders.length} pedido${orders.length > 1 ? 's' : ''}` : '']
+        : [resolving && !contact?.phone ? 'Buscando o telefone…' : formatPhone(contact?.phone || client?.phone), orders.length ? `${orders.length} pedido${orders.length > 1 ? 's' : ''}` : '']
               .filter(Boolean)
-              .join(' · ') || 'Telefone não identificado';
+              .join(' · ') || 'Telefone não encontrado no perfil';
     const editing = view.mode === 'edit' ? orders.find((o) => o.id === view.id) || view.order : null;
 
     let body;
@@ -313,7 +334,7 @@ export default function OrdersPanel({ start, onClose }) {
     }
 
     return createPortal(
-        <aside
+        <div
             className={'clp' + (dark ? ' dark' : '') + (docked && canDock() ? ' docked' : '')}
             style={{ '--clp-w': WIDTH + 'px' }}
             onMouseDown={(e) => e.stopPropagation()}
@@ -376,7 +397,7 @@ export default function OrdersPanel({ start, onClose }) {
                     }}
                 />
             )}
-        </aside>,
+        </div>,
         document.body
     );
 }

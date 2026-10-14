@@ -85,154 +85,101 @@ export const getActiveChatPhone = () => {
     return null;
 };
 
-export const scrapePhoneFromProfile = async () => {
-    // 1. Click Header to open Profile
-    const headerTitle = document.querySelector('#main header div[role="button"]');
-    if (!headerTitle) return null;
+// Só o telefone (botão de acompanhar conversa).
+export const scrapePhoneFromProfile = async () => (await scrapeContactFromProfile()).phone;
 
-    headerTitle.click();
+// Nossos próprios elementos nunca contam como "painel do contato".
+const isOurs = (el) => Boolean(el.closest('.clp, #wa-kanban-root, .classul-nav-group, .clp-toast'));
 
-    // Wait for ANY right-side panel to open.
-    // WhatsApp often uses <div id="app">...<div class="two">...<div class="three">...
-    // The profile sidebar is typically an <aside> or a <div> that is NOT #side (the left list).
-
-    let sidebar = null;
-    const maxRetries = 20;
-
-    for (let i = 0; i < maxRetries; i++) {
-        await sleep(100);
-
-        // Strategy: Find all 'aside' or similar containers.
-        // Identify the one that is NOT the chat list (#pane-side grandparent is usually #side)
-
-        const candidates = [
-            ...document.querySelectorAll('aside'),
-            ...document.querySelectorAll('div[data-animate-modal-body="true"]'), // Sometimes modals
-            ...document.querySelectorAll('div[role="region"]') // Sometimes regions
-        ];
-
-        // Filter: Must be visible and distinct from the main chat list
-        sidebar = candidates.find(el => {
-            const rect = el.getBoundingClientRect();
-            // It should be on the right side of the screen
-            const isRightSide = rect.left > window.innerWidth / 2;
-            const isVisible = rect.width > 0 && rect.height > 0;
-            // It should not be the left sidebar
-            const isNotLeftSidebar = !el.closest('#side');
-
-            return isRightSide && isVisible && isNotLeftSidebar;
-        });
-
-        if (sidebar) break;
-    }
-
-    // If we absolutely can't find a "Right Side Panel", fall back to searching the whole body
-    // BUT we must be careful about that "Bad Number".
-    const scope = sidebar || document.body;
-    if (!sidebar) console.warn("Robust Scraper: Sidebar not specifically identified, searching Body broadly.");
-
-    await sleep(300); // Wait for text to render
-
-    // 2. Scan for numbers
-    const phoneRegex = /^\+?\d{2,3}[\s-]?\d{2}[\s-]?\d{4,5}[\s-]?\d{4}$/;
-
-    // Get all text nodes or specific blocks
-    // Focusing on spans and divs with text
-    const elements = Array.from(scope.querySelectorAll('span, div[dir="auto"]'));
-
-    let foundPhone = null;
-
-    // Known bad numbers (Global/System numbers) - blacklist
-    const badNumbers = [
-        '555195536170', // User reported this one
-        '55519553-6170'
+// Painel de dados do contato que o WhatsApp abre à direita ao clicar no cabeçalho.
+function findProfileDrawer() {
+    const main = document.querySelector('#main');
+    const mainLeft = main ? main.getBoundingClientRect().left : window.innerWidth / 2;
+    const candidates = [
+        ...document.querySelectorAll('#app aside, #app [role="region"], #app section, #app div[tabindex="-1"]')
     ];
+    return (
+        candidates.find((el) => {
+            if (isOurs(el) || el.closest('#side')) return false;
+            const r = el.getBoundingClientRect();
+            // à direita do início da conversa (a própria conversa começa em mainLeft)
+            return r.width > 200 && r.height > 300 && r.left > mainLeft + 50;
+        }) || null
+    );
+}
 
-    for (const el of elements) {
-        const text = el.innerText?.trim();
-        if (text && phoneRegex.test(text)) {
-            // Basic validity check
-            if (!text.includes(':') && text.length < 30) { // Avoid long sentences or times
-                const clean = text.replace(/\D/g, '');
+const PHONE_RE = /^\+?\d{2,3}[\s-]?\(?\d{2}\)?[\s-]?\d{4,5}[\s-]?\d{4}$/;
 
-                // Ignore if it's the "Bad Number"
-                if (badNumbers.includes(clean)) continue;
-
-                // Heuristic: If we found a number, and it's NOT the bad one, it's likely the candidate.
-                // Usually the contact info number is prominent.
-                foundPhone = clean;
-
-                // If we are in the specific sidebar, the first valid number is almost always the right one (About/Phone).
-                if (sidebar) break;
-            }
-        }
-    }
-
-    // 3. Close the Sidebar (if we opened it)
-    if (sidebar) {
-        const closeBtn = document.querySelector('span[data-icon="x"]')?.closest('button') ||
-            document.querySelector('div[role="button"][aria-label="Close"]');
-        if (closeBtn) closeBtn.click();
-    }
-
-    return foundPhone;
-};
-
-// Abre o perfil do contato uma vez e devolve { name, phone } — usado ao criar pedido
-// para pegar o NOME do WhatsApp (perfil) de contatos não salvos, em vez do número.
+// Abre o perfil do contato uma vez, lê nome e telefone e fecha de novo.
+// Usado quando a conversa não revela o número (contato salvo / id @lid).
 export const scrapeContactFromProfile = async () => {
-    const headerTitle = document.querySelector('#main header div[role="button"]');
+    const headerTitle =
+        document.querySelector('#main header [role="button"][title]') ||
+        document.querySelector('#main header div[role="button"]');
     if (!headerTitle) return { name: null, phone: null };
 
-    headerTitle.click();
+    const wasOpen = findProfileDrawer();
+    if (!wasOpen) headerTitle.click();
 
-    let sidebar = null;
-    for (let i = 0; i < 20; i++) {
+    let drawer = null;
+    for (let i = 0; i < 25 && !drawer; i++) {
         await sleep(100);
-        const candidates = [
-            ...document.querySelectorAll('aside'),
-            ...document.querySelectorAll('div[role="region"]')
-        ];
-        sidebar = candidates.find((el) => {
-            const rect = el.getBoundingClientRect();
-            return rect.left > window.innerWidth / 2 && rect.width > 0 && rect.height > 0 && !el.closest('#side');
-        });
-        if (sidebar) break;
+        drawer = findProfileDrawer();
     }
+    if (!drawer) return { name: null, phone: null };
 
-    const scope = sidebar || document.body;
-    await sleep(300);
-
-    const phoneRegex = /^\+?\d{2,3}[\s-]?\d{2}[\s-]?\d{4,5}[\s-]?\d{4}$/;
     const isPhoneLike = (t) => /^[+\d][\d\s()\-]{5,}$/.test(t);
     const isStatus = (t) =>
-        /online|visto por|digitando|typing|last seen|recado|clique aqui|toque aqui|tap here|adicionar|add to/i.test(t);
+        /online|visto por|digitando|typing|last seen|recado|clique aqui|toque aqui|tap here|adicionar|add to|dados do contato|contact info/i.test(t);
 
     let name = null;
     let phone = null;
-    const els = Array.from(scope.querySelectorAll('h1, h2, span[dir="auto"], div[dir="auto"]'));
-    for (const el of els) {
-        const text = el.innerText?.trim();
-        if (!text) continue;
-        if (!phone && phoneRegex.test(text) && !text.includes(':') && text.length < 30) {
-            phone = text.replace(/\D/g, '');
+    // o texto às vezes chega um pouco depois do painel
+    for (let tries = 0; tries < 8 && !phone; tries++) {
+        if (tries) await sleep(150);
+        for (const el of drawer.querySelectorAll('h1, h2, span, div[dir="auto"]')) {
+            if (el.children.length > 2) continue;
+            const text = (el.innerText || '').trim();
+            if (!text || text.length > 40) continue;
+            if (!phone && PHONE_RE.test(text) && !text.includes(':')) phone = text.replace(/\D/g, '');
+            if (!name && !isPhoneLike(text) && !isStatus(text) && text.length >= 2) name = text.replace(/^~\s*/, '').trim();
         }
-        if (!name && !isPhoneLike(text) && !isStatus(text) && text.length >= 2 && text.length < 60) {
-            name = text.replace(/^~\s*/, '').trim();
-        }
-        if (name && phone) break;
     }
 
-    if (sidebar) {
+    // fecha só se fomos nós que abrimos
+    if (!wasOpen) {
         const closeBtn =
-            document.querySelector('span[data-icon="x"]')?.closest('button') ||
-            document.querySelector('div[role="button"][aria-label="Close"]') ||
-            document.querySelector('div[role="button"][aria-label="Fechar"]');
-        if (closeBtn) closeBtn.click();
+            drawer.querySelector('[aria-label="Fechar"], [aria-label="Close"], span[data-icon="x"], span[data-icon="close"]') ||
+            document.querySelector('#app [aria-label="Fechar"], #app [aria-label="Close"]');
+        (closeBtn?.closest('button, [role="button"]') || closeBtn)?.click();
     }
-
+    if (phone) rememberPhone(getActiveChatName(), phone);
     return { name, phone };
 };
+
+// Telefone descoberto por conversa (nome → número), guardado no aparelho para
+// não precisar abrir o perfil de novo. Os pedidos ficam no sistema; isto é só atalho.
+const PHONE_CACHE_KEY = 'classulPhoneByChat';
+const phoneCache = new Map();
+try {
+    chrome.storage?.local.get([PHONE_CACHE_KEY]).then((r) => {
+        for (const [k, v] of Object.entries(r?.[PHONE_CACHE_KEY] || {})) phoneCache.set(k, v);
+    });
+} catch {
+    /* fora da extensão (testes) */
+}
+const cacheKey = (name) => String(name || '').trim().toLowerCase();
+export const rememberPhone = (name, phone) => {
+    const k = cacheKey(name);
+    if (!k || !phone || phoneCache.get(k) === phone) return;
+    phoneCache.set(k, phone);
+    try {
+        chrome.storage?.local.set({ [PHONE_CACHE_KEY]: Object.fromEntries(phoneCache) });
+    } catch {
+        /* sem armazenamento */
+    }
+};
+export const cachedPhone = (name) => phoneCache.get(cacheKey(name)) || null;
 
 // Telefone da conversa aberta lido das próprias mensagens: cada balão tem um
 // data-id como "false_5551999999999@c.us_ABC…", inclusive de contato salvo.
@@ -247,7 +194,8 @@ export const getChatPhoneFromMessages = () => {
 };
 
 // Melhor palpite sem abrir o perfil: mensagens, depois título/foto.
-export const getActiveChatPhoneDeep = () => getChatPhoneFromMessages() || getActiveChatPhone();
+export const getActiveChatPhoneDeep = () =>
+    getChatPhoneFromMessages() || cachedPhone(getActiveChatName()) || getActiveChatPhone();
 
 // Conversa aberta é grupo? (não faz sentido buscar pedidos de grupo)
 export const isGroupChat = () => Boolean(document.querySelector('#main [data-id*="@g.us"]'));

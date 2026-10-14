@@ -384,6 +384,12 @@ app.get('/api/contact-orders', h(async (req, res) => {
     const { rows: cs } = await q('SELECT * FROM clients WHERE phone LIKE $1 ORDER BY id ASC', [`%${key.slice(-8)}`]);
     client = cs.find((c) => phoneKey(c.phone) === key) || null;
   }
+  // Sem telefone na conversa: um cliente com exatamente esse nome entrega o
+  // número (cadastrado em qualquer computador) e o painel passa a usar ele.
+  if (!client && !key && name) {
+    const { rows: cs } = await q('SELECT * FROM clients WHERE LOWER(name) = $1 ORDER BY id ASC LIMIT 2', [name]);
+    if (cs.length === 1) client = cs[0];
+  }
 
   // Em aberto primeiro, pela entrega mais próxima; depois entregues e arquivados (mais novos antes).
   const rank = (o) => (o.archived ? 3 : o.status === 'entregue' ? 2 : 1);

@@ -759,6 +759,9 @@ check('cliente do contato vem junto', co.client?.name === 'Contato Painel');
 r = await fetch(`${B}/contact-orders?name=s%C3%B3%20pelo%20nome`, { headers: H });
 co = await r.json();
 check('sem telefone, acha pelo nome', co.orders.length === 1 && co.orders[0].id === p4.id && co.orders[0].matched_by === 'name');
+r = await fetch(`${B}/contact-orders?name=contato%20painel`, { headers: H });
+co = await r.json();
+check('só pelo nome, devolve o cliente com o telefone salvo no sistema', co.client?.phone === '5551988887777');
 r = await fetch(`${B}/contact-orders`, { headers: H });
 check('sem telefone nem nome responde 400', r.status === 400);
 
