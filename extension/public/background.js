@@ -55,6 +55,22 @@ async function getExtensionConfig({ refresh } = {}) {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // Chamada genérica usada pelo painel de pedidos (listar, editar, mover, comentar).
+  if (request.action === 'api') {
+    const path = String(request.path || '');
+    if (!path.startsWith('/api/')) {
+      sendResponse({ success: false, error: 'Caminho inválido.' });
+      return false;
+    }
+    apiRequest(path, {
+      method: request.method || 'GET',
+      ...(request.body !== undefined ? { body: JSON.stringify(request.body) } : {})
+    })
+      .then((data) => sendResponse({ success: true, data }))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
   if (request.action === 'getExtensionConfig') {
     getExtensionConfig({ refresh: request.refresh })
       .then((data) => sendResponse({ success: true, data }))

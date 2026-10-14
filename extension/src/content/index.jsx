@@ -45,7 +45,7 @@ async function waitForAppListener(name) {
 }
 
 // Ao pedir uma janela, monta a UI e reemite o evento para o App recém-criado.
-for (const name of ['SHOW_ORDER_MODAL', 'SHOW_QUICK_MESSAGES']) {
+for (const name of ['SHOW_ORDERS_PANEL', 'SHOW_QUICK_MESSAGES']) {
     eventBus.on(name, async (data) => {
         if (uiMounted) return;
         await ensureUI();

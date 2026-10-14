@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Copy, Check } from 'lucide-react';
+import { X, Copy, Check, Search, CornerDownLeft } from 'lucide-react';
 import { getExtensionConfig } from '../services/classul';
+import { insertIntoComposer, isWhatsAppDark } from '../utils/dom';
+import { toast } from '../utils/toast';
 
 // Reserva: usada só enquanto o sistema não responde (primeira abertura sem
 // internet, ou extensão ainda não configurada). A fonte real é a aba Extensão.
@@ -76,193 +78,115 @@ const QuickMessages = ({ onClose }) => {
     const [copiedId, setCopiedId] = useState(null);
     const [messages, setMessages] = useState(null);
     const [loadError, setLoadError] = useState('');
+    const [query, setQuery] = useState('');
+    const [dark] = useState(isWhatsAppDark);
 
-    // Busca a versão fresca sempre que o painel abre — é isso que faz a edição
-    // no sistema aparecer aqui na hora, sem recarregar a extensão.
+    // Abre instantâneo com a cópia local e troca pela versão fresca do sistema
+    // em seguida — é isso que faz a edição feita no sistema aparecer na hora.
     useEffect(() => {
         let alive = true;
+        getExtensionConfig()
+            .then((cfg) => alive && cfg.quick_messages?.length && setMessages((m) => m || cfg.quick_messages))
+            .catch(() => {});
         getExtensionConfig({ refresh: true })
-            .then((cfg) => {
-                if (!alive) return;
-                setMessages(cfg.quick_messages?.length ? cfg.quick_messages : fallbackMessages);
-            })
+            .then((cfg) => alive && setMessages(cfg.quick_messages?.length ? cfg.quick_messages : fallbackMessages))
             .catch((err) => {
                 if (!alive) return;
                 setLoadError(err.message);
-                setMessages(fallbackMessages);
+                setMessages((m) => m || fallbackMessages);
             });
+        const onKey = (e) => e.key === 'Escape' && onClose();
+        document.addEventListener('keydown', onKey);
         return () => {
             alive = false;
+            document.removeEventListener('keydown', onKey);
         };
-    }, []);
+    }, []); // eslint-disable-line
 
-    const handleCopy = (text, id) => {
-        navigator.clipboard.writeText(text).then(() => {
-            setCopiedId(id);
-            setTimeout(() => setCopiedId(null), 2000);
+    const shown = (messages || []).filter((m) =>
+        !query ? true : (m.title + ' ' + m.text).toLowerCase().includes(query.toLowerCase())
+    );
+
+    // Clique na mensagem: vai para o campo de mensagem da conversa (sem enviar).
+    const use = async (msg) => {
+        const r = await insertIntoComposer(msg.text);
+        toast(r === 'inserted' ? `"${msg.title}" no campo de mensagem — aperte Enter` : 'Copiada — cole na conversa');
+        onClose();
+    };
+
+    const copy = (e, msg) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(msg.text).then(() => {
+            setCopiedId(msg.id);
+            setTimeout(() => setCopiedId(null), 1500);
         });
     };
 
-    const overlayStyle = {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        backdropFilter: 'blur(4px)',
-        zIndex: 2147483647,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-        pointerEvents: 'auto'
-    };
-
-    const panelStyle = {
-        backgroundColor: '#ffffff',
-        borderRadius: '16px',
-        width: '500px',
-        maxWidth: '92vw',
-        maxHeight: '85vh',
-        display: 'flex',
-        flexDirection: 'column',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-        overflow: 'hidden',
-        animation: 'slideIn 0.3s ease-out forwards'
-    };
-
     return createPortal(
-        <div style={overlayStyle} onClick={onClose}>
-            <style>
-                {`
-                    @keyframes slideIn {
-                        from { opacity: 0; transform: translateY(-20px); }
-                        to { opacity: 1; transform: translateY(0); }
-                    }
-                `}
-            </style>
-            <div style={panelStyle} onClick={(e) => e.stopPropagation()}>
-                {/* Header */}
-                <div style={{
-                    backgroundColor: '#25D366',
-                    padding: '20px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    color: 'white'
-                }}>
-                    <div>
-                        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>Mensagens Rápidas</h2>
-                        <p style={{ margin: 0, fontSize: '13px', opacity: 0.9 }}>Clique para copiar</p>
+        <div
+            onMouseDown={onClose}
+            style={{
+                position: 'fixed', inset: 0, zIndex: 2147483646, background: 'rgba(11,20,26,.35)',
+                display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '9vh', pointerEvents: 'auto'
+            }}
+        >
+            <div
+                className={'clp' + (dark ? ' dark' : '')}
+                onMouseDown={(e) => e.stopPropagation()}
+                style={{
+                    position: 'relative', height: 'auto', maxHeight: '78vh', width: 520, maxWidth: '94vw',
+                    borderRadius: 16, border: '1px solid var(--line)', overflow: 'hidden'
+                }}
+            >
+                <div className="clp-head" style={{ gap: 8 }}>
+                    <div className="clp-search" style={{ flex: 1 }}>
+                        <Search size={15} />
+                        <input
+                            autoFocus
+                            className="clp-input"
+                            placeholder="Mensagens rápidas — digite para filtrar"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && shown[0]) use(shown[0]);
+                            }}
+                        />
                     </div>
-                    <button
-                        onClick={onClose}
-                        style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: '8px' }}
-                    >
-                        <X size={24} />
+                    <button className="clp-icon" title="Fechar (Esc)" onClick={onClose}>
+                        <X size={18} />
                     </button>
                 </div>
-
-                {/* Messages List */}
-                <div style={{
-                    padding: '16px',
-                    flex: 1,
-                    overflowY: 'auto',
-                    backgroundColor: '#f0f2f5',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px'
-                }}>
+                <div className="clp-body" style={{ gap: 6 }}>
                     {loadError && (
-                        <div style={{
-                            backgroundColor: '#fff4e5',
-                            border: '1px solid #ffd08a',
-                            borderRadius: '10px',
-                            padding: '10px 12px',
-                            fontSize: '12px',
-                            color: '#8a5a00'
-                        }}>
-                            Mostrando as mensagens salvas no aparelho — não consegui falar com o sistema. ({loadError})
-                        </div>
+                        <div className="clp-alert">Mostrando a cópia salva no aparelho — o sistema não respondeu.</div>
                     )}
-                    {!messages && (
-                        <div style={{ padding: '24px', textAlign: 'center', color: '#8696a0', fontSize: '13px' }}>
-                            Buscando as mensagens do sistema…
-                        </div>
-                    )}
-                    {(messages || []).map((msg) => (
-                        <div
-                            key={msg.id}
-                            style={{
-                                backgroundColor: 'white',
-                                borderRadius: '12px',
-                                padding: '16px',
-                                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                                display: 'flex',
-                                gap: '12px',
-                                alignItems: 'flex-start',
-                                transition: 'transform 0.2s',
-                                cursor: 'pointer'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-                            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-                        >
-                            <div style={{ flex: 1 }}>
-                                <h3 style={{
-                                    margin: '0 0 8px 0',
-                                    fontSize: '14px',
-                                    fontWeight: 'bold',
-                                    color: '#25D366'
-                                }}>
-                                    {msg.title}
-                                </h3>
-                                <p style={{
-                                    margin: 0,
-                                    fontSize: '14px',
-                                    color: '#667781',
-                                    lineHeight: '1.5'
-                                }}>
-                                    {msg.text}
-                                </p>
+                    {!messages && <div className="clp-skel" style={{ height: 60 }} />}
+                    {shown.map((msg, i) => (
+                        <button key={msg.id} className="clp-order" style={{ gap: 4 }} onClick={() => use(msg)}>
+                            <div className="clp-row between">
+                                <span className="clp-title" style={{ color: 'var(--brand-ink)' }}>{msg.title}</span>
+                                <span className="clp-row" style={{ gap: 4 }}>
+                                    {i === 0 && query && (
+                                        <span className="clp-pill"><CornerDownLeft size={11} /> Enter</span>
+                                    )}
+                                    <span
+                                        role="button"
+                                        className="clp-icon"
+                                        style={{ width: 28, height: 28 }}
+                                        title="Só copiar"
+                                        onClick={(e) => copy(e, msg)}
+                                    >
+                                        {copiedId === msg.id ? <Check size={15} color="var(--brand)" /> : <Copy size={15} />}
+                                    </span>
+                                </span>
                             </div>
-                            <button
-                                onClick={() => handleCopy(msg.text, msg.id)}
-                                style={{
-                                    padding: '10px',
-                                    backgroundColor: copiedId === msg.id ? '#25D366' : '#f0f2f5',
-                                    color: copiedId === msg.id ? 'white' : '#667781',
-                                    border: 'none',
-                                    borderRadius: '8px',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    transition: 'all 0.2s',
-                                    minWidth: '40px'
-                                }}
-                                title={copiedId === msg.id ? 'Copiado!' : 'Copiar mensagem'}
-                            >
-                                {copiedId === msg.id ? <Check size={18} /> : <Copy size={18} />}
-                            </button>
-                        </div>
+                            <div className="clp-desc" style={{ WebkitLineClamp: 3 }}>{msg.text}</div>
+                        </button>
                     ))}
+                    {messages && !shown.length && <div className="clp-empty">Nenhuma mensagem com “{query}”.</div>}
                 </div>
-
-                {/* Footer */}
-                <div style={{
-                    padding: '16px',
-                    borderTop: '1px solid #eee',
-                    backgroundColor: '#fff',
-                    textAlign: 'center'
-                }}>
-                    <p style={{
-                        margin: 0,
-                        fontSize: '12px',
-                        color: '#999'
-                    }}>
-                        💡 Dica: Após copiar, cole no campo de mensagem do WhatsApp
-                    </p>
+                <div className="clp-foot clp-muted" style={{ justifyContent: 'center' }}>
+                    Clique para pôr no campo de mensagem · nada é enviado sem o seu Enter
                 </div>
             </div>
         </div>,

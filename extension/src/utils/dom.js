@@ -233,3 +233,71 @@ export const scrapeContactFromProfile = async () => {
 
     return { name, phone };
 };
+
+// Telefone da conversa aberta lido das próprias mensagens: cada balão tem um
+// data-id como "false_5551999999999@c.us_ABC…", inclusive de contato salvo.
+// Grupos (@g.us) e contas com id oculto (@lid) não revelam número.
+export const getChatPhoneFromMessages = () => {
+    const nodes = document.querySelectorAll('#main [data-id]');
+    for (let i = nodes.length - 1; i >= 0 && i >= nodes.length - 30; i--) {
+        const m = /^(?:true|false)_(\d{10,15})@c\.us/.exec(nodes[i].getAttribute('data-id') || '');
+        if (m) return m[1];
+    }
+    return null;
+};
+
+// Melhor palpite sem abrir o perfil: mensagens, depois título/foto.
+export const getActiveChatPhoneDeep = () => getChatPhoneFromMessages() || getActiveChatPhone();
+
+// Conversa aberta é grupo? (não faz sentido buscar pedidos de grupo)
+export const isGroupChat = () => Boolean(document.querySelector('#main [data-id*="@g.us"]'));
+
+// Coloca um texto no campo de mensagem da conversa aberta, SEM enviar —
+// a pessoa revisa e aperta Enter. Tenta colar (mantém as quebras de linha);
+// se o WhatsApp ignorar, digita; em último caso copia para a área de transferência.
+export const insertIntoComposer = async (text) => {
+    const box =
+        document.querySelector('#main footer div[contenteditable="true"]') ||
+        document.querySelector('#main div[contenteditable="true"][role="textbox"]');
+    if (!box) {
+        await navigator.clipboard?.writeText(text).catch(() => {});
+        return 'copied';
+    }
+    box.focus();
+    const before = box.innerText;
+    try {
+        const dt = new DataTransfer();
+        dt.setData('text/plain', text);
+        box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    } catch (e) {
+        /* segue para o plano B */
+    }
+    await sleep(60);
+    if (box.innerText !== before) return 'inserted';
+    if (document.execCommand('insertText', false, text)) return 'inserted';
+    await navigator.clipboard?.writeText(text).catch(() => {});
+    return 'copied';
+};
+
+// O WhatsApp está no tema escuro? (lê a cor de fundo real da página)
+export const isWhatsAppDark = () => {
+    const el = document.querySelector('#app > div') || document.body;
+    const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(getComputedStyle(el).backgroundColor || '');
+    if (m && !(m[1] === '0' && m[2] === '0' && m[3] === '0' && /rgba/.test(getComputedStyle(el).backgroundColor))) {
+        return 0.299 * m[1] + 0.587 * m[2] + 0.114 * m[3] < 110;
+    }
+    return document.body.classList.contains('dark') || document.documentElement.classList.contains('dark');
+};
+
+// Dados da conversa aberta, do jeito que o painel de pedidos precisa.
+export const readActiveContact = () => {
+    if (!document.querySelector('#main')) return null;
+    const name = (getActiveChatName() || '').trim();
+    return {
+        name,
+        phone: getActiveChatPhoneDeep(),
+        avatar: getActiveChatAvatar(),
+        group: isGroupChat(),
+        nameIsNumber: /^[+\d][\d\s()\-]{5,}$/.test(name)
+    };
+};

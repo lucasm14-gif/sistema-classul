@@ -319,6 +319,83 @@ app.get('/api/orders', h(async (req, res) => {
   );
 }));
 
+// Pedidos de um contato do WhatsApp (painel da extensão). Casa pelo telefone —
+// ignorando o 55 e o nono dígito, que o WhatsApp às vezes omite — e, na falta
+// dele, pelo nome da conversa. Um pedido com OUTRO telefone nunca entra só
+// porque o nome bate (homônimos).
+function phoneKey(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (d.length >= 12 && d.startsWith('55')) d = d.slice(2);
+  if (d.length < 10) return null;
+  return d.slice(0, 2) + d.slice(-8);
+}
+
+app.get('/api/contact-orders', h(async (req, res) => {
+  const key = phoneKey(req.query.phone);
+  const name = String(req.query.name || '').trim().toLowerCase();
+  if (!key && !name) return res.status(400).json({ error: 'Informe o telefone ou o nome do contato.' });
+
+  const conds = [];
+  const params = [];
+  if (key) {
+    params.push(`%${key.slice(-8)}`);
+    conds.push(`o.phone LIKE $${params.length}`, `c.phone LIKE $${params.length}`);
+  }
+  if (name) {
+    params.push(name);
+    conds.push(`LOWER(o.customer_name) = $${params.length}`, `LOWER(c.name) = $${params.length}`);
+  }
+  const { rows } = await q(
+    `SELECT o.*, c.phone AS client_phone, c.name AS client_name
+       FROM orders o LEFT JOIN clients c ON c.id = o.client_id
+      WHERE ${conds.join(' OR ')}
+      ORDER BY o.created_at DESC, o.id DESC LIMIT 60`,
+    params
+  );
+
+  const orders = [];
+  for (const r of rows) {
+    // o telefone do próprio pedido manda; o do cliente só vale se o pedido não tiver
+    const keys = [phoneKey(r.phone) || phoneKey(r.client_phone)].filter(Boolean);
+    const byPhone = key && keys.includes(key);
+    if (!byPhone && key && keys.length) continue; // mesmo nome, outra pessoa
+    if (!byPhone && !(name && [r.customer_name, r.client_name].some((n) => (n || '').toLowerCase() === name))) continue;
+    const { client_phone, client_name, ...order } = r;
+    orders.push({ ...serializeOrder(order), matched_by: byPhone ? 'phone' : 'name' });
+  }
+
+  const ids = orders.map((o) => o.id);
+  if (ids.length) {
+    const { rows: counts } = await q(
+      `SELECT order_id, category, COUNT(*) AS n FROM attachments
+        WHERE order_id IN (${ids.map((_, i) => `$${i + 1}`).join(', ')}) GROUP BY order_id, category`,
+      ids
+    );
+    for (const o of orders) {
+      const mine = counts.filter((c) => c.order_id === o.id);
+      o.attachments_count = mine.reduce((s, c) => s + Number(c.n), 0);
+      o.has_invoice = mine.some((c) => c.category === 'nota_fiscal');
+    }
+  }
+
+  const clientId = orders.find((o) => o.client_id)?.client_id;
+  let client = clientId ? await getClient(clientId) : null;
+  if (!client && key) {
+    const { rows: cs } = await q('SELECT * FROM clients WHERE phone LIKE $1 ORDER BY id ASC', [`%${key.slice(-8)}`]);
+    client = cs.find((c) => phoneKey(c.phone) === key) || null;
+  }
+
+  // Em aberto primeiro, pela entrega mais próxima; depois entregues e arquivados (mais novos antes).
+  const rank = (o) => (o.archived ? 3 : o.status === 'entregue' ? 2 : 1);
+  orders.sort(
+    (a, b) =>
+      rank(a) - rank(b) ||
+      (rank(a) === 1 ? (a.due_date || '9999').localeCompare(b.due_date || '9999') : 0) ||
+      new Date(b.created_at) - new Date(a.created_at)
+  );
+  res.json({ client, orders });
+}));
+
 app.get('/api/orders/:id', h(async (req, res) => {
   const order = await getOrder(req.params.id);
   if (!order) return res.status(404).json({ error: 'Pedido não encontrado.' });

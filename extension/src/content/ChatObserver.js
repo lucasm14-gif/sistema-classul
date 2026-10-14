@@ -1,6 +1,7 @@
 import { eventBus } from '../utils/events';
-import { getExtensionConfig } from '../services/classul';
-import { getActiveChatName, getActiveChatAvatar, getActiveChatPhone, scrapePhoneFromProfile, scrapeContactFromProfile, sleep } from '../utils/dom';
+import { getExtensionConfig, contactOrders } from '../services/classul';
+import { getActiveChatName, getActiveChatPhone, scrapePhoneFromProfile, readActiveContact, sleep } from '../utils/dom';
+import { toast } from '../utils/toast';
 
 let currentButton = null;
 
@@ -115,49 +116,20 @@ function createOrderButton() {
     const btn = document.createElement('button');
     btn.innerHTML = `
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="3" y="3" width="7" height="7" rx="1"></rect>
-      <rect x="14" y="3" width="7" height="7" rx="1"></rect>
-      <rect x="3" y="14" width="7" height="7" rx="1"></rect>
-      <line x1="17.5" y1="14" x2="17.5" y2="21"></line>
-      <line x1="14" y1="17.5" x2="21" y2="17.5"></line>
+      <rect x="3" y="4" width="18" height="17" rx="2"></rect>
+      <path d="M3 9h18"></path><path d="M8 13h8"></path><path d="M8 17h5"></path>
     </svg>
+    <span class="classul-count" hidden></span>
   `;
-    btn.title = "Criar pedido no Classul";
-    btn.className = "kanban-header-btn notion-btn";
-    btn.style.marginRight = '8px';
-    btn.onclick = async (e) => {
+    btn.title = 'Pedidos deste contato (ver, editar e criar)';
+    btn.className = 'kanban-header-btn notion-btn classul-orders-btn';
+    btn.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
-
-        let name = getActiveChatName();
-        const avatar = getActiveChatAvatar();
-        let phone = getActiveChatPhone();
-
-        // Contato não salvo mostra o número no lugar do nome.
-        const nameIsNumber = /^[+\d][\d\s()\-]{5,}$/.test((name || '').trim());
-
-        const originalIcon = btn.innerHTML;
-        btn.innerHTML = `<div style="animation: spin 1s linear infinite">⌛</div>`;
-
-        // Abre o perfil só quando precisa (sem nome de verdade ou sem telefone)
-        if (nameIsNumber || !phone) {
-            try {
-                const info = await scrapeContactFromProfile();
-                if (!phone && info.phone) phone = info.phone;
-                if (nameIsNumber && info.name) name = info.name; // usa o nome do WhatsApp
-            } catch (err) {
-                console.error('Falha ao ler o perfil:', err);
-            }
-        }
-
-        btn.innerHTML = originalIcon;
-
-        eventBus.emit('SHOW_ORDER_MODAL', {
-            name: name || 'Novo Cliente',
-            avatar: avatar,
-            phone: phone
-        });
+        // Abre/fecha o painel lateral com os pedidos da conversa aberta.
+        eventBus.emit('SHOW_ORDERS_PANEL', { toggle: true, contact: readActiveContact() });
     };
+    eventBus.on('PANEL_STATE', (open) => btn.classList.toggle('is-active', open));
     return btn;
 }
 
@@ -172,7 +144,6 @@ function createQuickMessagesButton() {
   `;
     btn.title = "Mensagens Rápidas";
     btn.className = "kanban-header-btn quick-messages-btn";
-    btn.style.marginRight = '8px';
     btn.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -446,7 +417,6 @@ function createImageCopyButton() {
     btn.innerHTML = defaultIcon;
     btn.title = "Enviar fotos nesta conversa";
     btn.className = "kanban-header-btn quick-image-btn";
-    btn.style.marginRight = '8px';
     btn.onclick = async (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -529,16 +499,9 @@ function chatKeyFor(name, phone) {
     return phone || 'n_' + normName(name);
 }
 
-// Aviso rápido no canto da tela.
-function classulToast(text, color = '#0f172a') {
-    const t = document.createElement('div');
-    t.textContent = text;
-    t.style.cssText =
-        'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2147483647;' +
-        `background:${color};color:#fff;padding:10px 18px;border-radius:12px;font-size:13px;font-weight:700;` +
-        'font-family:-apple-system,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.3)';
-    document.body.appendChild(t);
-    setTimeout(() => t.remove(), 3000);
+// Aviso rápido no rodapé da tela (verde = deu certo, vermelho = erro).
+function classulToast(text, color) {
+    toast(text, color === '#b71f19' ? 'error' : color === '#3a7a2a' ? 'ok' : '');
 }
 
 // Mapa compartilhado de etiquetas (nome da conversa -> atribuição).
@@ -638,7 +601,6 @@ function eyeIconSvg(color, filled) {
 function createWatchButton() {
     const btn = document.createElement('button');
     btn.className = 'kanban-header-btn classul-watch-btn';
-    btn.style.marginRight = '8px';
     let watching = false;
 
     const render = () => {
@@ -722,7 +684,6 @@ function createWatchButton() {
 function createAssignmentButton() {
     const btn = document.createElement('button');
     btn.className = 'kanban-header-btn classul-assign-btn';
-    btn.style.marginRight = '8px';
 
     const userIconSvg = (color) => `
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -838,6 +799,8 @@ function findNavRail() {
 let sidebarButtons = null;
 
 function injectSidebarButtons() {
+    // Já está na página: não precisa varrer a barra de novo (é o caso de quase todo tick).
+    if (sidebarButtons?.isConnected && !sidebarButtons.classList.contains('classul-inline')) return true;
     const nav = findNavRail();
     if (!nav) return false;
     if (sidebarButtons && nav.contains(sidebarButtons)) return true;
@@ -889,6 +852,57 @@ function injectHeaderFallback() {
     actions.prepend(sidebarButtons);
 }
 
+// ---------- Conversa aberta → painel de pedidos e contador ----------
+
+// Quantos pedidos em aberto o contato tem (cache curto, uma busca por conversa).
+const countCache = new Map();
+const COUNT_TTL = 90000;
+let lastChatSig = null;
+let countTimer = null;
+
+function contactKey(c) {
+    return c ? c.phone || 'n_' + (c.name || '').toLowerCase() : '';
+}
+
+function paintCount(n) {
+    const el = sidebarButtons?.querySelector('.classul-orders-btn .classul-count');
+    if (!el) return;
+    el.hidden = !n;
+    el.textContent = n > 9 ? '9+' : String(n || '');
+    el.parentElement.title = n
+        ? `${n} pedido${n > 1 ? 's' : ''} em aberto deste contato — clique para ver`
+        : 'Pedidos deste contato (ver, editar e criar)';
+}
+
+async function refreshCount(contact, force = false) {
+    if (!contact || contact.group || (!contact.phone && !contact.name)) return paintCount(0);
+    const key = contactKey(contact);
+    const hit = countCache.get(key);
+    if (hit && !force && Date.now() - hit.at < COUNT_TTL) return paintCount(hit.n);
+    try {
+        const d = await contactOrders({ phone: contact.phone, name: contact.name });
+        const n = (d.orders || []).filter((o) => !o.archived && o.status !== 'entregue').length;
+        countCache.set(key, { n, at: Date.now() });
+        if (contactKey(readActiveContact()) === key) paintCount(n);
+    } catch (e) {
+        /* sem configuração ou offline: só não mostra o contador */
+    }
+}
+
+function trackActiveChat() {
+    const contact = readActiveContact();
+    const sig = contact ? `${contact.name}|${contact.phone || ''}` : '';
+    if (sig === lastChatSig) return;
+    lastChatSig = sig;
+    eventBus.emit('CHAT_CHANGED', contact);
+    paintCount(countCache.get(contactKey(contact))?.n || 0);
+    // espera a conversa assentar (o telefone às vezes chega um tick depois)
+    clearTimeout(countTimer);
+    countTimer = setTimeout(() => refreshCount(readActiveContact()), 700);
+}
+
+eventBus.on('ORDERS_CHANGED', (contact) => refreshCount(contact || readActiveContact(), true));
+
 export function initChatObserver() {
     // Um único laço leve cuida de tudo. Antes usávamos MutationObserver com
     // subtree no app inteiro (dispara milhares de vezes/segundo no WhatsApp) e
@@ -908,6 +922,7 @@ export function initChatObserver() {
                 semBarraLateral = 0;
             }
             syncSidebarButtons();
+            trackActiveChat();
             paintChatList();
             maybeRefreshAssignments();
         } catch (err) {

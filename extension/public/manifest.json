@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Classul - Pedidos WhatsApp",
-  "version": "2.20.0",
-  "description": "Cria pedidos no sistema Classul direto do WhatsApp Web.",
+  "version": "2.21.0",
+  "description": "Pedidos do sistema Classul dentro do WhatsApp Web: ver, editar e criar sem sair da conversa.",
   "permissions": [
     "storage"
   ],

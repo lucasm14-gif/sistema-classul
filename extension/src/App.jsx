@@ -1,44 +1,35 @@
 import React, { useState, useEffect } from 'react'
-import OrderModal from './components/OrderModal'
+import OrdersPanel from './components/panel/OrdersPanel'
 import QuickMessages from './components/QuickMessages'
 import { eventBus } from './utils/events'
 
 function App() {
-  const [orderModalData, setOrderModalData] = useState(null);
+  const [panel, setPanel] = useState(null);
   const [showQuickMessages, setShowQuickMessages] = useState(false);
 
   useEffect(() => {
-    const handleShowOrderModal = (data) => {
-      setOrderModalData(data);
+    // Abre o painel de pedidos; clicar de novo no botão (sem pedir "novo") fecha.
+    const handleShowPanel = (data) => {
+      setPanel((open) => (open && data?.toggle ? null : data || {}));
     };
+    const handleShowQuickMessages = () => setShowQuickMessages(true);
 
-    const handleShowQuickMessages = () => {
-      setShowQuickMessages(true);
-    };
-
-    eventBus.on('SHOW_ORDER_MODAL', handleShowOrderModal);
+    eventBus.on('SHOW_ORDERS_PANEL', handleShowPanel);
     eventBus.on('SHOW_QUICK_MESSAGES', handleShowQuickMessages);
-
     return () => {
-      eventBus.off('SHOW_ORDER_MODAL', handleShowOrderModal);
+      eventBus.off('SHOW_ORDERS_PANEL', handleShowPanel);
       eventBus.off('SHOW_QUICK_MESSAGES', handleShowQuickMessages);
     };
   }, []);
 
+  useEffect(() => {
+    eventBus.emit('PANEL_STATE', Boolean(panel));
+  }, [panel]);
+
   return (
     <>
-      {orderModalData && (
-        <OrderModal
-          contactData={orderModalData}
-          onClose={() => setOrderModalData(null)}
-        />
-      )}
-
-      {showQuickMessages && (
-        <QuickMessages
-          onClose={() => setShowQuickMessages(false)}
-        />
-      )}
+      {panel && <OrdersPanel start={panel} onClose={() => setPanel(null)} />}
+      {showQuickMessages && <QuickMessages onClose={() => setShowQuickMessages(false)} />}
     </>
   )
 }

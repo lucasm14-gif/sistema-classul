@@ -739,5 +739,28 @@ check('parar de acompanhar', (await r.json()).ok === true);
 r = await upsert('5551911112222', { conversation: 'mais uma' });
 check('depois de desmarcar volta a ignorar', /não acompanhada/.test((await r.json()).watcher?.ignored || ''));
 
+// pedidos de um contato (painel da extensão no WhatsApp)
+const mk = (data) =>
+  fetch(`${B}/orders`, { method: 'POST', headers: H, body: JSON.stringify(data) }).then((x) => x.json());
+const p1 = await mk({ customer_name: 'Contato Painel', phone: '5551988887777', product: 'Troféu' });
+const p2 = await mk({ customer_name: 'Contato Painel', phone: '51 8888-7777' }); // sem o nono dígito
+await mk({ customer_name: 'Contato Painel', phone: '5511977776666' }); // homônimo, outro telefone
+const p4 = await mk({ customer_name: 'Só Pelo Nome' });
+await fetch(`${B}/orders/${p2.id}/archive`, { method: 'PATCH', headers: H, body: JSON.stringify({ archived: true }) });
+r = await fetch(`${B}/contact-orders?phone=5551988887777&name=Contato%20Painel`, { headers: H });
+let co = await r.json();
+check(
+  'pedidos do contato casam pelo telefone (com e sem nono dígito) e ignoram homônimo',
+  co.orders.length === 2 && co.orders.every((o) => o.matched_by === 'phone'),
+  co.orders.map((o) => o.phone).join(',')
+);
+check('pedido ativo vem antes do arquivado', co.orders[0].id === p1.id && co.orders[1].archived === 1);
+check('cliente do contato vem junto', co.client?.name === 'Contato Painel');
+r = await fetch(`${B}/contact-orders?name=s%C3%B3%20pelo%20nome`, { headers: H });
+co = await r.json();
+check('sem telefone, acha pelo nome', co.orders.length === 1 && co.orders[0].id === p4.id && co.orders[0].matched_by === 'name');
+r = await fetch(`${B}/contact-orders`, { headers: H });
+check('sem telefone nem nome responde 400', r.status === 400);
+
 server.close();
 console.log('\nFim dos testes.');
