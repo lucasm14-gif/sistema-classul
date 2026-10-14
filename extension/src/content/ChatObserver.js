@@ -2,6 +2,7 @@ import { eventBus } from '../utils/events';
 import { getExtensionConfig, contactOrders } from '../services/classul';
 import { getActiveChatName, getActiveChatPhone, scrapePhoneFromProfile, readActiveContact, sleep } from '../utils/dom';
 import { toast, extensionAlive, showReloadBanner } from '../utils/toast';
+import { refreshOrderFlags, hasOrderFlags, paintOrderFlag } from './orderFlags';
 
 let currentButton = null;
 
@@ -561,22 +562,29 @@ function makeBadge(employee) {
 // Coloca/atualiza a etiqueta do funcionário em cada linha da lista de conversas.
 function paintChatList() {
     // Nada marcado e nada pintado: não há o que fazer (caso mais comum).
-    if (assignmentsByName.size === 0 && !document.querySelector('.classul-assign-badge')) return;
+    const anyFlags = hasOrderFlags();
+    if (
+        assignmentsByName.size === 0 &&
+        !anyFlags &&
+        !document.querySelector('.classul-assign-badge, .classul-order-badge')
+    ) return;
 
     for (const row of chatListRows()) {
-        const a = assignmentsByName.get(normName(rowTitle(row)));
+        const title = rowTitle(row);
+        const titleEl = row.querySelector('span[title]') || row.querySelector('span[dir="auto"]');
+        const a = assignmentsByName.get(normName(title));
         const existing = row.querySelector('.classul-assign-badge');
         if (a && a.employee) {
             if (existing) {
                 existing.textContent = a.employee;
                 existing.style.background = assignmentColor(a.employee);
-            } else {
-                const titleEl = row.querySelector('span[title]') || row.querySelector('span[dir="auto"]');
-                if (titleEl && titleEl.parentElement) titleEl.parentElement.appendChild(makeBadge(a.employee));
+            } else if (titleEl && titleEl.parentElement) {
+                titleEl.parentElement.appendChild(makeBadge(a.employee));
             }
         } else if (existing) {
             existing.remove();
         }
+        paintOrderFlag(row, title, titleEl);
     }
 }
 
@@ -906,7 +914,10 @@ function trackActiveChat() {
     countTimer = setTimeout(() => refreshCount(readActiveContact()), 700);
 }
 
-eventBus.on('ORDERS_CHANGED', (contact) => refreshCount(contact || readActiveContact(), true));
+eventBus.on('ORDERS_CHANGED', (contact) => {
+    refreshCount(contact || readActiveContact(), true);
+    refreshOrderFlags(true);
+});
 
 export function initChatObserver() {
     // Um único laço leve cuida de tudo. Antes usávamos MutationObserver com
@@ -937,6 +948,7 @@ export function initChatObserver() {
             trackActiveChat();
             paintChatList();
             maybeRefreshAssignments();
+            refreshOrderFlags();
         } catch (err) {
             console.error('[Classul] tick:', err);
         }

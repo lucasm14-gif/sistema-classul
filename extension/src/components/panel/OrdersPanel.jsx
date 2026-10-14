@@ -162,6 +162,8 @@ export default function OrdersPanel({ start, onClose }) {
     const [resolving, setResolving] = useState(false);
     useEffect(() => {
         if (!contact || contact.group || contact.profileChecked || (contact.phone && !contact.nameIsNumber)) return;
+        // espera o sistema responder: se ele já conhece o número, nem abre o perfil
+        if (!data || ((data.phone || data.client?.phone) && !contact.nameIsNumber)) return;
         let alive = true;
         const chatName = contact.name;
         setResolving(true);
@@ -182,13 +184,13 @@ export default function OrdersPanel({ start, onClose }) {
         return () => {
             alive = false;
         };
-    }, [contact?.name, contact?.group]); // eslint-disable-line
+    }, [contact?.name, contact?.group, Boolean(data)]); // eslint-disable-line
 
     // Outro computador já cadastrou o cliente: o sistema devolve o telefone dele.
     useEffect(() => {
-        const p = data?.client?.phone;
-        if (p && contact && !contact.phone && !contact.group) setContact((c) => ({ ...c, phone: p }));
-    }, [data?.client?.phone]); // eslint-disable-line
+        const p = data?.phone || data?.client?.phone;
+        if (p && contact && !contact.phone && !contact.group) setContact((c) => ({ ...c, phone: p, profileChecked: true }));
+    }, [data?.phone, data?.client?.phone]); // eslint-disable-line
 
     // Encaixe: encolhe o WhatsApp para o painel ficar ao lado, sem cobrir a conversa.
     useEffect(() => {

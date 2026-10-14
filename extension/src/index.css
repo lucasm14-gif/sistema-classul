@@ -215,3 +215,23 @@ textarea.clp-input { resize: vertical; min-height: 76px; line-height: 1.45; }
 .clp-toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 2147483647; background: #111b21; color: #fff; padding: 10px 16px; border-radius: 12px; font: 600 13px/1.35 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); display: flex; align-items: center; gap: 8px; animation: clp-fade 0.2s ease both; max-width: 90vw; }
 .clp-toast.ok { background: #2f7d1d; }
 .clp-toast.error { background: #b71f19; }
+
+/* Etiqueta de pedido na lista de conversas (tem pedido / entrega perto). */
+.classul-order-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 6px;
+    padding: 1px 7px 1px 6px;
+    border-radius: 9px;
+    font: 700 10px/16px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    vertical-align: middle;
+    white-space: nowrap;
+    flex: none;
+}
+.classul-order-badge b { font-weight: 700; }
+.classul-order-badge.tone-base { box-shadow: inset 0 0 0 1px #4fae32; color: #4fae32; }
+.classul-order-badge.tone-week { box-shadow: inset 0 0 0 1px #0ea5e9; color: #0ea5e9; }
+.classul-order-badge.tone-ready { background: #4fae32; color: #fff; }
+.classul-order-badge.tone-soon { background: #f59e0b; color: #fff; }
+.classul-order-badge.tone-late { background: #e5484d; color: #fff; }

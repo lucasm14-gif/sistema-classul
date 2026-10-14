@@ -762,6 +762,19 @@ check('sem telefone, acha pelo nome', co.orders.length === 1 && co.orders[0].id 
 r = await fetch(`${B}/contact-orders?name=contato%20painel`, { headers: H });
 co = await r.json();
 check('só pelo nome, devolve o cliente com o telefone salvo no sistema', co.client?.phone === '5551988887777');
+r = await fetch(`${B}/chat-contacts`, { method: 'PUT', headers: H, body: JSON.stringify({ name: 'Apelido no Zap', phone: '+55 51 98888-7777' }) });
+check('guarda o número descoberto de uma conversa', (await r.json()).ok === true);
+r = await fetch(`${B}/contact-orders?name=apelido%20no%20zap`, { headers: H });
+co = await r.json();
+check('conversa com nome diferente acha os pedidos pelo número guardado', co.phone === '5551988887777' && co.orders.some((o) => o.id === p1.id));
+r = await fetch(`${B}/order-flags`, { headers: H });
+const flags = await r.json();
+check(
+  'etiquetas: só pedidos em aberto, com chave do telefone e mapa de conversas',
+  flags.orders.some((o) => o.id === p1.id && o.phone_key === '5188887777') &&
+    !flags.orders.some((o) => o.id === p2.id) &&
+    flags.contacts['apelido no zap'] === '5188887777'
+);
 r = await fetch(`${B}/contact-orders`, { headers: H });
 check('sem telefone nem nome responde 400', r.status === 400);
 

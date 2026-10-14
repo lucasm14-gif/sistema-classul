@@ -331,9 +331,16 @@ function phoneKey(raw) {
 }
 
 app.get('/api/contact-orders', h(async (req, res) => {
-  const key = phoneKey(req.query.phone);
+  let key = phoneKey(req.query.phone);
   const name = String(req.query.name || '').trim().toLowerCase();
   if (!key && !name) return res.status(400).json({ error: 'Informe o telefone ou o nome do contato.' });
+  // outro computador já descobriu o número desta conversa
+  let knownPhone = null;
+  if (!key) {
+    const { rows: known } = await q('SELECT phone FROM chat_contacts WHERE chat_name = $1', [name]);
+    knownPhone = known[0]?.phone || null;
+    key = phoneKey(knownPhone);
+  }
 
   const conds = [];
   const params = [];
@@ -399,7 +406,44 @@ app.get('/api/contact-orders', h(async (req, res) => {
       (rank(a) === 1 ? (a.due_date || '9999').localeCompare(b.due_date || '9999') : 0) ||
       new Date(b.created_at) - new Date(a.created_at)
   );
-  res.json({ client, orders });
+  res.json({ client, orders, phone: knownPhone });
+}));
+
+// Etiquetas da lista de conversas: pedidos em aberto, só o necessário para
+// casar com cada conversa (telefone e nomes) e mostrar a próxima entrega.
+app.get('/api/order-flags', h(async (req, res) => {
+  const { rows } = await q(
+    `SELECT o.id, o.customer_name, o.phone, o.status, o.due_date, o.pickup_time, o.product,
+            c.name AS client_name, c.phone AS client_phone
+       FROM orders o LEFT JOIN clients c ON c.id = o.client_id
+      WHERE o.archived = 0 AND o.status <> 'entregue'`
+  );
+  const { rows: contacts } = await q('SELECT chat_name, phone FROM chat_contacts');
+  res.json({
+    orders: rows.map((r) => ({
+      id: r.id,
+      order_number: formatOrderNumber(r.id),
+      phone_key: phoneKey(r.phone) || phoneKey(r.client_phone),
+      names: [...new Set([r.customer_name, r.client_name].filter(Boolean).map((n) => n.trim().toLowerCase()))],
+      status: r.status,
+      due_date: r.due_date,
+      pickup_time: r.pickup_time,
+      product: r.product
+    })),
+    contacts: Object.fromEntries(contacts.map((c) => [c.chat_name, phoneKey(c.phone)]).filter(([, k]) => k))
+  });
+}));
+
+app.put('/api/chat-contacts', h(async (req, res) => {
+  const name = String(req.body?.name || '').trim().toLowerCase().slice(0, 120);
+  const phone = normalizePhone(req.body?.phone);
+  if (!name || !phone || !phoneKey(phone)) return res.status(400).json({ error: 'Informe nome e telefone.' });
+  await q(
+    `INSERT INTO chat_contacts (chat_name, phone, updated_at) VALUES ($1, $2, now())
+     ON CONFLICT (chat_name) DO UPDATE SET phone = EXCLUDED.phone, updated_at = now()`,
+    [name, phone]
+  );
+  res.json({ ok: true });
 }));
 
 app.get('/api/orders/:id', h(async (req, res) => {

@@ -1,3 +1,5 @@
+import { api } from '../services/classul';
+
 // Helper to wait for elements (WhatsApp loads dynamically)
 export const waitForElement = (selector, timeout = 10000) => {
     return new Promise((resolve) => {
@@ -178,6 +180,8 @@ export const rememberPhone = (name, phone) => {
     } catch {
         /* sem armazenamento */
     }
+    // compartilha com os outros computadores (etiquetas e painel)
+    api('/api/chat-contacts', { method: 'PUT', body: { name: k, phone } }).catch(() => {});
 };
 export const cachedPhone = (name) => phoneCache.get(cacheKey(name)) || null;
 
