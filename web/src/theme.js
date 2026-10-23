@@ -1,10 +1,11 @@
-// Tema claro/escuro. A escolha fica no dispositivo; "system" segue o aparelho.
+// Tema claro/escuro. A escolha fica no dispositivo; sem escolha, abre no escuro
+// (o visual de painel foi desenhado para ele). "system" segue o aparelho.
 const KEY = 'classul_theme';
 const MODES = ['system', 'light', 'dark'];
 
 export function getThemePref() {
   const v = localStorage.getItem(KEY);
-  return MODES.includes(v) ? v : 'system';
+  return MODES.includes(v) ? v : 'dark';
 }
 
 export function prefersDark() {

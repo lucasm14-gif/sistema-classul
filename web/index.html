@@ -15,7 +15,7 @@
       // Aplica o tema antes de pintar a tela, para não piscar branco no modo escuro.
       (function () {
         try {
-          var p = localStorage.getItem('classul_theme') || 'system';
+          var p = localStorage.getItem('classul_theme') || 'dark';
           var dark = p === 'dark' || (p === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
           if (dark) document.documentElement.classList.add('dark');
         } catch (e) {}

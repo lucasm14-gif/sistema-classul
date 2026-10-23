@@ -59,61 +59,67 @@ export default function App() {
 
   return (
     <ToastProvider>
-      <div className="min-h-screen flex flex-col">
-        <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-xl border-b border-black/5">
-          <div className="px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <img src="/logo.png" alt="Classul" className="w-11 h-11 object-contain shrink-0" />
-              <div className="hidden sm:block leading-tight">
-                <h1 className="font-extrabold tracking-tight text-brand-950 text-lg">Classul</h1>
-                <p className="text-[11px] font-semibold text-slate-400 -mt-0.5">Gestão de Pedidos</p>
-              </div>
-            </div>
+      <div className="min-h-screen flex">
+        {/* Barra lateral de ícones (estilo painel): navegação no meio, conta e tema embaixo. */}
+        <aside className="sticky top-3 z-30 shrink-0 self-start h-[calc(100vh-1.5rem)] w-[68px] sm:w-[76px] ml-3 my-3 rounded-[1.75rem] bg-white/85 backdrop-blur-xl border border-black/5 shadow-sm flex flex-col items-center py-4">
+          <img src="/logo.png" alt="Classul" title="Classul · Gestão de Pedidos" className="w-11 h-11 object-contain shrink-0" />
+          <span className="mt-1 text-[10px] font-extrabold tracking-tight text-brand-950">Classul</span>
 
-            <nav className="flex items-center gap-1 bg-black/[0.04] rounded-full p-1">
-              {TABS.map(({ id, label, icon: Icon }) => (
-                <button
-                  key={id}
-                  onClick={() => setTab(id)}
-                  className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full text-sm font-bold transition-all ${
-                    tab === id
-                      ? 'bg-white text-brand-800 shadow-sm'
-                      : 'text-slate-500 hover:text-brand-900'
-                  }`}
-                >
-                  <Icon size={16} strokeWidth={2.5} />
-                  <span className="hidden md:inline">{label}</span>
-                </button>
-              ))}
-            </nav>
+          <nav className="mt-5 flex-1 min-h-0 w-full overflow-y-auto overflow-x-visible flex flex-col items-center gap-1.5 px-3.5 [scrollbar-width:none]">
+            {TABS.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setTab(id)}
+                title={label}
+                aria-label={label}
+                className={`relative shrink-0 w-11 h-11 flex items-center justify-center rounded-2xl transition-all ${
+                  tab === id
+                    ? 'nav-active bg-brand-500/15 text-brand-600 ring-1 ring-brand-500/25'
+                    : 'text-slate-400 hover:text-brand-900 hover:bg-black/[0.05]'
+                }`}
+              >
+                <Icon size={19} strokeWidth={tab === id ? 2.4 : 2} />
+              </button>
+            ))}
+          </nav>
 
-            <div className="flex items-center gap-1.5">
-              <UserPicker onAuthError={handleAuthError} />
-              <button
-                onClick={() => {
-                  toggleTheme();
-                  setDark(isDark());
-                }}
-                title={dark ? 'Modo claro' : 'Modo escuro'}
-                className="p-2.5 rounded-full text-slate-400 hover:text-brand-800 hover:bg-black/[0.04] transition-colors"
-              >
-                {dark ? <Sun size={17} /> : <Moon size={17} />}
-              </button>
-              <button
-                onClick={() => {
-                  clearToken();
-                  setAuthed(false);
-                }}
-                title="Sair"
-                className="p-2.5 rounded-full text-slate-400 hover:text-flame-600 hover:bg-flame-50 transition-colors"
-              >
-                <LogOut size={17} />
-              </button>
-            </div>
+          <div className="mt-3 pt-3 border-t border-black/5 w-10 flex flex-col items-center gap-1.5">
+            <button
+              onClick={() => {
+                toggleTheme();
+                setDark(isDark());
+              }}
+              title={dark ? 'Modo claro' : 'Modo escuro'}
+              className="w-10 h-10 flex items-center justify-center rounded-2xl text-slate-400 hover:text-brand-800 hover:bg-black/[0.05] transition-colors"
+            >
+              {dark ? <Sun size={17} /> : <Moon size={17} />}
+            </button>
+            <button
+              onClick={() => {
+                clearToken();
+                setAuthed(false);
+              }}
+              title="Sair"
+              className="w-10 h-10 flex items-center justify-center rounded-2xl text-slate-400 hover:text-flame-600 hover:bg-flame-50 transition-colors"
+            >
+              <LogOut size={17} />
+            </button>
+            {/* Entrada discreta para a área pessoal. */}
+            <button
+              onClick={() => setLucasOpen(true)}
+              aria-label="Área pessoal"
+              className="group p-1.5 text-slate-400 hover:text-brand-900 transition-colors"
+            >
+              <BatSigil
+                className="w-7 opacity-40 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500"
+                style={{ fill: 'currentColor' }}
+              />
+            </button>
+            <UserPicker onAuthError={handleAuthError} compact />
           </div>
-        </header>
+        </aside>
 
-        <main className="flex-1 overflow-hidden">
+        <main className="flex-1 min-w-0 overflow-hidden">
           {tab === 'board' && <Board onAuthError={handleAuthError} />}
           {tab === 'clients' && <Clients onAuthError={handleAuthError} />}
           {tab === 'dashboard' && <Dashboard onAuthError={handleAuthError} />}
@@ -125,23 +131,6 @@ export default function App() {
           {tab === 'archived' && <Archived onAuthError={handleAuthError} />}
           {tab === 'settings' && <Settings onAuthError={handleAuthError} />}
         </main>
-
-        <footer className="shrink-0 border-t border-black/5 px-4 sm:px-6 h-10 flex items-center justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-            Classul · Placas e Brindes
-          </span>
-          {/* Entrada discreta para a área pessoal. */}
-          <button
-            onClick={() => setLucasOpen(true)}
-            aria-label="Área pessoal"
-            className="group p-1.5 -mr-1.5 text-slate-400 hover:text-brand-900 transition-colors"
-          >
-            <BatSigil
-              className="w-8 opacity-40 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500"
-              style={{ fill: 'currentColor' }}
-            />
-          </button>
-        </footer>
       </div>
 
       {lucasOpen && <Lucas onAuthError={handleAuthError} onExit={() => setLucasOpen(false)} />}

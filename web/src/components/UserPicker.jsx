@@ -11,7 +11,7 @@ export function colorFor(name) {
   return AVATAR_COLORS[h] || AVATAR_COLORS[0];
 }
 
-export default function UserPicker({ onAuthError }) {
+export default function UserPicker({ onAuthError, compact = false }) {
   const [current, setCurrent] = useState(getUser());
   const [employees, setEmployees] = useState([]);
   const [open, setOpen] = useState(false);
@@ -62,8 +62,12 @@ export default function UserPicker({ onAuthError }) {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-full bg-black/[0.04] hover:bg-black/[0.07] transition-colors"
-        title="Quem está usando"
+        className={
+          compact
+            ? 'flex items-center justify-center p-1 rounded-full hover:bg-black/[0.07] transition-colors'
+            : 'flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-full bg-black/[0.04] hover:bg-black/[0.07] transition-colors'
+        }
+        title={current ? `Usando: ${current}` : 'Quem está usando'}
       >
         {current ? (
           <span
@@ -77,14 +81,18 @@ export default function UserPicker({ onAuthError }) {
             <UserRound size={15} />
           </span>
         )}
-        <span className="hidden sm:block text-sm font-bold text-brand-950 max-w-[120px] truncate">
-          {current || 'Quem é você?'}
-        </span>
-        <ChevronDown size={14} className="text-slate-400" />
+        {!compact && (
+          <>
+            <span className="hidden sm:block text-sm font-bold text-brand-950 max-w-[120px] truncate">
+              {current || 'Quem é você?'}
+            </span>
+            <ChevronDown size={14} className="text-slate-400" />
+          </>
+        )}
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-60 bg-white rounded-2xl shadow-2xl border border-black/5 p-2 z-50 animate-fade-up">
+        <div className={`absolute ${compact ? 'left-full bottom-0 ml-4' : 'right-0 mt-2'} w-60 bg-white rounded-2xl shadow-2xl border border-black/5 p-2 z-50 animate-fade-up`}>
           <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest px-2 py-1.5">
             Funcionário
           </p>
