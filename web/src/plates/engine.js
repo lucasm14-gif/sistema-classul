@@ -2,6 +2,8 @@
 // (cena), desenhada igual em SVG (tela e CorelDRAW) e em canvas (PNG para o WhatsApp).
 // Não depende do navegador: quem chama informa como medir o texto.
 
+import { FRAMES } from './frames.js';
+
 export const W = 2000;
 export const SIZES = ['9x14', '12x17', '14x20', '16x25', '20x30'];
 export const INK = '#17171a';
@@ -92,40 +94,15 @@ const stroke = (d, width, extra = {}) => ({ type: 'path', d, stroke: INK, width,
 const fill = (d, extra = {}) => ({ type: 'path', d, fill: INK, ...extra });
 
 // ---- Molduras ----
-function frameScoop(H) {
-  const m = 83, t = 71, r = 83, B = H - 71, sag = 68, x1 = 344, x2 = W - 344;
-  return [
-    stroke(`M${m + r} ${t}Q${W / 2} ${t + sag} ${W - m - r} ${t}A${r} ${r} 0 0 0 ${W - m} ${t + r}L${W - m} ${B - r}A${r} ${r} 0 0 0 ${W - m - r} ${B}Q${W / 2} ${B - sag} ${m + r} ${B}A${r} ${r} 0 0 0 ${m} ${B - r}L${m} ${t + r}A${r} ${r} 0 0 0 ${m + r} ${t}Z`, 10),
-    fill(`M${x1} 68L${x2} 68Q${W / 2} 106 ${x1} 68Z`),
-    fill(`M${x1} ${H - 68}L${x2} ${H - 68}Q${W / 2} ${H - 106} ${x1} ${H - 68}Z`)
-  ];
+// Vêm dos arquivos do Corel, já desenhadas para cada tamanho.
+function realFrame(name, H) {
+  const size = Object.keys(FRAMES[name]).find((k) => plateHeight(k) === H);
+  return (FRAMES[name][size] || FRAMES[name]['14x20']).map((it) => ({
+    type: 'path', d: it.d, ...(it.f ? { fill: INK } : {}), ...(it.w ? { stroke: INK, width: it.w } : {})
+  }));
 }
 
-function frameDouble(H) {
-  const q = 30;
-  const rect = (x, y, w, h) => `M${x} ${y}H${x + w}V${y + h}H${x}Z`;
-  return [
-    stroke(rect(84, 84, W - 168, H - 168), 9),
-    stroke(rect(110, 110, W - 220, H - 220), 3),
-    ...[[84, 84], [W - 84, 84], [84, H - 84], [W - 84, H - 84]].map(([x, y]) => fill(rect(x - q / 2, y - q / 2, q, q)))
-  ];
-}
-
-function frameFlourish(H) {
-  const m = 96;
-  const corner = 'M0 150C0 62 62 0 150 0M0 150C0 212 72 226 96 176C116 134 62 100 42 136M150 0C212 0 226 72 176 96C134 116 100 62 136 42M34 34C72 12 118 62 82 92C58 112 24 80 48 58';
-  const place = (sx, sy, tx, ty) => stroke(corner, 6, { transform: [sx, sy, tx, ty] });
-  return [
-    stroke(`M${m + 190} ${m + 12}H${W - m - 190}M${m + 190} ${H - m - 12}H${W - m - 190}M${m + 12} ${m + 190}V${H - m - 190}M${W - m - 12} ${m + 190}V${H - m - 190}`, 5),
-    place(1, 1, m, m), place(-1, 1, W - m, m), place(1, -1, m, H - m), place(-1, -1, W - m, H - m)
-  ];
-}
-
-function frameThin(H) {
-  const r = 36, m = 90;
-  return [stroke(`M${m + r} ${m}H${W - m - r}A${r} ${r} 0 0 1 ${W - m} ${m + r}V${H - m - r}A${r} ${r} 0 0 1 ${W - m - r} ${H - m}H${m + r}A${r} ${r} 0 0 1 ${m} ${H - m - r}V${m + r}A${r} ${r} 0 0 1 ${m + r} ${m}Z`, 5)];
-}
-
+// Desenho próprio: o arquivo das molduras não tem um modelo sem moldura fechada.
 function frameSweep(H) {
   return [stroke(`M90 ${H * 0.28}C150 ${H * 0.72} 230 ${H * 0.8} 420 ${H * 0.8}H${W - 90}`, 5)];
 }
@@ -176,7 +153,7 @@ export const TEMPLATES = [
         { text: f.line, font: F.cambI, size: 66 * s, gap: 46 * s },
         { text: f.from, font: F.camb, size: 68 * s, gap: 40 * s }
       ] });
-      return { ops: [...frameScoop(H), ...r.ops, ...logoOps(f, W / 2 - 220, H - 150 - logo, 440, logo)], fit: r.fit, overflow: r.overflow };
+      return { ops: [...realFrame('cantos-recortados', H), ...r.ops, ...logoOps(f, W / 2 - 220, H - 150 - logo, 440, logo)], fit: r.fit, overflow: r.overflow };
     }
   },
   {
@@ -190,7 +167,7 @@ export const TEMPLATES = [
         { text: f.line, font: F.timesI, size: 66 * s, gap: 42 * s },
         { text: f.from, font: F.timesB, size: 66 * s, gap: 24 * s }
       ] });
-      return { ops: [...frameDouble(H), ...r.ops, ...logoOps(f, W / 2 - 220, H - 170 - logo, 440, logo)], fit: r.fit, overflow: r.overflow };
+      return { ops: [...realFrame('filete-quadrados', H), ...r.ops, ...logoOps(f, W / 2 - 220, H - 170 - logo, 440, logo)], fit: r.fit, overflow: r.overflow };
     }
   },
   {
@@ -204,7 +181,7 @@ export const TEMPLATES = [
         { text: f.line, font: F.amerBI, size: 60 * s, gap: 40 * s },
         { text: f.from, font: F.amer, size: 62 * s, gap: 30 * s, upper: true, spacing: 0.04 }
       ] });
-      return { ops: [...frameFlourish(H), ...r.ops, ...logoOps(f, W / 2 - 220, H - 150 - logo, 440, logo)], fit: r.fit, overflow: r.overflow };
+      return { ops: [...realFrame('arabesco', H), ...r.ops, ...logoOps(f, W / 2 - 220, H - 150 - logo, 440, logo)], fit: r.fit, overflow: r.overflow };
     }
   },
   {
@@ -219,7 +196,7 @@ export const TEMPLATES = [
         { text: f.line, font: F.arial, size: 50 * s, gap: 36 * s },
         { text: f.from, font: F.arialB, size: 52 * s, gap: 26 * s, upper: true }
       ] });
-      return { ops: [...frameThin(H), ...logoOps(f, W / 2 - 340, 140, 680, logo), ...r.ops], fit: r.fit, overflow: r.overflow };
+      return { ops: [...realFrame('cantos-flor', H), ...logoOps(f, W / 2 - 340, 140, 680, logo), ...r.ops], fit: r.fit, overflow: r.overflow };
     }
   },
   {
@@ -253,7 +230,7 @@ export const TEMPLATES = [
         { text: f.line, font: F.cambI, size: 54 * s, gap: 26 * s },
         { text: f.from, font: F.camb, size: 54 * s, gap: 18 * s }
       ] });
-      return { ops: [...frameDouble(H), ...photo, ...r.ops, ...logoOps(f, x, H - 170 - logo, W - x - 160, logo)], fit: r.fit, overflow: r.overflow };
+      return { ops: [...realFrame('chanfrado', H), ...photo, ...r.ops, ...logoOps(f, x, H - 170 - logo, W - x - 160, logo)], fit: r.fit, overflow: r.overflow };
     }
   },
   {
@@ -267,7 +244,7 @@ export const TEMPLATES = [
         { text: f.from, font: F.times, size: 56 * s, gap: 24 * s },
         { text: f.line, font: F.timesI, size: 52 * s, gap: 14 * s }
       ] });
-      const ops = [...frameDouble(H), ...r.ops];
+      const ops = [...realFrame('cantos-folhas', H), ...r.ops];
       const baseY = H - 150 - signH + 90 * s;
       const cw = (W - 400) / Math.max(1, signs.length);
       signs.forEach((sig, i) => {
@@ -290,7 +267,7 @@ export const TEMPLATES = [
         { text: f.from, font: F.cambB, size: 62 * s, gap: 30 * s },
         { text: f.line, font: F.cambI, size: 54 * s, gap: 10 * s }
       ] });
-      return { ops: [...frameFlourish(H), ...r.ops, ...logoOps(f, W / 2 - 220, H - 130 - logo, 440, logo)], fit: r.fit, overflow: r.overflow };
+      return { ops: [...realFrame('cantos-flor', H), ...r.ops, ...logoOps(f, W / 2 - 220, H - 130 - logo, 440, logo)], fit: r.fit, overflow: r.overflow };
     }
   }
 ];

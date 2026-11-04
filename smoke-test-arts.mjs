@@ -91,6 +91,18 @@ check('fontes anunciadas são as usadas no desenho', fontsMatch);
 const fakeMeasure = (text, css) => (/'Tem'/.test(css) ? 999 : text.length * (css.includes('monospace') ? 40 : 30));
 check('fonte ausente é detectada', missingFonts(['Tem', 'Falta'], fakeMeasure).join() === 'Falta');
 
+const { FRAMES } = await import(`file://${ROOT}/web/src/plates/frames.js`);
+let framesOk = true;
+for (const [name, sizes] of Object.entries(FRAMES)) for (const size of SIZES) {
+  const items = sizes[size] || [];
+  const nums = items.flatMap((i) => (i.d.match(/-?\d+(\.\d+)?/g) || []).map(Number));
+  const xs = nums.filter((_, k) => k % 2 === 0);
+  const ys = nums.filter((_, k) => k % 2 === 1);
+  const H = buildScene('classica', F, size, measure).H;
+  if (!items.length || Math.min(...xs) < -2 || Math.max(...xs) > 2002 || Math.min(...ys) < -2 || Math.max(...ys) > H + 2 || items.some((i) => !i.f && !i.w)) { framesOk = false; console.log('   moldura fora', name, size); }
+}
+check('molduras do Corel existem em todos os tamanhos, dentro da placa e visíveis', framesOk);
+
 const LOGO = { src: 'data:image/png;base64,AAAA', w: 400, h: 200 };
 let printOk = true;
 for (const t of TEMPLATES) for (const size of SIZES) {
