@@ -3,7 +3,7 @@ import { Award, ClipboardCopy, Download, FileCode2, ImagePlus, LoaderCircle, Spa
 import { api } from '../api';
 import { useToast } from './Toast';
 import { sceneForCorel } from '../plates/print';
-import { buildScene, checkFields, drawScene, FONT_LOADS, FONTS_URL, plateHeight, SIZES, TEMPLATES, toSvg, W } from '../plates/engine';
+import { buildScene, checkFields, drawScene, missingFonts, plateHeight, SIZES, TEMPLATES, toSvg, W } from '../plates/engine';
 
 const card = 'bg-white rounded-3xl border border-black/5 shadow-sm';
 const input = 'w-full bg-black/[0.03] border border-black/5 rounded-xl px-3 py-2 text-sm font-medium text-brand-950 outline-none focus:border-brand-400';
@@ -70,21 +70,7 @@ export default function Arts({ onAuthError }) {
   const [size, setSize] = useState('14x20');
   const [doubts, setDoubts] = useState([]);
   const [reading, setReading] = useState(false);
-  const [fontsReady, setFontsReady] = useState(0);
   const [checked, setChecked] = useState(false);
-
-  useEffect(() => {
-    if (!document.getElementById('plate-fonts')) {
-      const link = document.createElement('link');
-      link.id = 'plate-fonts';
-      link.rel = 'stylesheet';
-      link.href = FONTS_URL;
-      document.head.appendChild(link);
-    }
-    let alive = true;
-    Promise.all(FONT_LOADS.map((f) => document.fonts.load(f, 'Áa'))).catch(() => {}).finally(() => { if (alive) setFontsReady((n) => n + 1); });
-    return () => { alive = false; };
-  }, []);
 
   // Qualquer mudança invalida a conferência humana.
   useEffect(() => { setChecked(false); }, [fields, templateId, size]);
@@ -95,10 +81,14 @@ export default function Arts({ onAuthError }) {
 
   const scenes = useMemo(
     () => TEMPLATES.map((t) => buildScene(t.id, shown, size, measure)),
-    [shown, size, fontsReady] // eslint-disable-line react-hooks/exhaustive-deps
+    [shown, size]
   );
   const scene = scenes.find((s) => s.template.id === templateId) || scenes[0];
-  const issues = useMemo(() => (hasContent ? checkFields(fields, scene) : []), [hasContent, fields, scene]);
+  const missing = useMemo(() => missingFonts(scene.template.fonts, measure), [scene.template]);
+  const issues = useMemo(() => [
+    ...(missing.length ? [{ level: 'erro', msg: `Fonte não instalada neste computador: ${missing.join(', ')}. A arte sairia com outra letra.` }] : []),
+    ...(hasContent ? checkFields(fields, scene) : [])
+  ], [missing, hasContent, fields, scene]);
   const hasError = issues.some((i) => i.level === 'erro');
   const ready = hasContent && checked && !hasError;
 
@@ -233,7 +223,7 @@ export default function Arts({ onAuthError }) {
               <button type="button" onClick={savePng} disabled={!ready} className="flex items-center gap-2 border border-black/10 disabled:opacity-40 font-bold text-sm text-brand-950 rounded-xl px-4 py-2.5"><Download size={16} />Baixar PNG</button>
               <button type="button" onClick={saveSvg} disabled={!ready} className="flex items-center gap-2 border border-black/10 disabled:opacity-40 font-bold text-sm text-brand-950 rounded-xl px-4 py-2.5"><FileCode2 size={16} />SVG para o Corel</button>
             </div>
-            <p className="mt-2 text-xs text-slate-500">O SVG vem na medida real, sem o fundo de metal, com o logo e o texto editável. O contorno vermelho marca o limite da placa: apague antes de gravar. Instale as fontes do modelo no computador do Corel.</p>
+            <p className="mt-2 text-xs text-slate-500">O SVG vem na medida real, sem o fundo de metal, com o logo e o texto editável. O contorno vermelho marca o limite da placa: apague antes de gravar.</p>
           </section>
 
           <section className={`${card} p-5`}>

@@ -131,28 +131,34 @@ function frameSweep(H) {
 }
 
 // ---- Fontes ----
+// As mesmas dos arquivos .cdr da Classul. Ficam instaladas no computador e não são
+// publicadas no site: em outra máquina, `missingFonts` avisa antes de sair a arte.
 const F = {
-  pinyon: { family: 'Pinyon Script' },
-  vibes: { family: 'Great Vibes' },
-  dancing: { family: 'Dancing Script', weight: 600 },
-  carlito: { family: 'Carlito' },
-  carlitoB: { family: 'Carlito', weight: 700 },
-  carlitoI: { family: 'Carlito', style: 'italic' },
-  corm: { family: 'Cormorant Garamond', weight: 500 },
-  cormB: { family: 'Cormorant Garamond', weight: 700 },
-  cormI: { family: 'Cormorant Garamond', weight: 500, style: 'italic' },
-  eb: { family: 'EB Garamond' },
-  ebI: { family: 'EB Garamond', style: 'italic' },
-  mont: { family: 'Montserrat', weight: 500 },
-  montB: { family: 'Montserrat', weight: 700 },
-  man: { family: 'Manrope', weight: 500 },
-  manX: { family: 'Manrope', weight: 800 }
+  english: { family: 'English111 Vivace BT' },
+  piranesi: { family: 'Piranesi It BT' },
+  corsiva: { family: 'Monotype Corsiva' },
+  camb: { family: 'Cambria' },
+  cambB: { family: 'Cambria', weight: 700 },
+  cambI: { family: 'Cambria', style: 'italic' },
+  times: { family: 'Times New Roman' },
+  timesB: { family: 'Times New Roman', weight: 700 },
+  timesI: { family: 'Times New Roman', style: 'italic' },
+  amer: { family: 'AmeriGarmnd BT' },
+  amerBI: { family: 'AmeriGarmnd BT', weight: 700, style: 'italic' },
+  arial: { family: 'Arial' },
+  arialB: { family: 'Arial', weight: 700 },
+  calibri: { family: 'Calibri' },
+  calibriB: { family: 'Calibri', weight: 700 }
 };
 
 export const FONT_FAMILIES = [...new Set(Object.values(F).map((f) => f.family))];
-export const FONTS_URL =
-  'https://fonts.googleapis.com/css2?family=Carlito:ital,wght@0,400;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,500&family=Dancing+Script:wght@600&family=EB+Garamond:ital,wght@0,400;1,400&family=Great+Vibes&family=Manrope:wght@500;800&family=Montserrat:wght@500;700&family=Pinyon+Script&display=swap';
-export const FONT_LOADS = Object.values(F).map((f) => fontCss(f, 40));
+
+// Fonte ausente cai na reserva: com duas reservas diferentes, a largura não muda.
+export function missingFonts(families, measure) {
+  const sample = 'AaBbGgQqWwMm 0123456789';
+  const differs = (family, fallback) => measure(sample, `72px '${family}', ${fallback}`) !== measure(sample, `72px ${fallback}`);
+  return families.filter((family) => !differs(family, 'monospace') && !differs(family, 'serif'));
+}
 
 const logoOps = (f, x, y, w, h, align) => (f.logo ? [imageBox(f.logo, x, y, w, h, { align })] : []);
 const dy = (H) => H / 1400; // medidas pensadas na placa 14x20, escaladas pela altura
@@ -160,80 +166,80 @@ const dy = (H) => H / 1400; // medidas pensadas na placa 14x20, escaladas pela a
 // ---- Modelos ----
 export const TEMPLATES = [
   {
-    id: 'classica', name: 'Clássica', fonts: ['Pinyon Script', 'Carlito'], desc: 'Moldura de cantos recortados e nome cursivo',
+    id: 'classica', name: 'Clássica', fonts: ['English111 Vivace BT', 'Cambria'], desc: 'Moldura de cantos recortados e nome cursivo',
     build(f, H, measure) {
       const s = dy(H), logo = f.logo ? 130 * s : 0;
       const r = stack({ x: 220, y: 150, w: W - 440, h: H - 300 - logo, measure, items: [
-        { text: f.name, font: F.pinyon, size: 200 * s, oneLine: true, leading: 1.1 },
-        { text: f.title, font: F.carlitoB, size: 72 * s, gap: 24 * s },
-        { text: f.body, font: F.carlito, size: 70 * s, gap: 30 * s },
-        { text: f.line, font: F.carlitoI, size: 66 * s, gap: 46 * s },
-        { text: f.from, font: F.carlito, size: 68 * s, gap: 40 * s }
+        { text: f.name, font: F.english, size: 200 * s, oneLine: true, leading: 1.1 },
+        { text: f.title, font: F.cambB, size: 72 * s, gap: 24 * s },
+        { text: f.body, font: F.camb, size: 70 * s, gap: 30 * s },
+        { text: f.line, font: F.cambI, size: 66 * s, gap: 46 * s },
+        { text: f.from, font: F.camb, size: 68 * s, gap: 40 * s }
       ] });
       return { ops: [...frameScoop(H), ...r.ops, ...logoOps(f, W / 2 - 220, H - 150 - logo, 440, logo)], fit: r.fit, overflow: r.overflow };
     }
   },
   {
-    id: 'filete', name: 'Filete duplo', fonts: ['Cormorant Garamond'], desc: 'Sóbria, com filete duplo e nome em maiúsculas',
+    id: 'filete', name: 'Filete duplo', fonts: ['Times New Roman'], desc: 'Sóbria, com filete duplo e nome em maiúsculas',
     build(f, H, measure) {
       const s = dy(H), logo = f.logo ? 130 * s : 0;
       const r = stack({ x: 220, y: 170, w: W - 440, h: H - 340 - logo, measure, items: [
-        { text: f.name, font: F.cormB, size: 124 * s, oneLine: true, upper: true, spacing: 0.05, leading: 1.1 },
-        { text: f.title, font: F.cormI, size: 82 * s, gap: 14 * s },
-        { text: f.body, font: F.corm, size: 76 * s, gap: 38 * s },
-        { text: f.line, font: F.cormI, size: 66 * s, gap: 42 * s },
-        { text: f.from, font: F.cormB, size: 66 * s, gap: 24 * s }
+        { text: f.name, font: F.timesB, size: 124 * s, oneLine: true, upper: true, spacing: 0.05, leading: 1.1 },
+        { text: f.title, font: F.timesI, size: 82 * s, gap: 14 * s },
+        { text: f.body, font: F.times, size: 76 * s, gap: 38 * s },
+        { text: f.line, font: F.timesI, size: 66 * s, gap: 42 * s },
+        { text: f.from, font: F.timesB, size: 66 * s, gap: 24 * s }
       ] });
       return { ops: [...frameDouble(H), ...r.ops, ...logoOps(f, W / 2 - 220, H - 170 - logo, 440, logo)], fit: r.fit, overflow: r.overflow };
     }
   },
   {
-    id: 'ornamento', name: 'Ornamentos', fonts: ['Great Vibes', 'EB Garamond'], desc: 'Arabescos nos cantos, tradicional',
+    id: 'ornamento', name: 'Ornamentos', fonts: ['Piranesi It BT', 'AmeriGarmnd BT'], desc: 'Arabescos nos cantos, tradicional',
     build(f, H, measure) {
       const s = dy(H), logo = f.logo ? 120 * s : 0;
       const r = stack({ x: 300, y: 150, w: W - 600, h: H - 300 - logo, measure, items: [
-        { text: f.name, font: F.vibes, size: 180 * s, oneLine: true, leading: 1.15 },
-        { text: f.title, font: F.ebI, size: 76 * s, gap: 20 * s },
-        { text: f.body, font: F.eb, size: 68 * s, gap: 30 * s },
-        { text: f.line, font: F.ebI, size: 60 * s, gap: 40 * s },
-        { text: f.from, font: F.eb, size: 62 * s, gap: 30 * s, upper: true, spacing: 0.04 }
+        { text: f.name, font: F.piranesi, size: 180 * s, oneLine: true, leading: 1.15 },
+        { text: f.title, font: F.amerBI, size: 76 * s, gap: 20 * s },
+        { text: f.body, font: F.amer, size: 68 * s, gap: 30 * s },
+        { text: f.line, font: F.amerBI, size: 60 * s, gap: 40 * s },
+        { text: f.from, font: F.amer, size: 62 * s, gap: 30 * s, upper: true, spacing: 0.04 }
       ] });
       return { ops: [...frameFlourish(H), ...r.ops, ...logoOps(f, W / 2 - 220, H - 150 - logo, 440, logo)], fit: r.fit, overflow: r.overflow };
     }
   },
   {
-    id: 'institucional', name: 'Institucional', fonts: ['Montserrat'], desc: 'Logo no topo e texto direto, para entidades',
+    id: 'institucional', name: 'Institucional', fonts: ['Arial'], desc: 'Logo no topo e texto direto, para entidades',
     build(f, H, measure) {
       const s = dy(H), logo = f.logo ? 230 * s : 0;
       const top = 140 + logo + (f.logo ? 20 * s : 0);
       const r = stack({ x: 210, y: top, w: W - 420, h: H - top - 140, measure, items: [
-        { text: f.title, font: F.montB, size: 62 * s, upper: true, spacing: 0.03 },
-        { text: f.name, font: F.montB, size: 92 * s, oneLine: true, gap: 22 * s, upper: true },
-        { text: f.body, font: F.mont, size: 54 * s, gap: 30 * s, leading: 1.32 },
-        { text: f.line, font: F.mont, size: 50 * s, gap: 36 * s },
-        { text: f.from, font: F.montB, size: 52 * s, gap: 26 * s, upper: true }
+        { text: f.title, font: F.arialB, size: 62 * s, upper: true, spacing: 0.03 },
+        { text: f.name, font: F.arialB, size: 92 * s, oneLine: true, gap: 22 * s, upper: true },
+        { text: f.body, font: F.arial, size: 54 * s, gap: 30 * s, leading: 1.32 },
+        { text: f.line, font: F.arial, size: 50 * s, gap: 36 * s },
+        { text: f.from, font: F.arialB, size: 52 * s, gap: 26 * s, upper: true }
       ] });
       return { ops: [...frameThin(H), ...logoOps(f, W / 2 - 340, 140, 680, logo), ...r.ops], fit: r.fit, overflow: r.overflow };
     }
   },
   {
-    id: 'corporativa', name: 'Corporativa', fonts: ['Manrope'], desc: 'Alinhada à esquerda, com linha em curva',
+    id: 'corporativa', name: 'Corporativa', fonts: ['Calibri'], desc: 'Alinhada à esquerda, com linha em curva',
     build(f, H, measure) {
       const s = dy(H), logoH = f.logo ? 210 * s : 0;
       const r = stack({ x: 240, y: 110 + logoH, w: W - 400, h: H * 0.78 - 130 - logoH, align: 'start', measure, items: [
-        { text: f.title, font: F.man, size: 58 * s },
-        { text: f.name, font: F.manX, size: 104 * s, oneLine: true, gap: 10 * s, leading: 1.15 },
-        { text: f.body, font: F.man, size: 56 * s, gap: 26 * s, leading: 1.32 }
+        { text: f.title, font: F.calibri, size: 58 * s },
+        { text: f.name, font: F.calibriB, size: 104 * s, oneLine: true, gap: 10 * s, leading: 1.15 },
+        { text: f.body, font: F.calibri, size: 56 * s, gap: 26 * s, leading: 1.32 }
       ] });
       const foot = stack({ x: 420, y: H * 0.81, w: W - 510, h: H * 0.15, align: 'end', measure, items: [
-        { text: f.from, font: F.manX, size: 50 * s },
-        { text: f.line, font: F.man, size: 46 * s, gap: 8 * s }
+        { text: f.from, font: F.calibriB, size: 50 * s },
+        { text: f.line, font: F.calibri, size: 46 * s, gap: 8 * s }
       ] });
       return { ops: [...frameSweep(H), ...logoOps(f, 240, 90, 620, logoH, 'start'), ...r.ops, ...foot.ops], fit: Math.min(r.fit, foot.fit), overflow: r.overflow || foot.overflow };
     }
   },
   {
-    id: 'retrato', name: 'Com retrato', fonts: ['Pinyon Script', 'Carlito'], desc: 'Foto gravada à esquerda e texto ao lado', needsPhoto: true,
+    id: 'retrato', name: 'Com retrato', fonts: ['English111 Vivace BT', 'Cambria'], desc: 'Foto gravada à esquerda e texto ao lado', needsPhoto: true,
     build(f, H, measure) {
       const s = dy(H), photoW = 700, gap = 56, logo = f.logo ? 130 * s : 0;
       const photo = f.photo
@@ -241,25 +247,25 @@ export const TEMPLATES = [
         : [stroke(`M150 170H${150 + photoW}V${H - 170}H150Z`, 4, { dash: '18 14', draft: true })];
       const x = 150 + photoW + gap;
       const r = stack({ x, y: 170, w: W - x - 160, h: H - 340 - logo, measure, items: [
-        { text: f.name, font: F.pinyon, size: 150 * s, oneLine: true, leading: 1.12 },
-        { text: f.title, font: F.carlitoB, size: 66 * s, gap: 22 * s },
-        { text: f.body, font: F.carlito, size: 58 * s, gap: 24 * s },
-        { text: f.line, font: F.carlitoI, size: 54 * s, gap: 26 * s },
-        { text: f.from, font: F.carlito, size: 54 * s, gap: 18 * s }
+        { text: f.name, font: F.english, size: 150 * s, oneLine: true, leading: 1.12 },
+        { text: f.title, font: F.cambB, size: 66 * s, gap: 22 * s },
+        { text: f.body, font: F.camb, size: 58 * s, gap: 24 * s },
+        { text: f.line, font: F.cambI, size: 54 * s, gap: 26 * s },
+        { text: f.from, font: F.camb, size: 54 * s, gap: 18 * s }
       ] });
       return { ops: [...frameDouble(H), ...photo, ...r.ops, ...logoOps(f, x, H - 170 - logo, W - x - 160, logo)], fit: r.fit, overflow: r.overflow };
     }
   },
   {
-    id: 'certificado', name: 'Certificado', fonts: ['Great Vibes', 'EB Garamond'], desc: 'Título de reconhecimento e linhas de assinatura',
+    id: 'certificado', name: 'Certificado', fonts: ['Monotype Corsiva', 'Times New Roman'], desc: 'Título de reconhecimento e linhas de assinatura',
     build(f, H, measure) {
       const s = dy(H), signs = (f.signatures || []).filter(Boolean).slice(0, 3), signH = signs.length ? 190 * s : 0;
       const r = stack({ x: 240, y: 160, w: W - 480, h: H - 320 - signH, measure, items: [
-        { text: f.title || 'Certificado de Reconhecimento', font: F.ebI, size: 88 * s },
-        { text: f.name, font: F.vibes, size: 170 * s, oneLine: true, gap: 16 * s, leading: 1.15 },
-        { text: f.body, font: F.eb, size: 60 * s, gap: 24 * s },
-        { text: f.from, font: F.eb, size: 56 * s, gap: 24 * s },
-        { text: f.line, font: F.ebI, size: 52 * s, gap: 14 * s }
+        { text: f.title || 'Certificado de Reconhecimento', font: F.timesI, size: 88 * s },
+        { text: f.name, font: F.corsiva, size: 170 * s, oneLine: true, gap: 16 * s, leading: 1.15 },
+        { text: f.body, font: F.times, size: 60 * s, gap: 24 * s },
+        { text: f.from, font: F.times, size: 56 * s, gap: 24 * s },
+        { text: f.line, font: F.timesI, size: 52 * s, gap: 14 * s }
       ] });
       const ops = [...frameDouble(H), ...r.ops];
       const baseY = H - 150 - signH + 90 * s;
@@ -267,22 +273,22 @@ export const TEMPLATES = [
       signs.forEach((sig, i) => {
         const cx = 200 + cw * i + cw / 2;
         ops.push(stroke(`M${cx - cw * 0.38} ${baseY}H${cx + cw * 0.38}`, 3));
-        const size = Math.min(44 * s, (cw * 0.9) / Math.max(1, measure(sig, fontCss(F.eb, 1))));
-        ops.push({ type: 'text', x: cx, y: baseY + size * 1.3, text: sig, font: F.eb, size, spacing: 0, anchor: 'center', fill: INK });
+        const size = Math.min(44 * s, (cw * 0.9) / Math.max(1, measure(sig, fontCss(F.times, 1))));
+        ops.push({ type: 'text', x: cx, y: baseY + size * 1.3, text: sig, font: F.times, size, spacing: 0, anchor: 'center', fill: INK });
       });
       return { ops: [...ops, ...logoOps(f, 180, 150, 280, 180 * s, 'start')], fit: r.fit, overflow: r.overflow };
     }
   },
   {
-    id: 'carinho', name: 'Mensagem longa', fonts: ['Dancing Script', 'Cormorant Garamond'], desc: 'Para textos longos e despedidas com carinho',
+    id: 'carinho', name: 'Mensagem longa', fonts: ['Monotype Corsiva', 'Cambria'], desc: 'Para textos longos e despedidas com carinho',
     build(f, H, measure) {
       const s = dy(H), logo = f.logo ? 120 * s : 0;
       const r = stack({ x: 230, y: 130, w: W - 460, h: H - 260 - logo, measure, items: [
-        { text: f.name, font: F.dancing, size: 118 * s, oneLine: true, leading: 1.15 },
-        { text: f.title, font: F.cormB, size: 64 * s, gap: 16 * s },
-        { text: f.body, font: F.cormI, size: 72 * s, gap: 24 * s, leading: 1.22 },
-        { text: f.from, font: F.cormB, size: 62 * s, gap: 30 * s },
-        { text: f.line, font: F.cormI, size: 54 * s, gap: 10 * s }
+        { text: f.name, font: F.corsiva, size: 118 * s, oneLine: true, leading: 1.15 },
+        { text: f.title, font: F.cambB, size: 64 * s, gap: 16 * s },
+        { text: f.body, font: F.cambI, size: 72 * s, gap: 24 * s, leading: 1.22 },
+        { text: f.from, font: F.cambB, size: 62 * s, gap: 30 * s },
+        { text: f.line, font: F.cambI, size: 54 * s, gap: 10 * s }
       ] });
       return { ops: [...frameFlourish(H), ...r.ops, ...logoOps(f, W / 2 - 220, H - 130 - logo, 440, logo)], fit: r.fit, overflow: r.overflow };
     }

@@ -9,7 +9,7 @@ const mem = newDb();
 _setPoolForTests(new (mem.adapters.createPg()).Pool());
 const { default: app } = await import(`file://${ROOT}/api/index.js`);
 const { ART_TEMPLATES } = await import(`file://${ROOT}/lib/arts.js`);
-const { TEMPLATES, SIZES, buildScene, checkFields, toSvg } = await import(`file://${ROOT}/web/src/plates/engine.js`);
+const { TEMPLATES, SIZES, FONT_FAMILIES, buildScene, checkFields, missingFonts, toSvg } = await import(`file://${ROOT}/web/src/plates/engine.js`);
 
 const check = (name, cond, extra = '') => {
   console.log(`${cond ? '✅' : '❌'} ${name}${extra ? ' — ' + extra : ''}`);
@@ -80,6 +80,16 @@ check('todos os modelos e tamanhos geram arte dentro da placa', allOk);
 const scene = buildScene('classica', F, '14x20', measure);
 check('SVG de produção não leva o metal', !toSvg(scene, { production: true }).includes('linearGradient') && toSvg(scene).includes('linearGradient'));
 check('SVG mantém o texto editável', toSvg(scene, { production: true }).includes('<text '));
+
+check('modelos só usam fontes da lista', TEMPLATES.every((t) => t.fonts.every((f) => FONT_FAMILIES.includes(f))));
+let fontsMatch = true;
+for (const t of TEMPLATES) {
+  const used = [...new Set(buildScene(t.id, { ...F, signatures: ['Ana'] }, '14x20', measure).ops.filter((o) => o.type === 'text').map((o) => o.font.family))].sort();
+  if (used.join() !== [...t.fonts].sort().join()) { fontsMatch = false; console.log('   fontes divergem', t.id, used); }
+}
+check('fontes anunciadas são as usadas no desenho', fontsMatch);
+const fakeMeasure = (text, css) => (/'Tem'/.test(css) ? 999 : text.length * (css.includes('monospace') ? 40 : 30));
+check('fonte ausente é detectada', missingFonts(['Tem', 'Falta'], fakeMeasure).join() === 'Falta');
 
 const LOGO = { src: 'data:image/png;base64,AAAA', w: 400, h: 200 };
 let printOk = true;
