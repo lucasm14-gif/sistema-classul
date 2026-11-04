@@ -202,6 +202,7 @@ export const api = {
   lucasDeleteRoutine: (id) => lucasRequest(`/api/lucas/routines/${id}`, { method: 'DELETE' }),
   lucasCheckRoutine: (id, day, done) =>
     lucasRequest(`/api/lucas/routines/${id}/check`, { method: 'POST', body: JSON.stringify({ day, done }) }),
+  artExtract: (conversation) => request('/api/arts/extract', { method: 'POST', body: JSON.stringify({ conversation }) }),
   lucasYear: () => lucasRequest('/api/lucas/year'),
   lucasUpdateYear: (data) => lucasRequest('/api/lucas/year', { method: 'PUT', body: JSON.stringify(data) }),
   lucasCreateGoal: (data) => lucasRequest('/api/lucas/goals', { method: 'POST', body: JSON.stringify(data) }),

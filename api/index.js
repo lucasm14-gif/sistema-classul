@@ -64,6 +64,7 @@ import { notifyHermes, logHermes } from '../lib/hermes-events.js';
 import { handleIncoming } from '../lib/bot.js';
 import { handleWatchedMessage } from '../lib/watcher.js';
 import { analyzeChat, STAGES } from '../lib/analyst.js';
+import { extractArtData } from '../lib/arts.js';
 import { CASE_COLORS, PLATE_SIZES, PRODUCT_TYPES } from '../lib/default-content.js';
 
 const app = express();
@@ -1629,6 +1630,16 @@ app.get('/api/suggestions', h(async (req, res) => {
     if (order) orderMap.set(id, serializeOrder(order));
   }
   res.json(rows.map((r) => ({ ...serializeSuggestion(r), order: orderMap.get(r.order_id) || null })));
+}));
+
+// Separa os textos da placa a partir de uma conversa colada (aba Artes).
+app.post('/api/arts/extract', h(async (req, res) => {
+  try {
+    res.json(await extractArtData(req.body?.conversation));
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
 }));
 
 // Roda o analista na hora (o botão "Analisar agora").
