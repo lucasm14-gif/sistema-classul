@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Award, ClipboardCopy, Download, FileCode2, ImagePlus, LoaderCircle, Sparkles, TriangleAlert, X } from 'lucide-react';
 import { api } from '../api';
 import { useToast } from './Toast';
+import { sceneForCorel } from '../plates/print';
 import { buildScene, checkFields, drawScene, FONT_LOADS, FONTS_URL, plateHeight, SIZES, TEMPLATES, toSvg, W } from '../plates/engine';
 
 const card = 'bg-white rounded-3xl border border-black/5 shadow-sm';
@@ -150,7 +151,14 @@ export default function Arts({ onAuthError }) {
   };
 
   const savePng = async () => download(await toPngBlob(), `${fileBase()}.png`);
-  const saveSvg = () => download(new Blob([toSvg(scene, { production: true })], { type: 'image/svg+xml' }), `${fileBase()}-corel.svg`);
+  const saveSvg = async () => {
+    try {
+      const svg = toSvg(await sceneForCorel(scene), { production: true });
+      download(new Blob([svg], { type: 'image/svg+xml' }), `${fileBase()}-corel.svg`);
+    } catch {
+      toast('Não consegui preparar a imagem para o Corel.', 'error');
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -225,7 +233,7 @@ export default function Arts({ onAuthError }) {
               <button type="button" onClick={savePng} disabled={!ready} className="flex items-center gap-2 border border-black/10 disabled:opacity-40 font-bold text-sm text-brand-950 rounded-xl px-4 py-2.5"><Download size={16} />Baixar PNG</button>
               <button type="button" onClick={saveSvg} disabled={!ready} className="flex items-center gap-2 border border-black/10 disabled:opacity-40 font-bold text-sm text-brand-950 rounded-xl px-4 py-2.5"><FileCode2 size={16} />SVG para o Corel</button>
             </div>
-            <p className="mt-2 text-xs text-slate-500">O SVG vem sem o fundo de metal e com o texto editável. Para abrir certo no Corel, instale as fontes do modelo.</p>
+            <p className="mt-2 text-xs text-slate-500">O SVG vem na medida real, sem o fundo de metal, com o logo e o texto editável. O contorno vermelho marca o limite da placa: apague antes de gravar. Instale as fontes do modelo no computador do Corel.</p>
           </section>
 
           <section className={`${card} p-5`}>

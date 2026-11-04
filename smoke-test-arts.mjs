@@ -81,6 +81,24 @@ const scene = buildScene('classica', F, '14x20', measure);
 check('SVG de produção não leva o metal', !toSvg(scene, { production: true }).includes('linearGradient') && toSvg(scene).includes('linearGradient'));
 check('SVG mantém o texto editável', toSvg(scene, { production: true }).includes('<text '));
 
+const LOGO = { src: 'data:image/png;base64,AAAA', w: 400, h: 200 };
+let printOk = true;
+for (const t of TEMPLATES) for (const size of SIZES) {
+  const svg = toSvg(buildScene(t.id, { ...F, logo: LOGO, photo: LOGO }, size, measure), { production: true });
+  const [h, w] = size.split('x').map(Number);
+  const edge = svg.match(/id="limite-da-placa" x="0" y="0" width="(\d+)" height="(\d+)"/);
+  const box = svg.match(/viewBox="0 0 (\d+) (\d+)"/);
+  const ok = svg.includes(`width="${w * 10}mm" height="${h * 10}mm"`)
+    && svg.includes('xmlns:xlink="http://www.w3.org/1999/xlink"')
+    && svg.includes('xlink:href="data:image/png;base64,AAAA"')
+    && !/<image href=/.test(svg)
+    && edge && box && edge[1] === box[1] && edge[2] === box[2];
+  if (!ok) { printOk = false; console.log('   falhou no Corel', t.id, size); }
+}
+check('SVG do Corel tem medida real, logo e limite em todos os modelos', printOk);
+check('prévia na tela não leva o contorno do Corel', !toSvg(scene).includes('limite-da-placa'));
+check('modelo com retrato também leva o logo', buildScene('retrato', { ...F, logo: LOGO, photo: LOGO }, '14x20', measure).ops.filter((o) => o.type === 'image').length === 2);
+
 const long = buildScene('classica', { ...F, body: 'palavra '.repeat(400) }, '9x14', measure);
 const has = (issues, re) => issues.some((i) => re.test(i.msg));
 check('texto grande demais é apontado', has(checkFields({ ...F, body: 'palavra '.repeat(400) }, long), /não coube|pequena/));

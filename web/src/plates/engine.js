@@ -16,6 +16,12 @@ export function plateHeight(size) {
   return Math.round((W * h) / w);
 }
 
+// O tamanho é "altura x largura" em cm, como em plateHeight.
+export function plateMm(size) {
+  const [h, w] = String(size).split('x').map(Number);
+  return { w: w * 10, h: h * 10 };
+}
+
 export function fontCss(f, size) {
   return `${f.style === 'italic' ? 'italic ' : ''}${f.weight || 400} ${size}px '${f.family}'`;
 }
@@ -229,19 +235,19 @@ export const TEMPLATES = [
   {
     id: 'retrato', name: 'Com retrato', fonts: ['Pinyon Script', 'Carlito'], desc: 'Foto gravada à esquerda e texto ao lado', needsPhoto: true,
     build(f, H, measure) {
-      const s = dy(H), photoW = 700, gap = 56;
+      const s = dy(H), photoW = 700, gap = 56, logo = f.logo ? 130 * s : 0;
       const photo = f.photo
         ? [imageBox(f.photo, 150, 170, photoW, H - 340, { gray: true })]
         : [stroke(`M150 170H${150 + photoW}V${H - 170}H150Z`, 4, { dash: '18 14', draft: true })];
       const x = 150 + photoW + gap;
-      const r = stack({ x, y: 170, w: W - x - 160, h: H - 340, measure, items: [
+      const r = stack({ x, y: 170, w: W - x - 160, h: H - 340 - logo, measure, items: [
         { text: f.name, font: F.pinyon, size: 150 * s, oneLine: true, leading: 1.12 },
         { text: f.title, font: F.carlitoB, size: 66 * s, gap: 22 * s },
         { text: f.body, font: F.carlito, size: 58 * s, gap: 24 * s },
         { text: f.line, font: F.carlitoI, size: 54 * s, gap: 26 * s },
         { text: f.from, font: F.carlito, size: 54 * s, gap: 18 * s }
       ] });
-      return { ops: [...frameDouble(H), ...photo, ...r.ops], fit: r.fit, overflow: r.overflow };
+      return { ops: [...frameDouble(H), ...photo, ...r.ops, ...logoOps(f, x, H - 170 - logo, W - x - 160, logo)], fit: r.fit, overflow: r.overflow };
     }
   },
   {
@@ -287,15 +293,16 @@ export function buildScene(templateId, fields, size, measure) {
   const tpl = TEMPLATES.find((t) => t.id === templateId) || TEMPLATES[0];
   const H = plateHeight(size);
   const result = tpl.build(fields, H, measure);
-  return { H, ops: result.ops, fit: result.fit, overflow: result.overflow, template: tpl };
+  return { H, size, ops: result.ops, fit: result.fit, overflow: result.overflow, template: tpl };
 }
 
 // ---- Saídas ----
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const n = (v) => Math.round(v * 100) / 100;
 
-// `production`: só o que vai ser gravado, sem o metal de fundo. O texto continua
-// editável no Corel, desde que a fonte esteja instalada.
+// `production`: o arquivo para o Corel, sem o metal de fundo. Leva a medida real da
+// placa e um contorno vermelho nesse tamanho, porque o Corel mede o que foi importado,
+// não a página. O texto continua editável, desde que a fonte esteja instalada.
 export function toSvg(scene, { production = false, attrs = '', idPrefix = 'p' } = {}) {
   const { H, ops } = scene;
   const gid = `${idPrefix}-metal`;
@@ -314,13 +321,18 @@ export function toSvg(scene, { production = false, attrs = '', idPrefix = 'p' } 
       }
       if (op.type === 'image') {
         const filter = op.gray && !production ? ` filter="url(#${fid})"` : '';
-        return `<image href="${esc(op.asset.src)}" x="${n(op.x)}" y="${n(op.y)}" width="${n(op.w)}" height="${n(op.h)}"${filter}/>`;
+        return `<image ${production ? 'xlink:href' : 'href'}="${esc(op.asset.src)}" x="${n(op.x)}" y="${n(op.y)}" width="${n(op.w)}" height="${n(op.h)}"${filter}/>`;
       }
       const f = op.font;
       const anchor = op.anchor === 'center' ? 'middle' : op.anchor === 'end' ? 'end' : 'start';
       return `<text x="${n(op.x)}" y="${n(op.y)}" font-family="${esc(f.family)}" font-size="${n(op.size)}"${f.weight ? ` font-weight="${f.weight}"` : ''}${f.style ? ` font-style="${f.style}"` : ''}${op.spacing ? ` letter-spacing="${n(op.spacing)}"` : ''} text-anchor="${anchor}" fill="${op.fill}">${esc(op.text)}</text>`;
     })
     .join('');
+  if (production) {
+    const mm = plateMm(scene.size);
+    const edge = `<rect id="limite-da-placa" x="0" y="0" width="${W}" height="${H}" fill="none" stroke="#ff0000" stroke-width="1"/>`;
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="${mm.w}mm" height="${mm.h}mm" viewBox="0 0 ${W} ${H}">${edge}${body}</svg>`;
+  }
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" ${attrs}>${defs}${bg}${body}</svg>`;
 }
 
