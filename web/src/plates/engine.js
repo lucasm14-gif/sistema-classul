@@ -24,6 +24,12 @@ export function plateMm(size) {
   return { w: w * 10, h: h * 10 };
 }
 
+// Letra mínima de leitura na placa, em pontos reais como no CorelDRAW.
+export const MIN_FONT_PT = 11.5;
+const MM_PER_PT = 0.352778;
+export const ptFromUnits = (units, size) => (units * plateMm(size).w) / W / MM_PER_PT;
+let minUnits = 0;
+
 export function fontCss(f, size) {
   return `${f.style === 'italic' ? 'italic ' : ''}${f.weight || 400} ${size}px '${f.family}'`;
 }
@@ -50,12 +56,12 @@ function stack({ x, y, w, h, align = 'center', items, measure }) {
   const build = (k) => {
     let total = 0;
     const rows = list.map((it, idx) => {
-      let size = it.size * k;
+      let size = Math.max(it.size * k, minUnits);
       const spacing = (it.spacing || 0) * size;
       if (it.oneLine) {
         const css = fontCss(it.font, size);
         const tw = measure(it.text, css) + spacing * it.text.length;
-        if (tw > w) size = (size * w) / tw;
+        if (tw > w) size = Math.max((size * w) / tw, minUnits);
       }
       const text = it.upper ? String(it.text).toLocaleUpperCase('pt-BR') : it.text;
       const lines = it.oneLine ? [text] : wrapText(text, w, measure, it.font, size, spacing);
@@ -250,7 +256,7 @@ export const TEMPLATES = [
       signs.forEach((sig, i) => {
         const cx = 200 + cw * i + cw / 2;
         ops.push(stroke(`M${cx - cw * 0.38} ${baseY}H${cx + cw * 0.38}`, 3));
-        const size = Math.min(44 * s, (cw * 0.9) / Math.max(1, measure(sig, fontCss(F.times, 1))));
+        const size = Math.max(minUnits, Math.min(44 * s, (cw * 0.9) / Math.max(1, measure(sig, fontCss(F.times, 1)))));
         ops.push({ type: 'text', x: cx, y: baseY + size * 1.3, text: sig, font: F.times, size, spacing: 0, anchor: 'center', fill: INK });
       });
       return { ops: [...ops, ...logoOps(f, 180, 150, 280, 180 * s, 'start')], fit: r.fit, overflow: r.overflow };
@@ -275,6 +281,7 @@ export const TEMPLATES = [
 export function buildScene(templateId, fields, size, measure) {
   const tpl = TEMPLATES.find((t) => t.id === templateId) || TEMPLATES[0];
   const H = plateHeight(size);
+  minUnits = (MIN_FONT_PT * MM_PER_PT * W) / plateMm(size).w;
   const result = tpl.build(fields, H, measure);
   return { H, size, ops: result.ops, fit: result.fit, overflow: result.overflow, template: tpl };
 }
@@ -372,7 +379,7 @@ export function checkFields(fields, scene) {
   if (/ {2,}/.test(text)) issues.push({ level: 'aviso', msg: 'Há espaços duplos no texto.' });
   if (/\b(a definir|xxx+|nome aqui)\b/i.test(text)) issues.push({ level: 'erro', msg: 'Ainda há texto provisório na arte.' });
   if (scene) {
-    if (scene.overflow) issues.push({ level: 'erro', msg: 'O texto não coube neste modelo e tamanho.' });
+    if (scene.overflow) issues.push({ level: 'erro', msg: `O texto não coube neste modelo e tamanho com a letra mínima de ${String(MIN_FONT_PT).replace('.', ',')} pt.` });
     else if (scene.fit < 0.55) issues.push({ level: 'aviso', msg: 'A letra ficou pequena: considere um tamanho maior ou menos texto.' });
     if (scene.template.needsPhoto && !fields.photo) issues.push({ level: 'erro', msg: 'Este modelo precisa da foto para o retrato.' });
   }

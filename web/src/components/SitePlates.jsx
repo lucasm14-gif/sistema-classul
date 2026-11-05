@@ -27,6 +27,7 @@ function PlateCard({ plate, onDownload }) {
         </p>
         {plate.push_name && <p className="text-xs font-semibold text-slate-500">{plate.push_name}</p>}
         <Status plate={plate} />
+        {d.overflow && <span className="text-xs font-bold text-flame-700">Texto maior que a placa: conferir a arte</span>}
         <div className="flex flex-wrap gap-2 mt-auto pt-3">
           <button type="button" onClick={() => onDownload(plate.id, 'svg')} className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 text-white text-xs font-bold px-3 py-2 hover:bg-brand-700">
             <Download size={14} /> SVG para o Corel

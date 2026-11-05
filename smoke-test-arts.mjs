@@ -9,7 +9,7 @@ const mem = newDb();
 _setPoolForTests(new (mem.adapters.createPg()).Pool());
 const { default: app } = await import(`file://${ROOT}/api/index.js`);
 const { ART_TEMPLATES } = await import(`file://${ROOT}/lib/arts.js`);
-const { TEMPLATES, SIZES, FONT_FAMILIES, buildScene, checkFields, missingFonts, toSvg } = await import(`file://${ROOT}/web/src/plates/engine.js`);
+const { TEMPLATES, SIZES, FONT_FAMILIES, buildScene, checkFields, missingFonts, toSvg, MIN_FONT_PT, ptFromUnits } = await import(`file://${ROOT}/web/src/plates/engine.js`);
 
 const check = (name, cond, extra = '') => {
   console.log(`${cond ? '✅' : '❌'} ${name}${extra ? ' — ' + extra : ''}`);
@@ -120,6 +120,14 @@ for (const t of TEMPLATES) for (const size of SIZES) {
 check('SVG do Corel tem medida real, logo e limite em todos os modelos', printOk);
 check('prévia na tela não leva o contorno do Corel', !toSvg(scene).includes('limite-da-placa'));
 check('modelo com retrato também leva o logo', buildScene('retrato', { ...F, logo: LOGO, photo: LOGO }, '14x20', measure).ops.filter((o) => o.type === 'image').length === 2);
+
+let minOk = true;
+for (const t of TEMPLATES) for (const size of SIZES) {
+  const texts = buildScene(t.id, { ...F, body: 'palavra '.repeat(120) }, size, measure).ops.filter((o) => o.type === 'text');
+  const small = texts.find((o) => ptFromUnits(o.size, size) < MIN_FONT_PT - 0.01);
+  if (small) { minOk = false; console.log('   letra pequena', t.id, size, ptFromUnits(small.size, size)); }
+}
+check('nenhuma letra fica abaixo de 11,5 pt, mesmo com muito texto', minOk);
 
 const long = buildScene('classica', { ...F, body: 'palavra '.repeat(400) }, '9x14', measure);
 const has = (issues, re) => issues.some((i) => re.test(i.msg));
