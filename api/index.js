@@ -1063,7 +1063,9 @@ app.post('/api/bot/conversations/:phone/reactivate', h(async (req, res) => {
 // nunca trafegar o PIN em requisições seguintes) e só com ele os dados/gráficos são
 // liberados. Assim, ver as finanças exige login + PIN.
 
-const APP_SECRET = () => process.env.API_TOKEN || 'classul';
+// Os PINs são guardados com esta chave. APP_SECRET permite trocar a senha de login
+// (API_TOKEN) sem invalidar os PINs de Finanças e da área pessoal.
+const APP_SECRET = () => process.env.APP_SECRET || process.env.API_TOKEN || 'classul';
 const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 const hashPin = (pin) => sha256(`${APP_SECRET()}:pin:${pin}`);
 const financeTokenFor = (pinHash) => sha256(`${APP_SECRET()}:fin:${pinHash}`);
