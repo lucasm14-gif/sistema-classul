@@ -1702,12 +1702,13 @@ app.get('/api/plates/:id/file/:kind', h(async (req, res) => {
   const file = {
     svg: [plate?.svg_file_id, 'image/svg+xml', 'svg'],
     jpg: [plate?.jpg_file_id, 'image/jpeg', 'jpg'],
-    logo: [plate?.logo_file_id, plate?.logo_mime, (plate?.logo_mime || '').split('/')[1]?.replace('+xml', '').replace('jpeg', 'jpg')]
+    logo: [plate?.logo_file_id, plate?.logo_mime, (plate?.logo_mime || '').split('/')[1]?.replace('+xml', '').replace('jpeg', 'jpg')],
+    logo2: [plate?.logo2_file_id, plate?.logo2_mime, (plate?.logo2_mime || '').split('/')[1]?.replace('+xml', '').replace('jpeg', 'jpg')]
   }[req.params.kind];
   if (!plate || !file?.[0]) return res.status(404).json({ error: 'Arquivo não encontrado.' });
   const buffer = await downloadFile(file[0]);
   res.setHeader('Content-Type', file[1] || 'application/octet-stream');
-  res.setHeader('Content-Disposition', `attachment; filename="placa-${String(plate.id).padStart(4, '0')}${req.params.kind === 'logo' ? '-logo' : ''}.${file[2]}"`);
+  res.setHeader('Content-Disposition', `attachment; filename="placa-${String(plate.id).padStart(4, '0')}${req.params.kind === 'logo' ? '-logo1' : req.params.kind === 'logo2' ? '-logo2' : ''}.${file[2]}"`);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.send(buffer);
 }));

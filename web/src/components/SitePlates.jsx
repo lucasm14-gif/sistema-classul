@@ -37,7 +37,12 @@ function PlateCard({ plate, onDownload }) {
           </button>
           {plate.has_logo && (
             <button type="button" onClick={() => onDownload(plate.id, 'logo')} className="inline-flex items-center gap-1.5 rounded-xl border border-black/10 text-xs font-bold px-3 py-2 hover:bg-black/[0.04]">
-              <FileImage size={14} /> Logo original
+              <FileImage size={14} /> {plate.has_logo2 ? 'Logo 1' : 'Logo original'}
+            </button>
+          )}
+          {plate.has_logo2 && (
+            <button type="button" onClick={() => onDownload(plate.id, 'logo2')} className="inline-flex items-center gap-1.5 rounded-xl border border-black/10 text-xs font-bold px-3 py-2 hover:bg-black/[0.04]">
+              <FileImage size={14} /> Logo 2
             </button>
           )}
           {plate.phone && (

@@ -81,6 +81,8 @@ driveDown = false;
 res = await post(base(4, { logo: { type: 'image/png', data: JPG } }));
 check('aceita logo', res.status === 201);
 const logoId = (await res.json()).id;
+check('aceita duas logos', (await post(base(5, { logos: [{ type: 'image/png', data: JPG }, { type: 'image/jpeg', data: JPG }] }))).status === 201);
+check('terceira logo é recusada', (await post(base(6, { logos: [1, 2, 3].map(() => ({ type: 'image/png', data: JPG })) }))).status === 400);
 
 res = await realFetch(`${B}/api/plates/${token(1)}/image.jpg`);
 check('imagem é pública pelo código', res.status === 200 && res.headers.get('content-type') === 'image/jpeg');
@@ -94,6 +96,9 @@ check('lista exige login', (await realFetch(`${B}/api/plates`)).status === 401);
 res = await realFetch(`${B}/api/plates/${id}/file/svg`, { headers: auth });
 check('SVG baixa como anexo', res.status === 200 && /attachment/.test(res.headers.get('content-disposition')));
 check('placa sem logo não tem arquivo de logo', (await realFetch(`${B}/api/plates/${id}/file/logo`, { headers: auth })).status === 404);
+const duas = (await (await realFetch(`${B}/api/plates`, { headers: auth })).json()).plates.find((p) => p.token === token(5));
+check('histórico aponta as duas logos', duas?.has_logo && duas?.has_logo2);
+check('segunda logo baixa', (await realFetch(`${B}/api/plates/${duas?.id}/file/logo2`, { headers: auth })).status === 200);
 check('logo original baixa', (await realFetch(`${B}/api/plates/${logoId}/file/logo`, { headers: auth })).status === 200);
 
 const hook = (msg, key = {}, extra = {}) => realFetch(`${B}/api/bot/webhook?secret=s`, {
