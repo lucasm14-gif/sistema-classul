@@ -65,10 +65,22 @@ import { handleIncoming } from '../lib/bot.js';
 import { handleWatchedMessage } from '../lib/watcher.js';
 import { analyzeChat, STAGES } from '../lib/analyst.js';
 import { extractArtData } from '../lib/arts.js';
+import { PLATE_TOKEN, PlateError, savePlate, getPlateByToken, getPlateById, listPlates, handlePlateMessage, platePage } from '../lib/plates.js';
 import { CASE_COLORS, PLATE_SIZES, PRODUCT_TYPES } from '../lib/default-content.js';
 
 const app = express();
 app.use(cors());
+// A placa montada no site traz imagem e vetor: precisa de limite próprio, antes do parser geral.
+// Público de propósito (a landing page não tem login); as travas ficam em lib/plates.js.
+app.post('/api/plates', express.json({ limit: '4500kb' }), async (req, res) => {
+  try {
+    await ensureSchema();
+    res.status(201).json(await savePlate(req));
+  } catch (err) {
+    if (!(err instanceof PlateError)) console.error('placa:', err);
+    res.status(err instanceof PlateError ? err.status : 502).json({ error: err instanceof PlateError ? err.message : 'Não foi possível salvar a placa.' });
+  }
+});
 app.use(express.json());
 // navigator.sendBeacon do site envia os leads como application/x-www-form-urlencoded.
 app.use(express.urlencoded({ extended: false }));
@@ -141,10 +153,15 @@ app.all('/api/bot/webhook', async (req, res) => {
 
     // Observador e atendimento são independentes: um só escuta, o outro responde.
     // Um erro em qualquer um deles não pode derrubar o webhook.
-    const [watched, bot] = await Promise.allSettled([handleWatchedMessage(req.body), atendimento]);
+    const [watched, bot, plate] = await Promise.allSettled([
+      handleWatchedMessage(req.body),
+      atendimento,
+      handlePlateMessage(req.body, baseUrl(req))
+    ]);
     res.status(200).json({
       watcher: watched.status === 'fulfilled' ? watched.value : { error: watched.reason?.message },
-      bot: bot.status === 'fulfilled' ? bot.value : { error: bot.reason?.message }
+      bot: bot.status === 'fulfilled' ? bot.value : { error: bot.reason?.message },
+      plate: plate.status === 'fulfilled' ? plate.value : { error: plate.reason?.message }
     });
   } catch (err) {
     console.error('bot webhook:', err);
@@ -243,6 +260,39 @@ app.post('/api/leads/track', async (req, res) => {
     console.error('leads track:', err);
     // Nunca falha de forma barulhenta: o rastreamento não pode quebrar o site.
     res.status(204).end();
+  }
+});
+
+// Imagem e página da placa: públicas pelo código longo do link, para a Evolution e o
+// WhatsApp conseguirem buscar. O SVG e a logo original só saem com login, mais abaixo.
+app.get('/api/plates/:token/image.jpg', async (req, res) => {
+  try {
+    if (!PLATE_TOKEN.test(req.params.token)) return res.status(404).end();
+    await ensureSchema();
+    const plate = await getPlateByToken(req.params.token);
+    if (!plate) return res.status(404).end();
+    const buffer = await downloadFile(plate.jpg_file_id);
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+    res.send(buffer);
+  } catch (err) {
+    console.error('imagem da placa:', err);
+    res.status(502).end();
+  }
+});
+
+app.get('/api/plates/:token', async (req, res, next) => {
+  if (!PLATE_TOKEN.test(req.params.token)) return next();
+  try {
+    await ensureSchema();
+    const plate = await getPlateByToken(req.params.token);
+    if (!plate) return res.status(404).send('Placa não encontrada.');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('X-Robots-Tag', 'noindex');
+    res.send(platePage(plate, baseUrl(req)));
+  } catch (err) {
+    console.error('página da placa:', err);
+    res.status(500).send('Não foi possível abrir a placa.');
   }
 });
 
@@ -1633,6 +1683,33 @@ app.get('/api/suggestions', h(async (req, res) => {
 }));
 
 // Separa os textos da placa a partir de uma conversa colada (aba Artes).
+// Histórico das placas montadas na landing page.
+app.get('/api/plates', h(async (req, res) => {
+  const settings = await getSettings();
+  res.json({ plates: await listPlates(), send_image: settings.plate_send_image !== 'false' });
+}));
+
+app.put('/api/plates-settings', h(async (req, res) => {
+  const on = Boolean(req.body?.send_image);
+  await setSettings({ plate_send_image: on ? 'true' : 'false' });
+  res.json({ send_image: on });
+}));
+
+app.get('/api/plates/:id/file/:kind', h(async (req, res) => {
+  const plate = await getPlateById(req.params.id);
+  const file = {
+    svg: [plate?.svg_file_id, 'image/svg+xml', 'svg'],
+    jpg: [plate?.jpg_file_id, 'image/jpeg', 'jpg'],
+    logo: [plate?.logo_file_id, plate?.logo_mime, (plate?.logo_mime || '').split('/')[1]?.replace('+xml', '').replace('jpeg', 'jpg')]
+  }[req.params.kind];
+  if (!plate || !file?.[0]) return res.status(404).json({ error: 'Arquivo não encontrado.' });
+  const buffer = await downloadFile(file[0]);
+  res.setHeader('Content-Type', file[1] || 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="placa-${String(plate.id).padStart(4, '0')}${req.params.kind === 'logo' ? '-logo' : ''}.${file[2]}"`);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.send(buffer);
+}));
+
 app.post('/api/arts/extract', h(async (req, res) => {
   try {
     res.json(await extractArtData(req.body?.conversation));

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Award, KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon } from 'lucide-react';
+import { Award, Layers, KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Board from './components/Board';
 import Settings from './components/Settings';
@@ -11,6 +11,7 @@ import Leads from './components/Leads';
 import Extension from './components/Extension';
 import Inbox from './components/Inbox';
 import Arts from './components/Arts';
+import SitePlates from './components/SitePlates';
 import Finance from './components/Finance';
 import Lucas, { BatSigil } from './components/Lucas';
 import UserPicker from './components/UserPicker';
@@ -26,6 +27,7 @@ const TABS = [
   { id: 'bot', label: 'Bot', icon: Bot },
   { id: 'inbox', label: 'Recebidos', icon: InboxIcon },
   { id: 'arts', label: 'Artes', icon: Award },
+  { id: 'site-plates', label: 'Placas do site', icon: Layers },
   { id: 'extension', label: 'Extensão', icon: Puzzle },
   { id: 'finance', label: 'Finanças', icon: Wallet },
   { id: 'archived', label: 'Arquivados', icon: Archive },
@@ -129,6 +131,7 @@ export default function App() {
           {tab === 'bot' && <BotChats onAuthError={handleAuthError} />}
           {tab === 'inbox' && <Inbox onAuthError={handleAuthError} />}
           {tab === 'arts' && <Arts onAuthError={handleAuthError} />}
+          {tab === 'site-plates' && <SitePlates onAuthError={handleAuthError} />}
           {tab === 'extension' && <Extension onAuthError={handleAuthError} />}
           {tab === 'finance' && <Finance onAuthError={handleAuthError} />}
           {tab === 'archived' && <Archived onAuthError={handleAuthError} />}

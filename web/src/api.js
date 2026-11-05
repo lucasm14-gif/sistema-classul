@@ -111,6 +111,22 @@ export const api = {
     }),
   getStats: (month) => request(`/api/stats${month ? `?month=${month}` : ''}`),
   getLeads: () => request('/api/leads'),
+  getPlates: () => request('/api/plates'),
+  savePlatesSettings: (data) => request('/api/plates-settings', { method: 'PUT', body: JSON.stringify(data) }),
+  downloadPlateFile: async (id, kind) => {
+    const res = await fetch(`/api/plates/${id}/file/${kind}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+    if (res.status === 401) throw new AuthError('Sessão inválida');
+    if (!res.ok) throw new Error('Não foi possível baixar o arquivo.');
+    const name = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || `placa-${id}.${kind}`;
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  },
   deleteAttachment: (id) => request(`/api/attachments/${id}`, { method: 'DELETE' }),
   getSettings: () => request('/api/settings'),
   saveSettings: (data) => request('/api/settings', { method: 'PUT', body: JSON.stringify(data) }),
