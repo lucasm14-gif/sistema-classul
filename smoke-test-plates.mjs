@@ -70,7 +70,7 @@ check('SVG com script é recusado', (await post(base(2, { svg: SVG.replace('<tex
 check('SVG com evento é recusado', (await post(base(2, { svg: SVG.replace('<text>', '<text onload="x()">') }))).status === 400);
 check('SVG sem declaração é recusado', (await post(base(2, { svg: '<svg></svg>' }))).status === 400);
 check('logo de tipo proibido é recusada', (await post(base(2, { logo: { type: 'text/html', data: JPG } }))).status === 400);
-check('foto que não é JPG é recusada', (await post(base(2, { foto: Buffer.from('<html>').toString('base64') }))).status === 400);
+check('arte que não é PNG é recusada', (await post(base(2, { arte: JPG }))).status === 400);
 check('corpo gigante é recusado sem derrubar', (await post(base(2, { jpg: 'A'.repeat(6 * 1024 * 1024) }))).status >= 400);
 
 driveDown = true;
@@ -97,12 +97,29 @@ check('lista exige login', (await realFetch(`${B}/api/plates`)).status === 401);
 res = await realFetch(`${B}/api/plates/${id}/file/svg`, { headers: auth });
 check('SVG baixa como anexo', res.status === 200 && /attachment/.test(res.headers.get('content-disposition')));
 check('placa sem logo não tem arquivo de logo', (await realFetch(`${B}/api/plates/${id}/file/logo`, { headers: auth })).status === 404);
-res = await post(base(7, { foto: JPG }));
-check('aceita foto realista', res.status === 201);
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]).toString('base64');
+res = await post(base(7, { arte: PNG, foto: JPG }));
+check('aceita a arte da placa', res.status === 201);
+const idArte = (await res.json()).id;
+const placaArte = () => realFetch(`${B}/api/plates`, { headers: auth }).then((r) => r.json()).then((d) => d.plates.find((p) => p.id === idArte));
+let pa = await placaArte();
+check('a landing não consegue criar foto', pa.has_arte && !pa.has_foto);
+check('arte exige login', (await realFetch(`${B}/api/plates/${idArte}/file/arte`)).status === 401);
+check('arte baixa com login', (await realFetch(`${B}/api/plates/${idArte}/file/arte`, { headers: auth })).status === 200);
+const salvarFoto = (id, jpg, h2 = auth) => realFetch(`${B}/api/plates/${id}/foto`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...h2 }, body: JSON.stringify({ jpg }) });
+check('salvar foto exige login', (await salvarFoto(idArte, JPG, {})).status === 401);
+check('foto inválida é recusada', (await salvarFoto(idArte, PNG)).status === 400);
+check('placa inexistente dá 404', (await salvarFoto(999999, JPG)).status === 404);
+check('corpo grande da foto passa do limite geral', (await salvarFoto(idArte, Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(400 * 1024)]).toString('base64'))).status === 200);
+pa = await placaArte();
+check('botão salva a foto', pa.has_foto && pa.foto_v);
+const v1 = pa.foto_v;
+check('gerar de novo funciona', (await salvarFoto(idArte, JPG)).status === 200);
+pa = await placaArte();
+check('gerar de novo troca a foto', pa.foto_v !== v1);
 res = await realFetch(`${B}/api/plates/${token(7)}/foto.jpg`);
-check('foto é pública pelo código', res.status === 200 && res.headers.get('content-type') === 'image/jpeg');
+check('foto abre pelo código da placa', res.status === 200 && res.headers.get('content-type') === 'image/jpeg');
 check('placa sem foto dá 404 na foto', (await realFetch(`${B}/api/plates/${token(1)}/foto.jpg`)).status === 404);
-check('foto baixa como anexo', /-foto\.jpg/.test((await realFetch(`${B}/api/plates/${(await (await realFetch(`${B}/api/plates`, { headers: auth })).json()).plates.find((p) => p.token === token(7)).id}/file/foto`, { headers: auth })).headers.get('content-disposition') || ''));
 const duas = (await (await realFetch(`${B}/api/plates`, { headers: auth })).json()).plates.find((p) => p.token === token(5));
 check('histórico aponta as duas logos', duas?.has_logo && duas?.has_logo2);
 check('segunda logo baixa', (await realFetch(`${B}/api/plates/${duas?.id}/file/logo2`, { headers: auth })).status === 200);
@@ -123,10 +140,6 @@ check('desligado não envia', (await hook(link(1))).plate.ignored === 'envio des
 await setSettings({ plate_send_image: 'true' });
 check('placa desconhecida não envia', (await hook(link(9))).plate.ignored === 'placa não encontrada' && !sent.length);
 
-await setSettings({ plate_send_photo: 'true' });
-check('com a opção ligada, envia a foto realista', (await hook(link(7))).plate.sent === true && sent.at(-1)?.media.endsWith(`/api/plates/${token(7)}/foto.jpg`));
-sent.length = 0;
-await setSettings({ plate_send_photo: 'false' });
 check('cliente enviou: responde com a imagem', (await hook(link(1))).plate.sent === true);
 check('envia como imagem para o número certo', sent[0]?.number === '5551999990000' && sent[0]?.mediatype === 'image' && sent[0]?.media.endsWith(`/api/plates/${token(1)}/image.jpg`));
 check('não envia duas vezes', (await hook(link(1))).plate.ignored === 'imagem já enviada' && sent.length === 1);
@@ -145,9 +158,6 @@ check('histórico traz dados e telefone', first?.data.name === 'Ana' && first?.p
 check('histórico não expõe o caminho do Drive', !JSON.stringify(list).includes('svg_file_id'));
 res = await realFetch(`${B}/api/plates-settings`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...auth }, body: JSON.stringify({ send_image: false }) });
 check('interruptor salva', (await res.json()).send_image === false && (await (await realFetch(`${B}/api/plates`, { headers: auth })).json()).send_image === false);
-res = await realFetch(`${B}/api/plates-settings`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...auth }, body: JSON.stringify({ send_photo: true }) });
-const ajustes = await res.json();
-check('interruptor da foto não mexe no outro', ajustes.send_photo === true && ajustes.send_image === false);
 
 for (let i = 0; i < 30; i += 1) await post(base(20 + i));
 check('limite por hora segura excesso', (await post({ ...base(60), token: 'tokenparaotesteplacaZZ' })).status === 429);

@@ -113,6 +113,13 @@ export const api = {
   getLeads: () => request('/api/leads'),
   getPlates: () => request('/api/plates'),
   savePlatesSettings: (data) => request('/api/plates-settings', { method: 'PUT', body: JSON.stringify(data) }),
+  getPlateArt: async (id) => {
+    const res = await fetch(`/api/plates/${id}/file/arte`, { headers: { Authorization: `Bearer ${getToken()}` } });
+    if (res.status === 401) throw new AuthError('Sessão inválida');
+    if (!res.ok) throw new Error('Não encontrei a arte desta placa.');
+    return res.blob();
+  },
+  savePlatePhoto: (id, jpg) => request(`/api/plates/${id}/foto`, { method: 'POST', body: JSON.stringify({ jpg }) }),
   downloadPlateFile: async (id, kind) => {
     const res = await fetch(`/api/plates/${id}/file/${kind}`, { headers: { Authorization: `Bearer ${getToken()}` } });
     if (res.status === 401) throw new AuthError('Sessão inválida');

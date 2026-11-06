@@ -65,7 +65,7 @@ import { handleIncoming } from '../lib/bot.js';
 import { handleWatchedMessage } from '../lib/watcher.js';
 import { analyzeChat, STAGES } from '../lib/analyst.js';
 import { extractArtData } from '../lib/arts.js';
-import { PLATE_TOKEN, PlateError, savePlate, getPlateByToken, getPlateById, listPlates, handlePlateMessage, platePage } from '../lib/plates.js';
+import { PLATE_TOKEN, PlateError, savePlate, getPlateByToken, getPlateById, listPlates, savePlatePhoto, handlePlateMessage, platePage } from '../lib/plates.js';
 import { CASE_COLORS, PLATE_SIZES, PRODUCT_TYPES } from '../lib/default-content.js';
 
 const app = express();
@@ -81,6 +81,8 @@ app.post('/api/plates', express.json({ limit: '4500kb' }), async (req, res) => {
     res.status(err instanceof PlateError ? err.status : 502).json({ error: err instanceof PlateError ? err.message : 'Não foi possível salvar a placa.' });
   }
 });
+// O corpo da foto realista é maior que o limite geral; o login é conferido mais abaixo, como nas outras rotas.
+app.use((req, res, next) => (req.method === 'POST' && /^\/api\/plates\/\d+\/foto$/.test(req.path) ? express.json({ limit: '3mb' })(req, res, next) : next()));
 app.use(express.json());
 // navigator.sendBeacon do site envia os leads como application/x-www-form-urlencoded.
 app.use(express.urlencoded({ extended: false }));
@@ -1704,15 +1706,17 @@ app.get('/api/suggestions', h(async (req, res) => {
 // Histórico das placas montadas na landing page.
 app.get('/api/plates', h(async (req, res) => {
   const settings = await getSettings();
-  res.json({ plates: await listPlates(), send_image: settings.plate_send_image !== 'false', send_photo: settings.plate_send_photo === 'true' });
+  res.json({ plates: await listPlates(), send_image: settings.plate_send_image !== 'false' });
 }));
 
 app.put('/api/plates-settings', h(async (req, res) => {
-  const patch = {};
-  if ('send_image' in (req.body || {})) patch.plate_send_image = req.body.send_image ? 'true' : 'false';
-  if ('send_photo' in (req.body || {})) patch.plate_send_photo = req.body.send_photo ? 'true' : 'false';
-  const s = await setSettings(patch);
-  res.json({ send_image: s.plate_send_image !== 'false', send_photo: s.plate_send_photo === 'true' });
+  const on = Boolean(req.body?.send_image);
+  await setSettings({ plate_send_image: on ? 'true' : 'false' });
+  res.json({ send_image: on });
+}));
+
+app.post('/api/plates/:id/foto', h(async (req, res) => {
+  res.json(await savePlatePhoto(req.params.id, req.body?.jpg));
 }));
 
 app.get('/api/plates/:id/file/:kind', h(async (req, res) => {
@@ -1721,13 +1725,14 @@ app.get('/api/plates/:id/file/:kind', h(async (req, res) => {
     svg: [plate?.svg_file_id, 'image/svg+xml', 'svg'],
     jpg: [plate?.jpg_file_id, 'image/jpeg', 'jpg'],
     foto: [plate?.foto_file_id, 'image/jpeg', 'jpg'],
+    arte: [plate?.arte_file_id, 'image/png', 'png'],
     logo: [plate?.logo_file_id, plate?.logo_mime, (plate?.logo_mime || '').split('/')[1]?.replace('+xml', '').replace('jpeg', 'jpg')],
     logo2: [plate?.logo2_file_id, plate?.logo2_mime, (plate?.logo2_mime || '').split('/')[1]?.replace('+xml', '').replace('jpeg', 'jpg')]
   }[req.params.kind];
   if (!plate || !file?.[0]) return res.status(404).json({ error: 'Arquivo não encontrado.' });
   const buffer = await downloadFile(file[0]);
   res.setHeader('Content-Type', file[1] || 'application/octet-stream');
-  res.setHeader('Content-Disposition', `attachment; filename="placa-${String(plate.id).padStart(4, '0')}${req.params.kind === 'logo' ? '-logo1' : req.params.kind === 'logo2' ? '-logo2' : req.params.kind === 'foto' ? '-foto' : ''}.${file[2]}"`);
+  res.setHeader('Content-Disposition', `attachment; filename="placa-${String(plate.id).padStart(4, '0')}${req.params.kind === 'logo' ? '-logo1' : req.params.kind === 'logo2' ? '-logo2' : req.params.kind === 'foto' ? '-foto' : req.params.kind === 'arte' ? '-arte' : ''}.${file[2]}"`);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.send(buffer);
 }));
