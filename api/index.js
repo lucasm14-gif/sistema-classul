@@ -281,6 +281,22 @@ app.get('/api/plates/:token/image.jpg', async (req, res) => {
   }
 });
 
+app.get('/api/plates/:token/foto.jpg', async (req, res) => {
+  try {
+    if (!PLATE_TOKEN.test(req.params.token)) return res.status(404).end();
+    await ensureSchema();
+    const plate = await getPlateByToken(req.params.token);
+    if (!plate?.foto_file_id) return res.status(404).end();
+    const buffer = await downloadFile(plate.foto_file_id);
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+    res.send(buffer);
+  } catch (err) {
+    console.error('foto da placa:', err);
+    res.status(502).end();
+  }
+});
+
 app.get('/api/plates/:token', async (req, res, next) => {
   if (!PLATE_TOKEN.test(req.params.token)) return next();
   try {
@@ -1688,13 +1704,15 @@ app.get('/api/suggestions', h(async (req, res) => {
 // Histórico das placas montadas na landing page.
 app.get('/api/plates', h(async (req, res) => {
   const settings = await getSettings();
-  res.json({ plates: await listPlates(), send_image: settings.plate_send_image !== 'false' });
+  res.json({ plates: await listPlates(), send_image: settings.plate_send_image !== 'false', send_photo: settings.plate_send_photo === 'true' });
 }));
 
 app.put('/api/plates-settings', h(async (req, res) => {
-  const on = Boolean(req.body?.send_image);
-  await setSettings({ plate_send_image: on ? 'true' : 'false' });
-  res.json({ send_image: on });
+  const patch = {};
+  if ('send_image' in (req.body || {})) patch.plate_send_image = req.body.send_image ? 'true' : 'false';
+  if ('send_photo' in (req.body || {})) patch.plate_send_photo = req.body.send_photo ? 'true' : 'false';
+  const s = await setSettings(patch);
+  res.json({ send_image: s.plate_send_image !== 'false', send_photo: s.plate_send_photo === 'true' });
 }));
 
 app.get('/api/plates/:id/file/:kind', h(async (req, res) => {
@@ -1702,13 +1720,14 @@ app.get('/api/plates/:id/file/:kind', h(async (req, res) => {
   const file = {
     svg: [plate?.svg_file_id, 'image/svg+xml', 'svg'],
     jpg: [plate?.jpg_file_id, 'image/jpeg', 'jpg'],
+    foto: [plate?.foto_file_id, 'image/jpeg', 'jpg'],
     logo: [plate?.logo_file_id, plate?.logo_mime, (plate?.logo_mime || '').split('/')[1]?.replace('+xml', '').replace('jpeg', 'jpg')],
     logo2: [plate?.logo2_file_id, plate?.logo2_mime, (plate?.logo2_mime || '').split('/')[1]?.replace('+xml', '').replace('jpeg', 'jpg')]
   }[req.params.kind];
   if (!plate || !file?.[0]) return res.status(404).json({ error: 'Arquivo não encontrado.' });
   const buffer = await downloadFile(file[0]);
   res.setHeader('Content-Type', file[1] || 'application/octet-stream');
-  res.setHeader('Content-Disposition', `attachment; filename="placa-${String(plate.id).padStart(4, '0')}${req.params.kind === 'logo' ? '-logo1' : req.params.kind === 'logo2' ? '-logo2' : ''}.${file[2]}"`);
+  res.setHeader('Content-Disposition', `attachment; filename="placa-${String(plate.id).padStart(4, '0')}${req.params.kind === 'logo' ? '-logo1' : req.params.kind === 'logo2' ? '-logo2' : req.params.kind === 'foto' ? '-foto' : ''}.${file[2]}"`);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.send(buffer);
 }));

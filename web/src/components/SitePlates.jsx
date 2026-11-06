@@ -19,7 +19,7 @@ function PlateCard({ plate, onDownload }) {
   const d = plate.data;
   return (
     <article className="bg-white rounded-3xl border border-black/5 shadow-sm overflow-hidden flex flex-col">
-      <img src={`/api/plates/${plate.token}/image.jpg`} alt={`Placa de ${d.name || 'cliente'}`} loading="lazy" className="w-full aspect-[3/2] object-contain bg-black/[0.04]" />
+      <img src={`/api/plates/${plate.token}/${plate.has_foto ? 'foto' : 'image'}.jpg`} alt={`Placa de ${d.name || 'cliente'}`} loading="lazy" className="w-full aspect-[3/2] object-contain bg-black/[0.04]" />
       <div className="p-4 flex flex-col gap-1.5 flex-1">
         <p className="font-extrabold text-brand-950 break-words">{d.name || 'Sem nome'}</p>
         <p className="text-xs font-semibold text-slate-500">
@@ -35,6 +35,11 @@ function PlateCard({ plate, onDownload }) {
           <button type="button" onClick={() => onDownload(plate.id, 'jpg')} className="inline-flex items-center gap-1.5 rounded-xl border border-black/10 text-xs font-bold px-3 py-2 hover:bg-black/[0.04]">
             <FileImage size={14} /> JPG
           </button>
+          {plate.has_foto && (
+            <button type="button" onClick={() => onDownload(plate.id, 'foto')} className="inline-flex items-center gap-1.5 rounded-xl border border-black/10 text-xs font-bold px-3 py-2 hover:bg-black/[0.04]">
+              <FileImage size={14} /> Foto realista
+            </button>
+          )}
           {plate.has_logo && (
             <button type="button" onClick={() => onDownload(plate.id, 'logo')} className="inline-flex items-center gap-1.5 rounded-xl border border-black/10 text-xs font-bold px-3 py-2 hover:bg-black/[0.04]">
               <FileImage size={14} /> {plate.has_logo2 ? 'Logo 1' : 'Logo original'}
@@ -58,7 +63,7 @@ function PlateCard({ plate, onDownload }) {
 
 export default function SitePlates({ onAuthError }) {
   const toast = useToast();
-  const [state, setState] = useState({ plates: null, send_image: true });
+  const [state, setState] = useState({ plates: null, send_image: true, send_photo: false });
 
   const fail = useCallback((err) => {
     if (!onAuthError(err)) toast(err.message, 'error');
@@ -67,9 +72,9 @@ export default function SitePlates({ onAuthError }) {
   const load = useCallback(() => api.getPlates().then(setState).catch(fail), [fail]);
   useEffect(() => { load(); }, [load]);
 
-  const toggle = () => {
-    const send_image = !state.send_image;
-    api.savePlatesSettings({ send_image }).then(() => setState((s) => ({ ...s, send_image }))).catch(fail);
+  const toggle = (key) => {
+    const value = !state[key];
+    api.savePlatesSettings({ [key]: value }).then(() => setState((s) => ({ ...s, [key]: value }))).catch(fail);
   };
 
   return (
@@ -81,7 +86,10 @@ export default function SitePlates({ onAuthError }) {
         </div>
         <div className="flex items-center gap-2">
           <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">
-            <input type="checkbox" checked={state.send_image} onChange={toggle} /> Responder com a imagem no WhatsApp
+            <input type="checkbox" checked={state.send_image} onChange={() => toggle('send_image')} /> Responder com a imagem no WhatsApp
+          </label>
+          <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">
+            <input type="checkbox" checked={state.send_photo} onChange={() => toggle('send_photo')} /> Usar a foto realista na resposta
           </label>
           <button type="button" onClick={load} aria-label="Atualizar" className="p-2 rounded-xl border border-black/10 hover:bg-black/[0.04]"><RefreshCw size={15} /></button>
         </div>
