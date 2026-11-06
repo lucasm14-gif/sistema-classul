@@ -30,15 +30,60 @@ const loadImage = (src) => new Promise((ok, fail) => {
   img.src = src;
 });
 
-export async function buildRealPhoto(artBlob, color, size) {
+// Lê a arte e deixa pronta para a gravação: limpa o ruído do fundo branco e, se pedido,
+// corta o contorno da borda ou passa tudo para preto. Devolve também um diagnóstico.
+export async function prepareArt(artBlob, { black = false, trim = 0 } = {}) {
+  const url = URL.createObjectURL(artBlob);
+  try {
+    const img = await loadImage(url);
+    if (!img.naturalWidth || !img.naturalHeight) throw new Error('Não consegui ler o tamanho desta arte.');
+    const cut = Math.round(Math.max(img.naturalWidth, img.naturalHeight) * trim);
+    const w = img.naturalWidth - cut * 2;
+    const h = img.naturalHeight - cut * 2;
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, -cut, -cut);
+    const data = ctx.getImageData(0, 0, w, h);
+    const d = data.data;
+    let bright = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const luma = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+      if (luma >= 235) bright++;
+      if (black) {
+        const v = luma >= 240 ? 255 : Math.round((luma * 255) / 240);
+        const ink = v < 200 ? 0 : Math.round(((v - 200) * 255) / 55);
+        d[i] = ink; d[i + 1] = ink; d[i + 2] = ink;
+      } else {
+        for (let ch = 0; ch < 3; ch++) d[i + ch] = d[i + ch] >= 240 ? 255 : Math.round((d[i + ch] * 255) / 240);
+      }
+    }
+    ctx.putImageData(data, 0, 0);
+    // Numa arte com fundo branco, a maior parte dos pontos é quase branca.
+    return { canvas: c, ratio: w / h, whiteShare: bright / (d.length / 4) };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+export const plateRatio = (size) => {
+  const [h, w] = String(size).split('x').map(Number);
+  return w / h;
+};
+
+export async function buildRealPhoto(art, color, size) {
   const res = await fetch('/plate-scenes/cenas.json');
   if (!res.ok) throw new Error('Não encontrei as cenas do estojo.');
   const meta = (await res.json())[`${color}-${size}`];
   if (!meta) throw new Error(`Não há cena para estojo ${color} em ${size}.`);
 
-  const artUrl = URL.createObjectURL(artBlob);
+  const isCanvas = art instanceof HTMLCanvasElement;
+  const artUrl = isCanvas ? null : URL.createObjectURL(art);
   try {
-    const [scene, artImg] = await Promise.all([loadImage(`/plate-scenes/${color}-${size}.jpg`), loadImage(artUrl)]);
+    const [scene, artImg] = await Promise.all([loadImage(`/plate-scenes/${color}-${size}.jpg`), isCanvas ? art : loadImage(artUrl)]);
     const W = scene.naturalWidth;
     const H = scene.naturalHeight;
     const q = meta.q.map(([x, y]) => [x * (W / meta.w), y * (H / meta.h)]);
@@ -49,8 +94,8 @@ export async function buildRealPhoto(artBlob, color, size) {
     ctx.drawImage(scene, 0, 0);
 
     const artCanvas = document.createElement('canvas');
-    const AW = artImg.naturalWidth;
-    const AH = artImg.naturalHeight;
+    const AW = isCanvas ? art.width : artImg.naturalWidth;
+    const AH = isCanvas ? art.height : artImg.naturalHeight;
     artCanvas.width = AW;
     artCanvas.height = AH;
     const actx = artCanvas.getContext('2d');
@@ -106,6 +151,6 @@ export async function buildRealPhoto(artBlob, color, size) {
     ctx.putImageData(out, 0, 0);
     return await new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', 0.9));
   } finally {
-    URL.revokeObjectURL(artUrl);
+    if (artUrl) URL.revokeObjectURL(artUrl);
   }
 }

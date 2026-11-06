@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Camera, Download, FileImage, Layers, LoaderCircle, MessageCircle, RefreshCw } from 'lucide-react';
+import { Camera, Download, FileImage, Layers, LoaderCircle, MessageCircle, RefreshCw, Upload } from 'lucide-react';
 import { api } from '../api';
 import { openWhatsApp } from '../whatsapp';
-import { buildRealPhoto } from '../plates/realPhoto';
+import { buildRealPhoto, plateRatio, prepareArt } from '../plates/realPhoto';
 import { useToast } from './Toast';
 
 const when = (iso) => new Date(iso).toLocaleString('pt-BR', {
@@ -69,6 +69,104 @@ function PlateCard({ plate, onDownload, onPhoto, busy }) {
   );
 }
 
+const PLATE_SIZES = ['9x14', '12x17', '14x20', '16x25', '20x30'];
+const CASES = [
+  { id: 'preto', label: 'Preto', swatch: '#141518' },
+  { id: 'azul', label: 'Azul', swatch: '#1c2a52' },
+  { id: 'vermelho', label: 'Vermelho', swatch: '#a41b22' }
+];
+const chip = (on) => `inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold ${on ? 'border-brand-600 bg-brand-600 text-white' : 'border-black/10 hover:bg-black/[0.04]'}`;
+
+// Foto realista de uma arte que já está pronta no Corel. Tudo acontece neste navegador: a arte não é enviada a lugar nenhum.
+function ReadyArtPhoto() {
+  const toast = useToast();
+  const [size, setSize] = useState('14x20');
+  const [color, setColor] = useState('preto');
+  const [file, setFile] = useState(null);
+  const [black, setBlack] = useState(false);
+  const [trim, setTrim] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [notes, setNotes] = useState([]);
+
+  useEffect(() => () => { if (result) URL.revokeObjectURL(result.url); }, [result]);
+
+  const generate = async () => {
+    if (!file) { toast('Escolha o arquivo da arte.', 'error'); return; }
+    setBusy(true);
+    setNotes([]);
+    try {
+      const art = await prepareArt(file, { black, trim: trim ? 0.0025 : 0 });
+      const found = [];
+      const want = plateRatio(size);
+      const diff = Math.abs(art.ratio - want) / want;
+      if (diff > 0.03) found.push(`A arte tem proporção ${art.ratio.toFixed(2).replace('.', ',')} e a placa ${String(size).replace('x', '×')} tem ${want.toFixed(2).replace('.', ',')}. Ela foi esticada ${Math.round(diff * 100)}% para caber: confira o tamanho.`);
+      if (art.whiteShare < 0.6) found.push('A arte não parece ter fundo branco. Se ela traz o metal ou uma cor de fundo, exporte de novo só com o traço, porque esse fundo aparece na foto.');
+      const blob = await buildRealPhoto(art.canvas, color, size);
+      setResult({ url: URL.createObjectURL(blob), name: `foto-${color}-${size}.jpg` });
+      setNotes(found);
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="bg-white rounded-3xl border border-black/5 shadow-sm p-4 sm:p-5 mb-5">
+      <h2 className="font-extrabold text-brand-950 flex items-center gap-2"><Camera size={17} /> Foto realista de arte pronta</h2>
+      <p className="text-sm font-semibold text-slate-500 mb-4">Use uma arte do Corel exportada em PNG ou JPG, com fundo branco e sem o metal.</p>
+      <div className="grid gap-5 lg:grid-cols-2">
+        <div className="flex flex-col gap-4">
+          <div>
+            <p className="text-xs font-extrabold text-slate-500 mb-2">Tamanho da placa (cm)</p>
+            <div className="flex flex-wrap gap-2">
+              {PLATE_SIZES.map((s) => <button key={s} type="button" aria-pressed={size === s} onClick={() => setSize(s)} className={chip(size === s)}>{s.replace('x', '×')}</button>)}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-extrabold text-slate-500 mb-2">Estojo de veludo</p>
+            <div className="flex flex-wrap gap-2">
+              {CASES.map((c) => (
+                <button key={c.id} type="button" aria-pressed={color === c.id} onClick={() => setColor(c.id)} className={chip(color === c.id)}>
+                  <span className="w-4 h-4 rounded border border-white/40" style={{ background: c.swatch }} /> {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-extrabold text-slate-500 mb-2">Arte</p>
+            <label className="inline-flex items-center gap-2 rounded-xl border border-dashed border-black/20 px-3 py-2 text-xs font-bold cursor-pointer hover:bg-black/[0.04]">
+              <Upload size={14} /> {file ? file.name : 'Escolher arquivo'}
+              <input id="readyArtFile" type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(e) => { setFile(e.target.files[0] || null); setNotes([]); }} />
+            </label>
+          </div>
+          <div className="flex flex-col gap-2 text-xs font-bold text-slate-600">
+            <label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={black} onChange={() => setBlack(!black)} /> Gravar tudo em preto</label>
+            <label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={trim} onChange={() => setTrim(!trim)} /> Cortar contorno fino da borda</label>
+          </div>
+          <div>
+            <button type="button" disabled={busy} onClick={generate} className="inline-flex items-center gap-2 rounded-xl bg-brand-600 text-white text-sm font-bold px-4 py-2.5 hover:bg-brand-700 disabled:opacity-60">
+              {busy ? <LoaderCircle size={15} className="animate-spin" /> : <Camera size={15} />} {busy ? 'Gerando...' : 'Gerar foto realista'}
+            </button>
+          </div>
+          {notes.map((n) => <p key={n} className="text-xs font-bold text-flame-700">{n}</p>)}
+        </div>
+        <div>
+          {result ? (
+            <>
+              <img src={result.url} alt="Foto realista gerada" className="w-full rounded-2xl bg-black/[0.04]" />
+              <a href={result.url} download={result.name} className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-black/10 text-xs font-bold px-3 py-2 hover:bg-black/[0.04]"><Download size={14} /> Baixar foto</a>
+            </>
+          ) : (
+            <div className="h-full min-h-40 rounded-2xl border border-dashed border-black/10 flex items-center justify-center p-6 text-center text-sm font-semibold text-slate-400">A foto aparece aqui.</div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function SitePlates({ onAuthError }) {
   const toast = useToast();
   const [state, setState] = useState({ plates: null, send_image: true })
@@ -122,6 +220,7 @@ export default function SitePlates({ onAuthError }) {
           <button type="button" onClick={load} aria-label="Atualizar" className="p-2 rounded-xl border border-black/10 hover:bg-black/[0.04]"><RefreshCw size={15} /></button>
         </div>
       </div>
+      <ReadyArtPhoto />
       {state.plates && !state.plates.length && (
         <p className="bg-white rounded-3xl border border-black/5 p-8 text-center text-sm font-semibold text-slate-500">Nenhuma placa montada ainda.</p>
       )}
