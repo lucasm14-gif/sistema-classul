@@ -180,35 +180,60 @@ function ClienteForm({ cliente, onSaved, onCancel, onError }) {
     docRef.current?.focus();
   }, [tipo]);
 
-  const buscarCep = async (cep = f.cep) => {
+  const consultados = useRef({ cnpj: '', cep: '' });
+  const numeroRef = useRef(null);
+  const ruaRef = useRef(null);
+  const cepRef = useRef(null);
+
+  // CEP → rua, bairro, cidade, UF e código IBGE. ViaCEP; se falhar, BrasilAPI.
+  const buscarCep = async (cep = f.cep, { forcar = false } = {}) => {
     const c = digits(cep);
-    if (c.length !== 8) return null;
+    if (c.length !== 8 || (!forcar && consultados.current.cep === c)) return null;
+    consultados.current.cep = c;
     setBusy('cep');
     try {
-      const r = await fetch(`https://viacep.com.br/ws/${c}/json/`).then((x) => x.json());
-      if (r.erro) throw new Error('CEP não encontrado. Confira os números.');
+      let r = await fetch(`https://viacep.com.br/ws/${c}/json/`).then((x) => x.json()).catch(() => null);
+      if (!r || r.erro) {
+        const b = await fetch(`https://brasilapi.com.br/api/cep/v2/${c}`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+        r = b && { logradouro: b.street, bairro: b.neighborhood, localidade: b.city, uf: b.state, ibge: '' };
+      }
+      if (!r) throw new Error('CEP não encontrado. Confira os números.');
+      let ibge = r.ibge;
+      if (!ibge && r.localidade) {
+        // BrasilAPI não traz o IBGE no CEP: busca pela cidade.
+        const cidades = await fetch(`https://brasilapi.com.br/api/ibge/municipios/v1/${r.uf}`).then((x) => x.json()).catch(() => []);
+        const alvo = r.localidade.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+        ibge = cidades.find((m) => m.nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase() === alvo)?.codigo_ibge || '';
+      }
       setF((p) => ({
         ...p,
-        cep: c,
+        cep: c.replace(/^(\d{5})(\d{3})$/, '$1-$2'),
         logradouro: p.logradouro || r.logradouro || '',
         bairro: p.bairro || r.bairro || '',
-        complemento: p.complemento || '',
-        municipio: r.localidade || '',
-        cod_municipio: r.ibge || '',
+        municipio: r.localidade || p.municipio,
+        cod_municipio: ibge ? String(ibge) : p.cod_municipio,
         uf: r.uf || p.uf
       }));
+      // Se a pessoa estava no CEP, já leva para o número (ou para a rua, se o CEP for geral da cidade).
+      if (document.activeElement === cepRef.current) {
+        setTimeout(() => {
+          const alvo = r.logradouro ? numeroRef.current : ruaRef.current;
+          alvo?.focus();
+          alvo?.select?.();
+        }, 0);
+      }
       return r.uf;
     } catch (err) {
       onError(err.message);
       return null;
     } finally {
-      setBusy('');
+      setBusy((b) => (b === 'cep' ? '' : b));
     }
   };
 
   // IE no cadastro de contribuintes da SEFAZ (usa o certificado da Classul).
-  const buscarIE = async (uf = f.uf, silencioso = false) => {
-    const d = digits(f.documento);
+  const buscarIE = async (uf = f.uf, silencioso = false, doc = f.documento) => {
+    const d = digits(doc);
     if (d.length !== 14 || !uf) {
       if (!silencioso) onError(d.length !== 14 ? 'Preencha o CNPJ.' : 'Preencha o CEP antes (para saber o estado).');
       return;
@@ -227,45 +252,96 @@ function ClienteForm({ cliente, onSaved, onCancel, onError }) {
       if (!silencioso) onError(err.message, err);
       else setAviso(err.message);
     } finally {
-      setBusy('');
+      setBusy((b) => (b === 'ie' ? '' : b));
     }
   };
 
-  // CNPJ: preenche nome e endereço pela Receita (BrasilAPI) e depois procura a IE.
-  const buscarCnpj = async () => {
-    const d = digits(f.documento);
-    if (d.length !== 14) return;
+  // CNPJ → razão social, endereço, cidade (IBGE), telefone, e-mail e inscrição estadual.
+  // Fonte: CNPJ.ws (traz a IE de qualquer estado); se falhar, BrasilAPI + cadastro da SEFAZ.
+  const buscarCnpj = async (doc = f.documento, { forcar = false } = {}) => {
+    const d = digits(doc);
+    if (d.length !== 14 || (!forcar && consultados.current.cnpj === d)) return;
+    consultados.current.cnpj = d;
     setBusy('cnpj');
+    setAviso('');
     try {
-      const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${d}`).then((x) =>
-        x.ok ? x.json() : Promise.reject(new Error('CNPJ não encontrado na Receita. Preencha à mão.'))
-      );
-      if (r.descricao_situacao_cadastral && r.descricao_situacao_cadastral !== 'ATIVA') {
-        setAviso(`Atenção: na Receita este CNPJ está ${r.descricao_situacao_cadastral}.`);
+      let dados = null;
+      const ws = await fetch(`https://publica.cnpj.ws/cnpj/${d}`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+      if (ws?.estabelecimento) {
+        const e = ws.estabelecimento;
+        const ies = (e.inscricoes_estaduais || []).filter((i) => i.ativo && i.estado?.sigla === e.estado?.sigla);
+        dados = {
+          nome: ws.razao_social,
+          situacao: e.situacao_cadastral,
+          logradouro: [e.tipo_logradouro, e.logradouro].filter(Boolean).join(' '),
+          numero: e.numero,
+          complemento: e.complemento,
+          bairro: e.bairro,
+          cep: e.cep,
+          municipio: e.cidade?.nome,
+          ibge: e.cidade?.ibge_id,
+          uf: e.estado?.sigla,
+          telefone: [e.ddd1, e.telefone1].filter(Boolean).join(''),
+          email: e.email,
+          ie: ies[0]?.inscricao_estadual || '',
+          ieConsultada: true
+        };
+      } else {
+        const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${d}`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+        if (!r) throw new Error('Não achei este CNPJ na Receita. Confira os números ou preencha à mão.');
+        dados = {
+          nome: r.razao_social,
+          situacao: r.descricao_situacao_cadastral,
+          logradouro: [r.descricao_tipo_de_logradouro, r.logradouro].filter(Boolean).join(' '),
+          numero: r.numero,
+          complemento: r.complemento,
+          bairro: r.bairro,
+          cep: r.cep,
+          municipio: r.municipio,
+          ibge: r.codigo_municipio_ibge,
+          uf: r.uf,
+          telefone: digits(r.ddd_telefone_1),
+          email: r.email,
+          ie: '',
+          ieConsultada: false
+        };
       }
+      const avisos = [];
+      if (dados.situacao && !/^ativa$/i.test(dados.situacao)) avisos.push(`Atenção: na Receita este CNPJ está ${String(dados.situacao).toUpperCase()}.`);
       setF((p) => ({
         ...p,
-        nome: p.nome || r.razao_social || '',
-        logradouro: p.logradouro || [r.descricao_tipo_de_logradouro, r.logradouro].filter(Boolean).join(' '),
-        numero: p.numero || r.numero || '',
-        complemento: p.complemento || r.complemento || '',
-        bairro: p.bairro || r.bairro || '',
-        cep: p.cep || digits(r.cep),
-        municipio: r.municipio || p.municipio,
-        cod_municipio: r.codigo_municipio_ibge ? String(r.codigo_municipio_ibge) : p.cod_municipio,
-        uf: r.uf || p.uf,
-        telefone: p.telefone || digits(r.ddd_telefone_1),
-        email: p.email || (r.email || '').toLowerCase()
+        nome: p.nome || dados.nome || '',
+        logradouro: p.logradouro || dados.logradouro || '',
+        numero: p.numero || dados.numero || '',
+        complemento: p.complemento || dados.complemento || '',
+        bairro: p.bairro || dados.bairro || '',
+        cep: p.cep || String(digits(dados.cep)).replace(/^(\d{5})(\d{3})$/, '$1-$2'),
+        municipio: dados.municipio || p.municipio,
+        cod_municipio: dados.ibge ? String(dados.ibge) : p.cod_municipio,
+        uf: dados.uf || p.uf,
+        telefone: p.telefone || digits(dados.telefone),
+        email: p.email || String(dados.email || '').toLowerCase(),
+        ie: p.ie || dados.ie,
+        contribuinte: p.ie || dados.ie ? 1 : dados.ieConsultada ? 0 : p.contribuinte
       }));
-      let uf = r.uf;
-      if (!r.codigo_municipio_ibge && r.cep) uf = (await buscarCep(r.cep)) || uf;
-      if (!f.ie && uf) await buscarIE(uf, true);
+      if (dados.cep) consultados.current.cep = digits(dados.cep);
+      if (!dados.ibge && dados.cep) await buscarCep(dados.cep, { forcar: true });
+      if (dados.ie) avisos.push(`Inscrição estadual ${dados.ie} encontrada (${dados.uf}) — marcado como contribuinte de ICMS.`);
+      else if (dados.ieConsultada) avisos.push(`Sem inscrição estadual ativa em ${dados.uf}: fica como não contribuinte.`);
+      setAviso(avisos.join(' ') || 'Dados preenchidos pela Receita. Confira.');
+      if (!dados.ieConsultada && dados.uf) await buscarIE(dados.uf, true, d);
     } catch (err) {
       onError(err.message);
     } finally {
       setBusy((b) => (b === 'cnpj' ? '' : b));
     }
   };
+
+  // Veio da busca da emissão com o CNPJ já digitado: preenche sozinho ao abrir.
+  useEffect(() => {
+    if (!cliente?.id && digits(inicial.documento).length === 14 && !inicial.nome) buscarCnpj(inicial.documento);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const trocarTipo = (t) => {
     setTipo(t);
@@ -305,10 +381,17 @@ function ClienteForm({ cliente, onSaved, onCancel, onError }) {
             ref={docRef}
             className={input}
             value={f.documento}
-            onChange={(e) => setF((p) => ({ ...p, documento: e.target.value }))}
+            onChange={(e) => {
+              const v = e.target.value;
+              setF((p) => ({ ...p, documento: v }));
+              // Assim que o CNPJ fica completo, já busca o resto.
+              if (pj && digits(v).length === 14) buscarCnpj(v);
+            }}
             onBlur={() => {
               setF((p) => ({ ...p, documento: fmtDoc(p.documento) }));
               if (pj) buscarCnpj();
+              const d = digits(f.documento);
+              if (d && d.length !== (pj ? 14 : 11)) setAviso(pj ? 'O CNPJ tem 14 números.' : 'O CPF tem 11 números.');
             }}
             placeholder={pj ? '00.000.000/0000-00' : '000.000.000-00'}
             inputMode="numeric"
@@ -354,7 +437,19 @@ function ClienteForm({ cliente, onSaved, onCancel, onError }) {
       <div className="col-span-3 sm:col-span-2">
         <label className={label}>CEP *</label>
         <div className="flex items-center gap-2">
-          <input className={input} value={f.cep} onChange={set('cep')} onBlur={() => buscarCep()} inputMode="numeric" placeholder="00000-000" />
+          <input
+            ref={cepRef}
+            className={input}
+            value={f.cep}
+            onChange={(e) => {
+              const v = e.target.value;
+              setF((p) => ({ ...p, cep: v }));
+              if (digits(v).length === 8) buscarCep(v);
+            }}
+            onBlur={() => buscarCep()}
+            inputMode="numeric"
+            placeholder="00000-000"
+          />
           {spin('cep')}
         </div>
       </div>
@@ -367,11 +462,11 @@ function ClienteForm({ cliente, onSaved, onCancel, onError }) {
       </div>
       <div className="col-span-6 sm:col-span-4">
         <label className={label}>Endereço (rua) *</label>
-        <input className={input} value={f.logradouro} onChange={set('logradouro')} />
+        <input ref={ruaRef} className={input} value={f.logradouro} onChange={set('logradouro')} />
       </div>
       <div className="col-span-2">
         <label className={label}>Número</label>
-        <input className={input} value={f.numero} onChange={set('numero')} placeholder="S/N" />
+        <input ref={numeroRef} className={input} value={f.numero} onChange={set('numero')} placeholder="S/N" />
       </div>
       <div className="col-span-4 sm:col-span-3">
         <label className={label}>Bairro *</label>
@@ -516,9 +611,19 @@ function ClientePicker({ value, onChange, onError }) {
   };
   const nav = useNavegacao(aberto ? lista : [], escolher);
 
+  // Só a resposta da última busca vale (uma resposta lenta antiga não sobrescreve a nova).
+  const pedido = useRef(0);
   useEffect(() => {
     if (!aberto) return undefined;
-    const t = setTimeout(() => nfeApi.clientes(busca).then(setLista).catch((e) => onError(e.message, e)), busca ? 200 : 0);
+    const meu = ++pedido.current;
+    const t = setTimeout(
+      () =>
+        nfeApi
+          .clientes(busca)
+          .then((l) => meu === pedido.current && setLista(l))
+          .catch((e) => onError(e.message, e)),
+      busca ? 200 : 0
+    );
     return () => clearTimeout(t);
   }, [busca, aberto, onError]);
 
@@ -556,6 +661,12 @@ function ClientePicker({ value, onChange, onError }) {
             }}
             onKeyDown={(e) => {
               if (e.key === 'Escape') setAberto(false);
+              // Nada encontrado: Enter já abre o cadastro com o que foi digitado.
+              if (e.key === 'Enter' && busca.trim() && !lista.length) {
+                e.preventDefault();
+                setNovo(true);
+                return;
+              }
               nav.onKeyDown(e);
             }}
           />
@@ -1179,10 +1290,15 @@ function Lista({ config, onAbrir, onNova, refreshKey, onError }) {
   const [situacao, setSituacao] = useState('');
   const [mes, setMes] = useState('');
   const [ambiente, setAmbiente] = useState(String(config.ambiente));
+  const pedidoNotas = useRef(0);
 
   useEffect(() => {
     const t = setTimeout(() => {
-      nfeApi.notas({ q: busca, situacao, mes, ambiente, limit: 200 }).then(setNotas).catch((e) => onError(e.message, e));
+      const meu = ++pedidoNotas.current;
+      nfeApi
+        .notas({ q: busca, situacao, mes, ambiente, limit: 200 })
+        .then((l) => meu === pedidoNotas.current && setNotas(l))
+        .catch((e) => onError(e.message, e));
     }, 250);
     return () => clearTimeout(t);
   }, [busca, situacao, mes, ambiente, refreshKey, onError]);
@@ -1283,7 +1399,14 @@ function Clientes({ onError }) {
   const [busca, setBusca] = useState('');
   const [lista, setLista] = useState(null);
   const [editando, setEditando] = useState(undefined);
-  const load = useCallback(() => nfeApi.clientes(busca).then(setLista).catch((e) => onError(e.message, e)), [busca, onError]);
+  const pedido = useRef(0);
+  const load = useCallback(() => {
+    const meu = ++pedido.current;
+    return nfeApi
+      .clientes(busca)
+      .then((l) => meu === pedido.current && setLista(l))
+      .catch((e) => onError(e.message, e));
+  }, [busca, onError]);
   useEffect(() => {
     const t = setTimeout(load, 250);
     return () => clearTimeout(t);
@@ -1485,6 +1608,80 @@ function Produtos({ onError }) {
   );
 }
 
+/* ------------------------------------------------------------------ Logo do DANFE */
+
+function LogoConfig({ config, onSaved, onError, toast }) {
+  const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
+  useEffect(() => {
+    let u = '';
+    if (config.logo === 'nenhuma') {
+      setUrl('');
+      return undefined;
+    }
+    nfeApi
+      .logo()
+      .then((b) => {
+        u = URL.createObjectURL(b);
+        setUrl(u);
+      })
+      .catch(() => setUrl(''));
+    return () => u && URL.revokeObjectURL(u);
+  }, [config.logo]);
+
+  const salvar = async (imagem, msg) => {
+    setBusy(true);
+    try {
+      await nfeApi.saveLogo(imagem);
+      toast(msg, 'success');
+      onSaved();
+    } catch (err) {
+      onError(err.message, err);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const enviar = async () => {
+    const file = fileRef.current?.files?.[0];
+    if (!file) return;
+    if (!/image\/(png|jpeg)/.test(file.type)) return onError('Use uma imagem PNG ou JPG.');
+    const dataUrl = await new Promise((ok, erro) => {
+      const r = new FileReader();
+      r.onload = () => ok(r.result);
+      r.onerror = erro;
+      r.readAsDataURL(file);
+    });
+    await salvar(dataUrl, 'Logo nova salva. Ela já sai nos PDFs das notas.');
+    fileRef.current.value = '';
+  };
+
+  return (
+    <section className={`${card} p-5 space-y-3`}>
+      <h3 className="font-extrabold text-brand-950 flex items-center gap-2"><FileText size={17} /> Logo no PDF da nota</h3>
+      <div className="flex items-center gap-4">
+        <div className="w-24 h-24 rounded-2xl bg-white border border-black/10 flex items-center justify-center overflow-hidden shrink-0">
+          {url ? <img src={url} alt="Logo do DANFE" className="max-w-full max-h-full object-contain" /> : <span className="text-[11px] text-slate-400">sem logo</span>}
+        </div>
+        <p className="text-sm text-slate-500">
+          {config.logo === 'padrao' && 'Usando o carimbo da Classul, o mesmo das notas do C&K.'}
+          {config.logo === 'propria' && 'Usando a logo que você enviou.'}
+          {config.logo === 'nenhuma' && 'O PDF sai sem logo.'} Vale para todas as notas, inclusive as antigas.
+        </p>
+      </div>
+      <input ref={fileRef} type="file" accept="image/png,image/jpeg" className="text-sm" onChange={enviar} disabled={busy} />
+      <div className="flex flex-wrap gap-2">
+        {config.logo !== 'padrao' && (
+          <button className={btnGhost} disabled={busy} onClick={() => salvar('padrao', 'Voltou para o carimbo da Classul.')}>Usar o carimbo da Classul</button>
+        )}
+        {config.logo !== 'nenhuma' && (
+          <button className={btnGhost} disabled={busy} onClick={() => salvar('nenhuma', 'O PDF vai sair sem logo.')}>Tirar a logo</button>
+        )}
+      </div>
+    </section>
+  );
+}
+
 /* ------------------------------------------------------------------ Configurar */
 
 function Configurar({ config, onSaved, onError, toast }) {
@@ -1628,6 +1825,8 @@ function Configurar({ config, onSaved, onError, toast }) {
           onSaved();
         })}>Salvar padrões</button>
       </section>
+
+      <LogoConfig config={config} onSaved={onSaved} onError={onError} toast={toast} />
 
       <section className={`${card} p-5 space-y-3`}>
         <h3 className="font-extrabold text-brand-950 flex items-center gap-2"><Upload size={17} /> Importar do C&K</h3>

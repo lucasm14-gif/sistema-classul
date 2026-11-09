@@ -288,6 +288,24 @@ try {
   check('e-mail inválido recusado', r.status === 400 && /mail/i.test(r.body.error));
   await call('PUT', `/nfe/clientes/${cli.id}`, clienteRS);
 
+  // ---- Logo do DANFE
+  r = await call('GET', '/nfe/config');
+  check('logo padrão é o carimbo da Classul', r.body.logo === 'padrao');
+  r = await call('GET', '/nfe/logo');
+  check('prévia da logo', r.status === 200 && r.body[0] === 0xff && r.body[1] === 0xd8);
+  const pdfComLogo = (await call('GET', `/nfe/notas/${n1.id}/danfe`)).body;
+  r = await call('POST', '/nfe/logo', { imagem: 'nenhuma' });
+  check('tirar a logo', r.body.logo === 'nenhuma');
+  const pdfSemLogo = (await call('GET', `/nfe/notas/${n1.id}/danfe`)).body;
+  check('PDF com logo é maior que sem', pdfComLogo.length > pdfSemLogo.length + 5000, `${pdfComLogo.length} x ${pdfSemLogo.length}`);
+  r = await call('POST', '/nfe/logo', { imagem: 'data:image/gif;base64,R0lGOD' });
+  check('logo em formato errado recusada', r.status === 400);
+  const png1x1 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  r = await call('POST', '/nfe/logo', { imagem: png1x1 });
+  check('logo própria aceita', r.body.logo === 'propria' && (await call('GET', `/nfe/notas/${n1.id}/danfe`)).status === 200);
+  r = await call('POST', '/nfe/logo', { imagem: 'padrao' });
+  check('volta para o carimbo padrão', r.body.logo === 'padrao');
+
   // ---- Ranking de uso, última compra e "emitir outra igual"
   r = await call('GET', '/nfe/produtos');
   check('produto mais vendido vem primeiro', r.body[0].codigo === '102' && r.body[0].uso >= 3, `${r.body[0].codigo} uso=${r.body[0].uso}`);

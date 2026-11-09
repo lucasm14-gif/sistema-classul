@@ -131,6 +131,8 @@ export const nfeApi = {
   saveConfig: (data) => nfeRequest('/api/nfe/config', { method: 'PUT', body: json(data) }),
   saveCert: (pfx, senha) => nfeRequest('/api/nfe/certificado', { method: 'POST', body: json({ pfx, senha }) }),
   sefazStatus: () => nfeRequest('/api/nfe/sefaz-status'),
+  saveLogo: (imagem) => nfeRequest('/api/nfe/logo', { method: 'POST', body: json({ imagem }) }),
+  logo: () => nfeBlob('/api/nfe/logo'),
   produtos: () => nfeRequest('/api/nfe/produtos'),
   saveProduto: (id, data) =>
     nfeRequest(id ? `/api/nfe/produtos/${id}` : '/api/nfe/produtos', { method: id ? 'PUT' : 'POST', body: json(data) }),

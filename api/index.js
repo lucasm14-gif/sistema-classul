@@ -85,7 +85,7 @@ app.post('/api/plates', express.json({ limit: '4500kb' }), async (req, res) => {
 // O corpo da foto realista é maior que o limite geral; o login é conferido mais abaixo, como nas outras rotas.
 app.use((req, res, next) => (req.method === 'POST' && /^\/api\/plates\/\d+\/foto$/.test(req.path) ? express.json({ limit: '3mb' })(req, res, next) : next()));
 // Aba Notas: o certificado (.pfx) e os lotes de importação do C&K passam do limite geral.
-app.use((req, res, next) => (req.method === 'POST' && /^\/api\/nfe\/(certificado|importar)$/.test(req.path) ? express.json({ limit: '4mb' })(req, res, next) : next()));
+app.use((req, res, next) => (req.method === 'POST' && /^\/api\/nfe\/(certificado|importar|logo)$/.test(req.path) ? express.json({ limit: '4mb' })(req, res, next) : next()));
 app.use(express.json());
 // navigator.sendBeacon do site envia os leads como application/x-www-form-urlencoded.
 app.use(express.urlencoded({ extended: false }));
