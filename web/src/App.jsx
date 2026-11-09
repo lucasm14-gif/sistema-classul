@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Award, Layers, KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon, ReceiptText } from 'lucide-react';
-import Dashboard from './components/Dashboard';
+import Faturamento from './components/Faturamento';
 import Board from './components/Board';
 import Settings from './components/Settings';
 import Login from './components/Login';
@@ -128,7 +128,7 @@ export default function App() {
         <main className="flex-1 min-w-0 overflow-hidden">
           {tab === 'board' && <Board onAuthError={handleAuthError} />}
           {tab === 'clients' && <Clients onAuthError={handleAuthError} />}
-          {tab === 'dashboard' && <Dashboard onAuthError={handleAuthError} />}
+          {tab === 'dashboard' && <Faturamento onAuthError={handleAuthError} />}
           {tab === 'notas' && <Notas onAuthError={handleAuthError} />}
           {tab === 'leads' && <Leads onAuthError={handleAuthError} />}
           {tab === 'bot' && <BotChats onAuthError={handleAuthError} />}

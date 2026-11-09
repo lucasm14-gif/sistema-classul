@@ -163,6 +163,11 @@ export const nfeApi = {
   importar: (lote) => nfeRequest('/api/nfe/importar', { method: 'POST', body: json(lote) })
 };
 
+// Faturamento: só precisa do login (as notas autorizadas já foram emitidas com o PIN).
+export const faturamentoApi = {
+  painel: (periodo) => request(`/api/faturamento${periodo ? `?periodo=${periodo}` : ''}`)
+};
+
 export const api = {
   listOrders: (archived = false) => request(`/api/orders${archived ? '?archived=1' : ''}`),
   getOrder: (id) => request(`/api/orders/${id}`),

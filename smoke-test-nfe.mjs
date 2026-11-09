@@ -306,6 +306,18 @@ try {
   r = await call('POST', '/nfe/logo', { imagem: 'padrao' });
   check('volta para o carimbo padrão', r.body.logo === 'padrao');
 
+  // ---- Faturamento pelas notas autorizadas (só produção)
+  r = await call('GET', '/faturamento', null, H);
+  check('faturamento abre só com login', r.status === 200 && Array.isArray(r.body.meses));
+  if (procs.length) {
+    const ultimo = r.body.meses.at(-1)?.mes;
+    r = await call('GET', `/faturamento?periodo=${ultimo}`, null, H);
+    const soma = r.body.categorias.reduce((s2, c) => s2 + c.total, 0);
+    check('faturamento lê os itens das notas importadas', r.body.pendentes === 0 && r.body.resumo.notas > 0 && r.body.categorias.length > 0, JSON.stringify(r.body.resumo));
+    check('itens somam o total das notas', Math.abs(soma - r.body.resumo.total) < 1, `${soma} x ${r.body.resumo.total}`);
+    check('homologação fica fora do faturamento', !r.body.ultimas.some((n) => n.serie === 2));
+  }
+
   // ---- Ranking de uso, última compra e "emitir outra igual"
   r = await call('GET', '/nfe/produtos');
   check('produto mais vendido vem primeiro', r.body[0].codigo === '102' && r.body[0].uso >= 3, `${r.body[0].codigo} uso=${r.body[0].uso}`);
