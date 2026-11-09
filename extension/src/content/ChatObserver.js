@@ -135,6 +135,32 @@ function createOrderButton() {
     return btn;
 }
 
+// Orçamento em PDF: lê as últimas 20 mensagens e o Hermes monta os itens e valores.
+function createQuoteButton() {
+    const btn = document.createElement('button');
+    btn.innerHTML = `
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+      <path d="M14 2v6h6"></path>
+      <path d="M12 18v-6"></path><path d="M14.2 12.6c-.4-.4-1.2-.6-2.2-.6-1.2 0-2 .5-2 1.3 0 1.8 4.4.9 4.4 2.8 0 .8-.9 1.4-2.2 1.4-1 0-1.9-.3-2.4-.8"></path>
+    </svg>
+  `;
+    btn.title = 'Orçamento em PDF (lê as últimas 20 mensagens desta conversa)';
+    btn.className = 'kanban-header-btn classul-quote-btn';
+    btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!extensionAlive()) return showReloadBanner();
+        if (!document.querySelector('#main')) {
+            classulToast('Abra uma conversa primeiro', '#b71f19');
+            return;
+        }
+        eventBus.emit('SHOW_QUOTE_PANEL', { toggle: true, contact: readActiveContact() });
+    };
+    eventBus.on('QUOTE_STATE', (open) => btn.classList.toggle('is-active', open));
+    return btn;
+}
+
 function createQuickMessagesButton() {
     const btn = document.createElement('button');
     btn.innerHTML = `
@@ -841,6 +867,7 @@ function buildButtonGroup() {
         createAssignmentButton(),
         createWatchButton(),
         createOrderButton(),
+        createQuoteButton(),
         createQuickMessagesButton(),
         createImageCopyButton()
     );

@@ -68,6 +68,7 @@ import { extractArtData } from '../lib/arts.js';
 import { PLATE_TOKEN, PlateError, savePlate, getPlateByToken, getPlateById, listPlates, savePlatePhoto, handlePlateMessage, platePage } from '../lib/plates.js';
 import { CASE_COLORS, PLATE_SIZES, PRODUCT_TYPES } from '../lib/default-content.js';
 import { registerNfeRoutes } from '../lib/nfe/routes.js';
+import { analyzeConversation, checkTask, renderQuotePdf, normalizeQuote, quoteFileName, QuoteError, QUOTE_DEFAULTS } from '../lib/quotes.js';
 
 const app = express();
 app.use(cors());
@@ -1080,6 +1081,33 @@ app.post('/api/bot/conversations/:phone/reactivate', h(async (req, res) => {
 // ---------- Notas fiscais (NF-e emitida direto na SEFAZ RS) ----------
 registerNfeRoutes(app);
 
+// ---------- Orçamento em PDF (botão da extensão no WhatsApp) ----------
+// A extensão manda as últimas mensagens da conversa; o Hermes lê e devolve itens
+// e valores. O Lucas completa o que faltar no painel e pede o PDF.
+const hq = (fn) => h(async (req, res) => {
+  try {
+    await fn(req, res);
+  } catch (err) {
+    if (err instanceof QuoteError) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
+});
+
+app.post('/api/quotes/analyze', hq(async (req, res) => {
+  const { messages, contact } = req.body || {};
+  res.json(await analyzeConversation({ messages, contact }));
+}));
+
+app.get('/api/quotes/task/:id', hq(async (req, res) => res.json(await checkTask(req.params.id))));
+
+app.get('/api/quotes/defaults', h(async (req, res) => res.json(QUOTE_DEFAULTS)));
+
+app.post('/api/quotes/pdf', hq(async (req, res) => {
+  const quote = req.body?.quote || {};
+  const pdf = await renderQuotePdf(quote);
+  res.json({ file_name: quoteFileName(normalizeQuote(quote).quote), base64: pdf.toString('base64') });
+}));
+
 // ---------- Finanças pessoais (Open Finance via Pluggy) ----------
 //
 // Camada extra de segurança: além do login do sistema (Bearer), a aba tem um PIN
@@ -1933,6 +1961,8 @@ app.get('/api/hermes/config', h(async (req, res) => {
     enabled: s.hermes_enabled === '1',
     token: s.hermes_token || '',
     webhook_url: s.hermes_webhook_url || '',
+    ai_url: s.hermes_ai_url || '',
+    ai_key_set: Boolean(s.hermes_ai_key || process.env.HERMES_AI_KEY || process.env.HERMES_CLAUDE_KEY),
     engine: s.bot_engine || 'interno',
     base_url: baseUrl(req),
     endpoints: {
@@ -1950,6 +1980,8 @@ app.put('/api/hermes/config', h(async (req, res) => {
   const patch = {};
   if ('enabled' in body) patch.hermes_enabled = body.enabled ? '1' : '0';
   if ('webhook_url' in body) patch.hermes_webhook_url = String(body.webhook_url || '').trim();
+  if ('ai_url' in body) patch.hermes_ai_url = String(body.ai_url || '').trim();
+  if ('ai_key' in body) patch.hermes_ai_key = String(body.ai_key || '').trim();
   if ('engine' in body) {
     if (!['interno', 'hermes', 'off'].includes(body.engine)) {
       return res.status(400).json({ error: 'Pré-atendimento inválido. Use: interno, hermes ou off.' });

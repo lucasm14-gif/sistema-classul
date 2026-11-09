@@ -200,7 +200,23 @@ Não é preciso mexer na Evolution: o webhook dela continua apontando para
   As chamadas `lucas_*` entram no registro só com o nome e se deu certo — sem argumentos,
   resultado nem mensagem de erro —, porque o painel do Hermes não pede o PIN da área.
 
+## 5. Orçamento em PDF (botão da extensão)
+
+O botão de orçamento da extensão lê as últimas 20 mensagens da conversa e o sistema manda
+para a **rota de texto do Hermes** (`POST /claude`, padrão `https://evo.brindideias.com.br/claude`;
+URL e chave em Configurações → Hermes → "Orçamento em PDF", ou `HERMES_AI_KEY` /
+`HERMES_CLAUDE_KEY` no ambiente). Corpo: `{ "texto": "<instruções + conversa>", "modo": "texto" }`.
+Espera `{ "ok": true, "texto": "<JSON do orçamento>" }`; se vier `{ "tarefa": "ID" }`, a extensão
+consulta `GET /claude/tarefa/ID` a cada 4 s.
+
+- A ideia é o Hermes responder com a **assinatura da OpenAI** do Lucas — conferir na VPS que a
+  rota de texto usa a assinatura, não chave de API.
+- O roteador do Hermes desvia para o gerador de imagem quando o texto parece pedir uma
+  ("criar a arte com o logo"). O sistema troca esses termos por neutros antes de mandar, mas o
+  certo é a VPS respeitar `"modo": "texto"` e nunca gerar imagem nesse caso.
+
 ---
 
 Testes: `node smoke-test-hermes.mjs` (64 verificações, banco em memória, nada sai para a
 internet — a Evolution é mockada e o "Hermes" é um servidor local).
+Orçamento: `node smoke-test-quotes.mjs` (24 verificações, Hermes falso local).

@@ -253,3 +253,27 @@ export const readActiveContact = () => {
         nameIsNumber: /^[+\d][\d\s()\-]{5,}$/.test(name)
     };
 };
+
+// Últimas mensagens de texto da conversa aberta, na ordem em que aparecem.
+// Cada balão de texto tem data-pre-plain-text="[10:31, 09/11/2026] Fulano: ";
+// mensagem só com foto/áudio (sem legenda) não tem texto e fica de fora.
+// Lê só o que o WhatsApp já carregou na tela (role para cima para ler mais).
+export const readRecentMessages = (limit = 20) => {
+    const main = document.querySelector('#main');
+    if (!main) return [];
+    const out = [];
+    for (const node of main.querySelectorAll('[data-pre-plain-text]')) {
+        if (node.querySelector('[data-pre-plain-text]')) continue; // só o mais interno
+        const pre = node.getAttribute('data-pre-plain-text') || '';
+        const m = /^\[([^\]]+)\]\s*(.*?):\s*$/.exec(pre.trim() + ' ');
+        // resposta citada tem o texto da citação antes: o texto da mensagem é o último
+        const spans = node.querySelectorAll('span.selectable-text');
+        const el = spans.length ? spans[spans.length - 1] : node;
+        const text = (el.innerText || '').trim();
+        if (!text) continue;
+        const id = node.closest('[data-id]')?.getAttribute('data-id') || '';
+        const fromMe = id.startsWith('true_') || Boolean(node.closest('.message-out'));
+        out.push({ time: m?.[1] || '', author: m?.[2] || '', from_me: fromMe, text });
+    }
+    return out.slice(-limit);
+};

@@ -30,6 +30,8 @@ export default function HermesSettings({ onAuthError }) {
   const [busy, setBusy] = useState('');
   const [showTools, setShowTools] = useState(false);
   const [url, setUrl] = useState('');
+  const [aiUrl, setAiUrl] = useState('');
+  const [aiKey, setAiKey] = useState('');
   const toast = useToast();
 
   const load = useCallback(async () => {
@@ -37,6 +39,7 @@ export default function HermesSettings({ onAuthError }) {
       const data = await api.hermesConfig();
       setCfg(data);
       setUrl(data.webhook_url || '');
+      setAiUrl(data.ai_url || '');
       setEvents(await api.hermesEvents(20));
     } catch (err) {
       if (!onAuthError(err)) toast(err.message, 'error');
@@ -189,6 +192,32 @@ export default function HermesSettings({ onAuthError }) {
           <p className="text-[11px] font-medium text-slate-400 mt-1.5">
             URL que o Hermes expõe na VPS. É nela que chegam os avisos de pedido criado, mudança de etapa, lead novo e —
             se ele estiver no comando — as mensagens dos clientes.
+          </p>
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className={label}>Orçamento em PDF (botão da extensão) — rota de texto do Hermes</label>
+          <div className="grid sm:grid-cols-2 gap-2">
+            <input
+              className={input}
+              value={aiUrl}
+              onChange={(e) => setAiUrl(e.target.value)}
+              onBlur={() => aiUrl !== (cfg.ai_url || '') && salvar({ ai_url: aiUrl })}
+              placeholder="https://evo.brindideias.com.br/claude (padrão)"
+            />
+            <input
+              className={input}
+              type="password"
+              autoComplete="off"
+              value={aiKey}
+              onChange={(e) => setAiKey(e.target.value)}
+              onBlur={() => aiKey && salvar({ ai_key: aiKey }, 'Chave do Hermes para orçamentos salva').then(() => setAiKey(''))}
+              placeholder={cfg.ai_key_set ? 'Chave salva — digite para trocar' : 'Chave (Bearer) da rota do Hermes'}
+            />
+          </div>
+          <p className="text-[11px] font-medium text-slate-400 mt-1.5">
+            O botão de orçamento da extensão manda as últimas 20 mensagens da conversa para esta rota; o Hermes lê com a
+            assinatura da OpenAI e devolve itens e valores. Vazio = rota padrão do Hermes.
           </p>
         </div>
       </div>

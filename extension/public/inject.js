@@ -58,6 +58,31 @@
         return { ok: false, reason: 'Fotos coladas, mas não achei o botão Enviar. Aperte Enter.' };
     }
 
+    // Cola arquivos (ex.: o PDF do orçamento) e para na prévia: quem envia é a pessoa.
+    async function pasteOnly(files) {
+        const composer = findComposer();
+        if (!composer) return { ok: false, reason: 'Abra uma conversa primeiro.' };
+        const dataTransfer = new DataTransfer();
+        files.forEach((file) => dataTransfer.items.add(file));
+        composer.focus();
+        const pasteEvent = new ClipboardEvent('paste', { bubbles: true, cancelable: true });
+        Object.defineProperty(pasteEvent, 'clipboardData', { value: dataTransfer });
+        composer.dispatchEvent(pasteEvent);
+        const sendBtn = await waitFor(findSendButton, 8000);
+        return sendBtn ? { ok: true } : { ok: false, reason: 'O WhatsApp não abriu a prévia do arquivo. Use o botão Baixar e anexe pelo clipe.' };
+    }
+
+    window.addEventListener('message', async (event) => {
+        if (event.source !== window || !event.data || event.data.type !== 'CLASSUL_PASTE_FILES') return;
+        let result;
+        try {
+            result = await pasteOnly(event.data.files || []);
+        } catch (err) {
+            result = { ok: false, reason: err.message };
+        }
+        window.postMessage({ type: 'CLASSUL_PASTE_FILES_RESULT', ...result }, '*');
+    });
+
     window.addEventListener('message', async (event) => {
         if (event.source !== window || !event.data || event.data.type !== 'CLASSUL_SEND_PHOTOS') return;
         let result;
