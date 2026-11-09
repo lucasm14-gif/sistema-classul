@@ -28,6 +28,17 @@ export class AuthError extends Error {}
 export class FinanceLockError extends Error {}
 // Lançado quando o PIN da área do Lucas é exigido/expirou (403 com lucas_locked).
 export class LucasLockError extends Error {}
+// Lançado quando o PIN da aba Notas é exigido/expirou (403 com nfe_locked).
+export class NfeLockError extends Error {}
+
+const NFE_TOKEN_KEY = 'classul_nfe_token';
+export function getNfeToken() {
+  return sessionStorage.getItem(NFE_TOKEN_KEY) || '';
+}
+export function setNfeToken(token) {
+  if (token) sessionStorage.setItem(NFE_TOKEN_KEY, token);
+  else sessionStorage.removeItem(NFE_TOKEN_KEY);
+}
 
 const FINANCE_TOKEN_KEY = 'classul_finance_token';
 export function getFinanceToken() {
@@ -62,6 +73,7 @@ async function request(path, options = {}) {
   const data = await res.json().catch(() => ({}));
   if (res.status === 403 && data.finance_locked) throw new FinanceLockError(data.error || 'Finanças bloqueadas');
   if (res.status === 403 && data.lucas_locked) throw new LucasLockError(data.error || 'Área bloqueada');
+  if (res.status === 403 && data.nfe_locked) throw new NfeLockError(data.error || 'Notas bloqueadas');
   if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
   return data;
 }
@@ -81,6 +93,70 @@ function lucasRequest(path, options = {}) {
     headers: { 'X-Lucas-Token': getLucasToken(), ...(options.headers || {}) }
   });
 }
+
+// Como request(), mas envia o token da aba Notas.
+function nfeRequest(path, options = {}) {
+  return request(path, {
+    ...options,
+    headers: { 'X-Nfe-Token': getNfeToken(), ...(options.headers || {}) }
+  });
+}
+
+// Baixa um arquivo da aba Notas (PDF/XML) como Blob.
+async function nfeBlob(path) {
+  const user = getUser();
+  const res = await fetch(path, {
+    headers: {
+      Authorization: `Bearer ${getToken()}`,
+      'X-Nfe-Token': getNfeToken(),
+      ...(user ? { 'X-Classul-User': user } : {})
+    }
+  });
+  if (res.status === 401) throw new AuthError('Sessão inválida');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 403 && data.nfe_locked) throw new NfeLockError(data.error);
+    throw new Error(data.error || `Erro ${res.status}`);
+  }
+  return res.blob();
+}
+
+const json = (body) => JSON.stringify(body);
+
+export const nfeApi = {
+  status: () => request('/api/nfe/status'),
+  setPin: (pin, currentPin) => request('/api/nfe/pin', { method: 'POST', body: json({ pin, current_pin: currentPin }) }),
+  unlock: (pin) => request('/api/nfe/unlock', { method: 'POST', body: json({ pin }) }),
+  config: () => nfeRequest('/api/nfe/config'),
+  saveConfig: (data) => nfeRequest('/api/nfe/config', { method: 'PUT', body: json(data) }),
+  saveCert: (pfx, senha) => nfeRequest('/api/nfe/certificado', { method: 'POST', body: json({ pfx, senha }) }),
+  sefazStatus: () => nfeRequest('/api/nfe/sefaz-status'),
+  produtos: () => nfeRequest('/api/nfe/produtos'),
+  saveProduto: (id, data) =>
+    nfeRequest(id ? `/api/nfe/produtos/${id}` : '/api/nfe/produtos', { method: id ? 'PUT' : 'POST', body: json(data) }),
+  clientes: (q = '') => nfeRequest(`/api/nfe/clientes${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  saveCliente: (id, data) =>
+    nfeRequest(id ? `/api/nfe/clientes/${id}` : '/api/nfe/clientes', { method: id ? 'PUT' : 'POST', body: json(data) }),
+  resumo: () => nfeRequest('/api/nfe/resumo'),
+  notas: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== '' && v != null)).toString();
+    return nfeRequest(`/api/nfe/notas${qs ? `?${qs}` : ''}`);
+  },
+  nota: (id) => nfeRequest(`/api/nfe/notas/${id}`),
+  emitir: (data) => nfeRequest('/api/nfe/emitir', { method: 'POST', body: json(data) }),
+  consultar: (id) => nfeRequest(`/api/nfe/notas/${id}/consultar`, { method: 'POST' }),
+  cancelar: (id, justificativa) => nfeRequest(`/api/nfe/notas/${id}/cancelar`, { method: 'POST', body: json({ justificativa }) }),
+  cce: (id, correcao) => nfeRequest(`/api/nfe/notas/${id}/cce`, { method: 'POST', body: json({ correcao }) }),
+  whatsapp: (id, telefone, mensagem) =>
+    nfeRequest(`/api/nfe/notas/${id}/whatsapp`, { method: 'POST', body: json({ telefone, mensagem }) }),
+  danfe: (id) => nfeBlob(`/api/nfe/notas/${id}/danfe`),
+  xml: (id) => nfeBlob(`/api/nfe/notas/${id}/xml`),
+  eventoXml: (id) => nfeBlob(`/api/nfe/eventos/${id}/xml`),
+  inutilizar: (data) => nfeRequest('/api/nfe/inutilizar', { method: 'POST', body: json(data) }),
+  inutilizacoes: () => nfeRequest('/api/nfe/inutilizacoes'),
+  consultarChave: (chave) => nfeRequest('/api/nfe/consultar-chave', { method: 'POST', body: json({ chave }) }),
+  importar: (lote) => nfeRequest('/api/nfe/importar', { method: 'POST', body: json(lote) })
+};
 
 export const api = {
   listOrders: (archived = false) => request(`/api/orders${archived ? '?archived=1' : ''}`),

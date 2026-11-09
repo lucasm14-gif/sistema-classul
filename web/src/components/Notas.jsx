@@ -1,0 +1,1298 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  Lock, ShieldCheck, FileText, Plus, Search, X, LoaderCircle, Send, Download, FileDown, Ban, PenLine,
+  RefreshCw, Users, Package, Settings2, CheckCircle2, AlertTriangle, Clock, Trash2, Upload, KeyRound,
+  Wifi, MessageCircle, Hash, FileSearch
+} from 'lucide-react';
+import { nfeApi, NfeLockError, getNfeToken, setNfeToken } from '../api';
+import { useToast } from './Toast';
+
+const label = 'block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5';
+const input =
+  'w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-medium outline-none transition-colors focus:border-brand-500 bg-white disabled:bg-slate-50 disabled:text-slate-400';
+const btn = 'inline-flex items-center justify-center gap-2 rounded-xl font-bold text-sm px-4 py-2.5 transition-colors disabled:opacity-50';
+const btnPrimary = `${btn} bg-brand-600 hover:bg-brand-700 text-white`;
+const btnGhost = `${btn} bg-white border-2 border-slate-200 text-slate-600 hover:border-brand-500 hover:text-brand-700`;
+const btnDanger = `${btn} bg-flame-600 hover:bg-flame-700 text-white`;
+const card = 'bg-white rounded-3xl border border-black/5 shadow-sm';
+const inputAuto = input.replace('w-full ', 'w-auto ');
+
+const brl = (n) => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const digits = (s) => String(s ?? '').replace(/\D/g, '');
+const fmtDoc = (d) => {
+  const s = digits(d);
+  if (s.length === 14) return s.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+  if (s.length === 11) return s.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+  return d || '';
+};
+const fmtData = (iso) =>
+  iso ? new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+const fmtChave = (c) => String(c || '').replace(/(\d{4})(?=\d)/g, '$1 ');
+const num = (v) => {
+  if (typeof v === 'number') return v;
+  const s = String(v ?? '').trim();
+  if (!s) return 0;
+  return Number(s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s) || 0;
+};
+
+const SITUACAO = {
+  autorizada: { txt: 'Autorizada', cls: 'bg-brand-100 text-brand-700', Icon: CheckCircle2 },
+  cancelada: { txt: 'Cancelada', cls: 'bg-slate-200 text-slate-600', Icon: Ban },
+  rejeitada: { txt: 'Rejeitada', cls: 'bg-flame-100 text-flame-700', Icon: AlertTriangle },
+  pendente: { txt: 'Aguardando SEFAZ', cls: 'bg-sun-100 text-yellow-700', Icon: Clock },
+  enviando: { txt: 'Enviando', cls: 'bg-sun-100 text-yellow-700', Icon: Clock },
+  denegada: { txt: 'Denegada', cls: 'bg-flame-100 text-flame-700', Icon: Ban },
+  inutilizada: { txt: 'Inutilizada', cls: 'bg-slate-200 text-slate-500', Icon: Ban }
+};
+
+function Badge({ situacao }) {
+  const s = SITUACAO[situacao] || { txt: situacao, cls: 'bg-slate-100 text-slate-500', Icon: FileText };
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-extrabold ${s.cls}`}>
+      <s.Icon size={12} /> {s.txt}
+    </span>
+  );
+}
+
+function Modal({ title, onClose, children, wide }) {
+  return createPortal(
+    <div className="fixed inset-0 bg-brand-950/60 backdrop-blur-sm z-40 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={`bg-white rounded-[1.75rem] shadow-2xl w-full ${wide ? 'max-w-3xl' : 'max-w-xl'} max-h-[92vh] flex flex-col overflow-hidden animate-fade-up`}
+      >
+        <div className="px-6 py-4 flex items-center justify-between border-b border-black/5">
+          <h2 className="font-extrabold tracking-tight text-brand-950">{title}</h2>
+          <button onClick={onClose} className="p-2 rounded-full text-slate-400 hover:text-brand-950 hover:bg-black/5">
+            <X size={19} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6 bg-[#F7F8F3]">{children}</div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// Abre um Blob (PDF) numa aba nova ou baixa com nome.
+function abrirBlob(blob, nome) {
+  const url = URL.createObjectURL(blob);
+  if (nome) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nome;
+    a.click();
+  } else {
+    window.open(url, '_blank');
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+/* ------------------------------------------------------------------ PIN */
+
+function PinScreen({ mode, onDone, toast }) {
+  const creating = mode === 'create';
+  const [pin, setPin] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (pin.length < 4) return toast('O PIN precisa ter pelo menos 4 dígitos.', 'error');
+    if (creating && pin !== confirm) return toast('Os PINs não conferem.', 'error');
+    setBusy(true);
+    try {
+      const res = creating ? await nfeApi.setPin(pin) : await nfeApi.unlock(pin);
+      setNfeToken(res.token);
+      onDone();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const pinInput = 'w-full text-center tracking-[0.4em] text-lg font-bold rounded-2xl border border-black/10 px-4 py-3 outline-none focus:border-brand-500 mb-3';
+  return (
+    <div className="h-full flex items-center justify-center p-6 animate-fade-up">
+      <form onSubmit={submit} className={`${card} p-8 w-full max-w-sm text-center`}>
+        <span className="w-14 h-14 rounded-2xl bg-brand-100 text-brand-700 flex items-center justify-center mx-auto mb-4">
+          {creating ? <ShieldCheck size={26} /> : <Lock size={26} />}
+        </span>
+        <h2 className="text-xl font-extrabold tracking-tight text-brand-950">{creating ? 'Criar PIN das notas' : 'Notas bloqueadas'}</h2>
+        <p className="text-xs font-medium text-slate-400 mt-1 mb-6">
+          {creating ? 'Este PIN protege o certificado digital e a emissão de notas.' : 'Digite o PIN para emitir e ver as notas.'}
+        </p>
+        <input type="password" inputMode="numeric" autoFocus value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 12))} placeholder="PIN" className={pinInput} />
+        {creating && (
+          <input type="password" inputMode="numeric" value={confirm} onChange={(e) => setConfirm(e.target.value.replace(/\D/g, '').slice(0, 12))} placeholder="Repita o PIN" className={pinInput} />
+        )}
+        <button type="submit" disabled={busy} className={`${btnPrimary} w-full py-3 mt-2 rounded-2xl`}>
+          {busy ? 'Aguarde…' : creating ? 'Criar e entrar' : 'Desbloquear'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ Cliente */
+
+const clienteVazio = {
+  documento: '', nome: '', ie: '', contribuinte: 0, email: '', telefone: '', cep: '', logradouro: '', numero: '',
+  complemento: '', bairro: '', municipio: '', cod_municipio: '', uf: 'RS'
+};
+
+function ClienteForm({ cliente, onSaved, onCancel, onError }) {
+  const [f, setF] = useState({ ...clienteVazio, ...(cliente || {}) });
+  const [busy, setBusy] = useState('');
+  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.type === 'checkbox' ? (e.target.checked ? 1 : 0) : e.target.value }));
+
+  const buscarCep = async (cep = f.cep) => {
+    const c = digits(cep);
+    if (c.length !== 8) return;
+    setBusy('cep');
+    try {
+      const r = await fetch(`https://viacep.com.br/ws/${c}/json/`).then((x) => x.json());
+      if (r.erro) throw new Error('CEP não encontrado.');
+      setF((p) => ({
+        ...p,
+        cep: c,
+        logradouro: p.logradouro || r.logradouro || '',
+        bairro: p.bairro || r.bairro || '',
+        municipio: r.localidade || '',
+        cod_municipio: r.ibge || '',
+        uf: r.uf || p.uf
+      }));
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  // CNPJ: preenche nome e endereço pela consulta pública da Receita (BrasilAPI).
+  const buscarCnpj = async () => {
+    const d = digits(f.documento);
+    if (d.length !== 14) return;
+    setBusy('cnpj');
+    try {
+      const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${d}`).then((x) => (x.ok ? x.json() : Promise.reject(new Error('CNPJ não encontrado na Receita.'))));
+      setF((p) => ({
+        ...p,
+        nome: p.nome || r.razao_social || '',
+        logradouro: [r.descricao_tipo_de_logradouro, r.logradouro].filter(Boolean).join(' ') || p.logradouro,
+        numero: r.numero || p.numero,
+        complemento: r.complemento || p.complemento,
+        bairro: r.bairro || p.bairro,
+        cep: digits(r.cep) || p.cep,
+        municipio: r.municipio || p.municipio,
+        cod_municipio: r.codigo_municipio_ibge ? String(r.codigo_municipio_ibge) : p.cod_municipio,
+        uf: r.uf || p.uf,
+        telefone: p.telefone || digits(r.ddd_telefone_1),
+        email: p.email || (r.email || '').toLowerCase()
+      }));
+      if (!r.codigo_municipio_ibge && r.cep) await buscarCep(r.cep);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const save = async () => {
+    setBusy('save');
+    try {
+      onSaved(await nfeApi.saveCliente(cliente?.id, f));
+    } catch (err) {
+      onError(err.message, err);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const pj = digits(f.documento).length === 14;
+  return (
+    <div className="grid grid-cols-6 gap-3">
+      <div className="col-span-6 sm:col-span-3">
+        <label className={label}>CPF ou CNPJ *</label>
+        <div className="flex gap-2">
+          <input className={input} value={f.documento} onChange={set('documento')} onBlur={buscarCnpj} placeholder="só números" />
+          {pj && (
+            <button type="button" onClick={buscarCnpj} className={btnGhost} title="Buscar dados na Receita">
+              {busy === 'cnpj' ? <LoaderCircle size={15} className="animate-spin" /> : <Search size={15} />}
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="col-span-6 sm:col-span-3">
+        <label className={label}>Nome / razão social *</label>
+        <input className={input} value={f.nome} onChange={set('nome')} />
+      </div>
+      <div className="col-span-3 sm:col-span-2">
+        <label className={label}>CEP *</label>
+        <div className="flex gap-2">
+          <input className={input} value={f.cep} onChange={set('cep')} onBlur={() => buscarCep()} />
+          {busy === 'cep' && <LoaderCircle size={15} className="animate-spin self-center text-slate-400" />}
+        </div>
+      </div>
+      <div className="col-span-3 sm:col-span-4">
+        <label className={label}>Cidade / UF (pelo CEP)</label>
+        <input className={input} disabled value={f.municipio ? `${f.municipio} - ${f.uf}${f.cod_municipio ? ` · IBGE ${f.cod_municipio}` : ''}` : ''} placeholder="preencha o CEP" />
+      </div>
+      <div className="col-span-6 sm:col-span-4">
+        <label className={label}>Endereço *</label>
+        <input className={input} value={f.logradouro} onChange={set('logradouro')} />
+      </div>
+      <div className="col-span-2 sm:col-span-2">
+        <label className={label}>Número</label>
+        <input className={input} value={f.numero} onChange={set('numero')} />
+      </div>
+      <div className="col-span-4 sm:col-span-3">
+        <label className={label}>Bairro *</label>
+        <input className={input} value={f.bairro} onChange={set('bairro')} />
+      </div>
+      <div className="col-span-6 sm:col-span-3">
+        <label className={label}>Complemento</label>
+        <input className={input} value={f.complemento || ''} onChange={set('complemento')} />
+      </div>
+      <div className="col-span-3">
+        <label className={label}>Telefone / WhatsApp</label>
+        <input className={input} value={f.telefone || ''} onChange={set('telefone')} />
+      </div>
+      <div className="col-span-3">
+        <label className={label}>E-mail</label>
+        <input className={input} value={f.email || ''} onChange={set('email')} />
+      </div>
+      {pj && (
+        <>
+          <div className="col-span-3">
+            <label className={label}>Inscrição estadual</label>
+            <input className={input} value={f.ie || ''} onChange={set('ie')} placeholder="se tiver" />
+          </div>
+          <label className="col-span-3 flex items-center gap-2 text-sm font-semibold text-slate-600 mt-5">
+            <input type="checkbox" checked={Boolean(f.contribuinte)} onChange={set('contribuinte')} disabled={!digits(f.ie)} />
+            Contribuinte de ICMS
+          </label>
+        </>
+      )}
+      <div className="col-span-6 flex justify-end gap-2 mt-2">
+        {onCancel && <button className={btnGhost} onClick={onCancel}>Cancelar</button>}
+        <button className={btnPrimary} onClick={save} disabled={busy === 'save'}>
+          {busy === 'save' ? <LoaderCircle size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Salvar cliente
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ClientePicker({ value, onChange, onError }) {
+  const [busca, setBusca] = useState('');
+  const [lista, setLista] = useState([]);
+  const [aberto, setAberto] = useState(false);
+  const [novo, setNovo] = useState(false);
+  useEffect(() => {
+    if (!aberto) return undefined;
+    const t = setTimeout(() => nfeApi.clientes(busca).then(setLista).catch((e) => onError(e.message, e)), 250);
+    return () => clearTimeout(t);
+  }, [busca, aberto, onError]);
+
+  if (value) {
+    return (
+      <div className="flex items-start justify-between gap-3 rounded-2xl border-2 border-brand-200 bg-brand-50/50 px-4 py-3">
+        <div className="min-w-0">
+          <div className="font-extrabold text-brand-950 truncate">{value.nome}</div>
+          <div className="text-xs font-semibold text-slate-500">
+            {fmtDoc(value.documento)} · {value.municipio} - {value.uf}
+          </div>
+        </div>
+        <button className="text-xs font-bold text-brand-700 hover:underline shrink-0" onClick={() => onChange(null)}>
+          trocar
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="relative">
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            className={`${input} pl-9`}
+            placeholder="Buscar cliente por nome ou CPF/CNPJ"
+            value={busca}
+            onFocus={() => setAberto(true)}
+            onChange={(e) => setBusca(e.target.value)}
+          />
+        </div>
+        <button className={btnGhost} onClick={() => setNovo(true)}>
+          <Plus size={15} /> Novo
+        </button>
+      </div>
+      {aberto && lista.length > 0 && (
+        <div className="absolute z-20 mt-1 w-full max-h-72 overflow-y-auto rounded-2xl border border-black/10 bg-white shadow-xl">
+          {lista.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => {
+                onChange(c);
+                setAberto(false);
+              }}
+              className="w-full text-left px-4 py-2.5 hover:bg-brand-50 border-b border-black/5 last:border-0"
+            >
+              <div className="font-bold text-sm text-brand-950 truncate">{c.nome}</div>
+              <div className="text-xs text-slate-500">
+                {fmtDoc(c.documento)} · {c.municipio} - {c.uf}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      {novo && (
+        <Modal title="Novo cliente" onClose={() => setNovo(false)} wide>
+          <ClienteForm
+            onCancel={() => setNovo(false)}
+            onError={onError}
+            onSaved={(c) => {
+              setNovo(false);
+              onChange(c);
+            }}
+          />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ Emitir */
+
+function Emitir({ config, rascunho, onEmitida, onError, toast }) {
+  const [produtos, setProdutos] = useState([]);
+  const [cliente, setCliente] = useState(null);
+  const [itens, setItens] = useState([]);
+  const [tPag, setTPag] = useState(config.pagamento_padrao || '17');
+  const [frete, setFrete] = useState('');
+  const [infCpl, setInfCpl] = useState(config.inf_cpl || '');
+  const [busy, setBusy] = useState(false);
+  const [resultado, setResultado] = useState(null);
+  const notaId = rascunho?.id || null;
+
+  useEffect(() => {
+    nfeApi.produtos().then((p) => setProdutos(p.filter((x) => x.ativo))).catch((e) => onError(e.message, e));
+  }, [onError]);
+
+  // "Corrigir e reenviar": carrega os dados da nota rejeitada.
+  useEffect(() => {
+    if (!rascunho?.dados) return;
+    const d = rascunho.dados;
+    if (d.cliente_id) nfeApi.clientes(rascunho.cliente_doc || '').then((l) => setCliente(l.find((c) => c.id === d.cliente_id) || null)).catch(() => {});
+    setItens((d.itens || []).map((i, k) => ({ ...i, _k: k })));
+    setTPag(d.pagamento?.tPag || '17');
+    setFrete(d.frete ? String(d.frete).replace('.', ',') : '');
+    setInfCpl(d.inf_cpl ?? config.inf_cpl);
+  }, [rascunho, config.inf_cpl]);
+
+  const fora = cliente && cliente.uf !== config.emitente.uf;
+  const addProduto = (id) => {
+    const p = produtos.find((x) => String(x.id) === String(id));
+    if (!p) return;
+    setItens((l) => [
+      ...l,
+      {
+        _k: Date.now(), produto_id: p.id, codigo: p.codigo, descricao: p.descricao, ncm: p.ncm, cest: p.cest, cfop_dentro: p.cfop_dentro,
+        cfop_fora: p.cfop_fora, unidade: p.unidade, origem: p.origem, csosn: p.csosn, aliq_tributos: p.aliq_tributos,
+        quantidade: 1, valor_unitario: p.valor ? String(p.valor).replace('.', ',') : '', desconto: '', info_adicional: ''
+      }
+    ]);
+  };
+  const setItem = (k, campo) => (e) => setItens((l) => l.map((i) => (i._k === k ? { ...i, [campo]: e.target.value } : i)));
+
+  const totalProdutos = itens.reduce((s, i) => s + num(i.quantidade) * num(i.valor_unitario) - num(i.desconto), 0);
+  const total = totalProdutos + num(frete);
+
+  const emitir = async () => {
+    if (!cliente) return onError('Escolha o cliente.');
+    if (!itens.length) return onError('Adicione pelo menos um produto.');
+    const amb = config.ambiente === 1 ? 'PRODUÇÃO (vale como nota fiscal de verdade)' : 'homologação (teste, sem valor fiscal)';
+    if (!confirm(`Emitir a nota ${notaId ? `nº ${rascunho.numero} de novo` : `nº ${config.proximo_numero}`} de ${brl(total)} para ${cliente.nome}?\n\nAmbiente: ${amb}`)) return;
+    setBusy(true);
+    setResultado(null);
+    try {
+      const nota = await nfeApi.emitir({
+        nota_id: notaId,
+        cliente_id: cliente.id,
+        itens: itens.map(({ _k, ...i }) => ({ ...i, quantidade: num(i.quantidade), valor_unitario: num(i.valor_unitario), desconto: num(i.desconto), cfop: fora ? i.cfop_fora : i.cfop_dentro })),
+        pagamento: { tPag },
+        frete: num(frete),
+        inf_cpl: infCpl
+      });
+      setResultado(nota);
+      if (nota.situacao === 'autorizada') {
+        toast(`Nota ${nota.numero} autorizada!`, 'success');
+        onEmitida(nota);
+      }
+    } catch (err) {
+      onError(err.message, err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4 max-w-4xl">
+      {config.ambiente !== 1 && (
+        <div className="rounded-2xl bg-sun-100 text-yellow-800 px-4 py-3 text-sm font-semibold">
+          Ambiente de <b>homologação</b>: as notas são de teste e não têm valor fiscal. Mude para produção em Configurar quando os testes estiverem ok.
+        </div>
+      )}
+      {notaId && (
+        <div className="rounded-2xl bg-flame-50 text-flame-700 px-4 py-3 text-sm font-semibold">
+          Corrigindo a nota nº {rascunho.numero} (rejeitada: {rascunho.motivo}). Ela será reenviada com o mesmo número.
+        </div>
+      )}
+
+      <section className={`${card} p-5`}>
+        <h3 className={label}>Cliente</h3>
+        <ClientePicker value={cliente} onChange={setCliente} onError={onError} />
+        {fora && <p className="text-xs font-semibold text-slate-500 mt-2">Cliente de outro estado: a nota sai como "venda fora do estado" (CFOP 6xxx).</p>}
+      </section>
+
+      <section className={`${card} p-5`}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className={label}>Produtos</h3>
+          <select className={`${inputAuto} max-w-xs`} value="" onChange={(e) => addProduto(e.target.value)}>
+            <option value="">+ Adicionar produto…</option>
+            {produtos.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.codigo ? `${p.codigo} · ` : ''}{p.descricao}
+              </option>
+            ))}
+          </select>
+        </div>
+        {!itens.length && <p className="text-sm text-slate-400">Nenhum produto ainda. Os produtos são cadastrados na aba Produtos (com NCM e CFOP).</p>}
+        <div className="space-y-2">
+          {itens.map((i) => (
+            <div key={i._k} className="grid grid-cols-12 gap-2 items-end rounded-2xl bg-[#F7F8F3] p-3">
+              <div className="col-span-12 sm:col-span-5">
+                <label className={label}>Descrição</label>
+                <input className={input} value={i.descricao} onChange={setItem(i._k, 'descricao')} />
+                <div className="text-[10px] font-semibold text-slate-400 mt-1">
+                  NCM {i.ncm} · CFOP {fora ? i.cfop_fora : i.cfop_dentro} · {i.unidade}
+                </div>
+              </div>
+              <div className="col-span-3 sm:col-span-1">
+                <label className={label}>Qtd</label>
+                <input className={input} value={i.quantidade} onChange={setItem(i._k, 'quantidade')} inputMode="decimal" />
+              </div>
+              <div className="col-span-4 sm:col-span-2">
+                <label className={label}>Valor un.</label>
+                <input className={input} value={i.valor_unitario} onChange={setItem(i._k, 'valor_unitario')} inputMode="decimal" placeholder="0,00" />
+              </div>
+              <div className="col-span-3 sm:col-span-2">
+                <label className={label}>Desconto</label>
+                <input className={input} value={i.desconto} onChange={setItem(i._k, 'desconto')} inputMode="decimal" placeholder="0,00" />
+              </div>
+              <div className="col-span-2 sm:col-span-2 flex items-center justify-end gap-2 pb-2">
+                <span className="text-sm font-extrabold text-brand-950">{brl(num(i.quantidade) * num(i.valor_unitario) - num(i.desconto))}</span>
+                <button className="p-1.5 text-slate-400 hover:text-flame-600" onClick={() => setItens((l) => l.filter((x) => x._k !== i._k))}>
+                  <Trash2 size={15} />
+                </button>
+              </div>
+              <div className="col-span-12">
+                <input className={input} value={i.info_adicional || ''} onChange={setItem(i._k, 'info_adicional')} placeholder="Informação adicional do item (opcional, ex.: texto da placa)" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className={`${card} p-5 grid grid-cols-6 gap-3`}>
+        <div className="col-span-6 sm:col-span-3">
+          <label className={label}>Forma de pagamento</label>
+          <select className={input} value={tPag} onChange={(e) => setTPag(e.target.value)}>
+            {(config.formas_pagamento || []).map(([v, t]) => (
+              <option key={v} value={v}>{t}</option>
+            ))}
+          </select>
+        </div>
+        <div className="col-span-6 sm:col-span-3">
+          <label className={label}>Frete cobrado (opcional)</label>
+          <input className={input} value={frete} onChange={(e) => setFrete(e.target.value)} placeholder="0,00" inputMode="decimal" />
+        </div>
+        <div className="col-span-6">
+          <label className={label}>Informações complementares</label>
+          <textarea className={`${input} min-h-[70px]`} value={infCpl} onChange={(e) => setInfCpl(e.target.value)} />
+          <div className="flex gap-2 mt-1.5">
+            {['*PAGAMENTO JA EFETUADO; ', '*PAGAMENTO VIA PIX CHAVE CNPJ 18605962000130; '].map((t) => (
+              <button key={t} className="text-[11px] font-bold text-brand-700 hover:underline" onClick={() => setInfCpl((v) => (v.includes(t.trim()) ? v : t + v))}>
+                + {t.replace(/[*;]/g, '').trim().toLowerCase()}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <div className={`${card} p-5 flex flex-wrap items-center justify-between gap-3`}>
+        <div>
+          <div className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Total da nota</div>
+          <div className="text-2xl font-extrabold text-brand-950">{brl(total)}</div>
+        </div>
+        <button className={`${btnPrimary} px-6 py-3`} onClick={emitir} disabled={busy}>
+          {busy ? <LoaderCircle size={16} className="animate-spin" /> : <Send size={16} />}
+          {busy ? 'Enviando para a SEFAZ…' : notaId ? `Reenviar nota ${rascunho.numero}` : `Emitir nota nº ${config.proximo_numero}`}
+        </button>
+      </div>
+
+      {resultado && resultado.situacao !== 'autorizada' && (
+        <div className={`${card} p-5 border-flame-200`}>
+          <div className="flex items-center gap-2 mb-1">
+            <Badge situacao={resultado.situacao} /> <span className="font-extrabold text-brand-950">Nota nº {resultado.numero}</span>
+          </div>
+          <p className="text-sm text-slate-600">{resultado.motivo}</p>
+          {resultado.situacao === 'pendente' && (
+            <p className="text-xs text-slate-500 mt-2">A SEFAZ não respondeu a tempo. Abra a nota na lista e clique em "Consultar SEFAZ" — nunca emita de novo antes de consultar.</p>
+          )}
+          {resultado.situacao === 'rejeitada' && <p className="text-xs text-slate-500 mt-2">Corrija o que a SEFAZ apontou e clique em reenviar: o número é o mesmo.</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ Detalhe da nota */
+
+function NotaModal({ id, onClose, onChanged, onCorrigir, onError, toast }) {
+  const [nota, setNota] = useState(null);
+  const [acao, setAcao] = useState('');
+  const [texto, setTexto] = useState('');
+  const [fone, setFone] = useState('');
+  const [busy, setBusy] = useState('');
+
+  const load = useCallback(() => nfeApi.nota(id).then(setNota).catch((e) => onError(e.message, e)), [id, onError]);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const run = async (nome, fn, ok) => {
+    setBusy(nome);
+    try {
+      const r = await fn();
+      if (ok) toast(ok, 'success');
+      return r;
+    } catch (err) {
+      onError(err.message, err);
+      return null;
+    } finally {
+      setBusy('');
+    }
+  };
+
+  if (!nota) {
+    return (
+      <Modal title="Nota fiscal" onClose={onClose}>
+        <LoaderCircle className="animate-spin mx-auto text-slate-400" />
+      </Modal>
+    );
+  }
+
+  const autorizada = nota.situacao === 'autorizada';
+  const temXml = ['autorizada', 'cancelada'].includes(nota.situacao) || nota.origem === 'cnk';
+  const nomeArq = `NFe-${String(nota.numero).padStart(6, '0')}`;
+
+  return (
+    <Modal title={`NF-e nº ${nota.numero} · série ${nota.serie}${nota.ambiente === 2 ? ' · homologação' : ''}`} onClose={onClose} wide>
+      <div className="space-y-4">
+        <div className={`${card} p-5`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Badge situacao={nota.situacao} />
+            <span className="text-2xl font-extrabold text-brand-950">{brl(nota.valor_total)}</span>
+          </div>
+          <div className="mt-3 text-sm">
+            <div className="font-bold text-brand-950">{nota.cliente_nome}</div>
+            <div className="text-slate-500">{fmtDoc(nota.cliente_doc)} · {nota.cliente_uf} · emitida em {fmtData(nota.dh_emissao)}</div>
+            {nota.chave && <div className="mt-2 font-mono text-[11px] text-slate-500 break-all">Chave: {fmtChave(nota.chave)}</div>}
+            {nota.protocolo && <div className="font-mono text-[11px] text-slate-500">Protocolo: {nota.protocolo}</div>}
+            {nota.motivo && nota.situacao !== 'autorizada' && <div className="mt-2 text-sm font-semibold text-flame-700">{nota.c_stat ? `${nota.c_stat} · ` : ''}{nota.motivo}</div>}
+            {nota.origem === 'cnk' && <div className="mt-2 text-xs font-semibold text-slate-400">Importada do C&K</div>}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {temXml && (
+            <>
+              <button className={btnGhost} disabled={busy} onClick={() => run('pdf', async () => abrirBlob(await nfeApi.danfe(id)))}>
+                {busy === 'pdf' ? <LoaderCircle size={15} className="animate-spin" /> : <FileText size={15} />} Ver PDF
+              </button>
+              <button className={btnGhost} disabled={busy} onClick={() => run('pdfd', async () => abrirBlob(await nfeApi.danfe(id), `${nomeArq}.pdf`))}>
+                <FileDown size={15} /> Baixar PDF
+              </button>
+              <button className={btnGhost} disabled={busy} onClick={() => run('xml', async () => abrirBlob(await nfeApi.xml(id), `${nota.chave}.xml`))}>
+                <Download size={15} /> XML
+              </button>
+              <button className={btnGhost} onClick={() => setAcao(acao === 'zap' ? '' : 'zap')}>
+                <MessageCircle size={15} /> WhatsApp
+              </button>
+            </>
+          )}
+          {['pendente', 'enviando'].includes(nota.situacao) && (
+            <button className={btnPrimary} disabled={busy} onClick={() => run('cons', async () => {
+              const r = await nfeApi.consultar(id);
+              setNota(r.nota);
+              onChanged();
+              toast(`SEFAZ: ${r.consulta.xMotivo}`, 'info');
+            })}>
+              {busy === 'cons' ? <LoaderCircle size={15} className="animate-spin" /> : <RefreshCw size={15} />} Consultar SEFAZ
+            </button>
+          )}
+          {nota.situacao === 'rejeitada' && (
+            <button className={btnPrimary} onClick={() => onCorrigir(nota)}>
+              <PenLine size={15} /> Corrigir e reenviar
+            </button>
+          )}
+          {autorizada && nota.origem !== 'cnk' && (
+            <>
+              <button className={btnGhost} onClick={() => setAcao(acao === 'cce' ? '' : 'cce')}>
+                <PenLine size={15} /> Carta de correção
+              </button>
+              <button className={`${btnGhost} hover:!border-flame-500 hover:!text-flame-600`} onClick={() => setAcao(acao === 'cancelar' ? '' : 'cancelar')}>
+                <Ban size={15} /> Cancelar nota
+              </button>
+            </>
+          )}
+        </div>
+
+        {acao === 'zap' && (
+          <div className={`${card} p-4 flex gap-2 items-end`}>
+            <div className="flex-1">
+              <label className={label}>WhatsApp do cliente</label>
+              <input className={input} value={fone} onChange={(e) => setFone(e.target.value)} placeholder="(51) 99999-9999" />
+            </div>
+            <button className={btnPrimary} disabled={busy || !digits(fone)} onClick={() => run('zap', () => nfeApi.whatsapp(id, fone), 'PDF e XML enviados no WhatsApp.')}>
+              {busy === 'zap' ? <LoaderCircle size={15} className="animate-spin" /> : <Send size={15} />} Enviar
+            </button>
+          </div>
+        )}
+        {(acao === 'cce' || acao === 'cancelar') && (
+          <div className={`${card} p-4 space-y-2`}>
+            <label className={label}>{acao === 'cce' ? 'O que está sendo corrigido' : 'Motivo do cancelamento'} (mín. 15 letras)</label>
+            <textarea className={`${input} min-h-[80px]`} value={texto} onChange={(e) => setTexto(e.target.value)} />
+            {acao === 'cce' && (
+              <p className="text-[11px] text-slate-500">
+                A carta de correção não pode mudar valores, quantidades, impostos, o cliente ou a data. Para isso, cancele e emita outra.
+              </p>
+            )}
+            {acao === 'cancelar' && <p className="text-[11px] text-slate-500">Na SEFAZ RS o cancelamento é aceito em até 24 horas depois da autorização.</p>}
+            <div className="flex justify-end">
+              <button
+                className={acao === 'cancelar' ? btnDanger : btnPrimary}
+                disabled={busy || texto.trim().length < 15}
+                onClick={async () => {
+                  if (acao === 'cancelar' && !confirm(`Cancelar a nota nº ${nota.numero}? Não dá para desfazer.`)) return;
+                  const r = await run(acao, () => (acao === 'cce' ? nfeApi.cce(id, texto) : nfeApi.cancelar(id, texto)), acao === 'cce' ? 'Carta de correção registrada.' : 'Nota cancelada na SEFAZ.');
+                  if (r) {
+                    setNota(r);
+                    setAcao('');
+                    setTexto('');
+                    onChanged();
+                  }
+                }}
+              >
+                {busy === acao && <LoaderCircle size={15} className="animate-spin" />} {acao === 'cce' ? 'Enviar carta de correção' : 'Cancelar na SEFAZ'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {nota.eventos?.length > 0 && (
+          <div className={`${card} p-4`}>
+            <h3 className={label}>Eventos</h3>
+            {nota.eventos.map((e) => (
+              <div key={e.id} className="flex items-center justify-between gap-2 py-2 border-b border-black/5 last:border-0 text-sm">
+                <div>
+                  <div className="font-bold text-brand-950">{e.tipo === 'cce' ? `Carta de correção ${e.seq}` : 'Cancelamento'} · {fmtData(e.created_at)}</div>
+                  <div className="text-xs text-slate-500">{e.texto}</div>
+                  <div className="text-xs text-slate-400">{e.c_stat} · {e.motivo}{e.created_by ? ` · por ${e.created_by}` : ''}</div>
+                </div>
+                {e.protocolo && (
+                  <button className="text-xs font-bold text-brand-700 hover:underline" onClick={() => run('ev', async () => abrirBlob(await nfeApi.eventoXml(e.id), `evento-${e.id}.xml`))}>
+                    XML
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/* ------------------------------------------------------------------ Lista */
+
+function Lista({ config, onAbrir, refreshKey, onError }) {
+  const [notas, setNotas] = useState(null);
+  const [resumo, setResumo] = useState(null);
+  const [busca, setBusca] = useState('');
+  const [situacao, setSituacao] = useState('');
+  const [mes, setMes] = useState('');
+  const [ambiente, setAmbiente] = useState(String(config.ambiente));
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      nfeApi.notas({ q: busca, situacao, mes, ambiente, limit: 200 }).then(setNotas).catch((e) => onError(e.message, e));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [busca, situacao, mes, ambiente, refreshKey, onError]);
+  useEffect(() => {
+    nfeApi.resumo().then(setResumo).catch(() => {});
+  }, [refreshKey]);
+
+  const mesKey = new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 7);
+  const mesAtual = resumo?.meses?.find((m) => m.mes === mesKey);
+  const pend = resumo?.pendencias || {};
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className={`${card} p-4`}>
+          <div className={label}>Notas no mês</div>
+          <div className="text-2xl font-extrabold text-brand-950">{mesAtual?.qtd ?? 0}</div>
+        </div>
+        <div className={`${card} p-4`}>
+          <div className={label}>Faturado em notas</div>
+          <div className="text-2xl font-extrabold text-brand-950">{brl(mesAtual?.total || 0)}</div>
+        </div>
+        <div className={`${card} p-4`}>
+          <div className={label}>Próximo número</div>
+          <div className="text-2xl font-extrabold text-brand-950">{config.proximo_numero} <span className="text-xs text-slate-400">série {config.serie}</span></div>
+        </div>
+        <div className={`${card} p-4 ${pend.pendente || pend.rejeitada ? 'ring-2 ring-sun-300' : ''}`}>
+          <div className={label}>Precisam de atenção</div>
+          <div className="text-2xl font-extrabold text-brand-950">{(pend.pendente || 0) + (pend.rejeitada || 0) + (pend.enviando || 0)}</div>
+        </div>
+      </div>
+
+      <div className={`${card} p-4 flex flex-wrap gap-2`}>
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input className={`${input} pl-9`} placeholder="Número, cliente, CPF/CNPJ ou chave" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        </div>
+        <select className={inputAuto} value={situacao} onChange={(e) => setSituacao(e.target.value)}>
+          <option value="">Todas</option>
+          {Object.entries(SITUACAO).map(([k, v]) => (
+            <option key={k} value={k}>{v.txt}</option>
+          ))}
+        </select>
+        <input type="month" className={inputAuto} value={mes} onChange={(e) => setMes(e.target.value)} />
+        <select className={inputAuto} value={ambiente} onChange={(e) => setAmbiente(e.target.value)}>
+          <option value="1">Produção</option>
+          <option value="2">Homologação</option>
+        </select>
+      </div>
+
+      <div className={`${card} overflow-hidden`}>
+        {!notas ? (
+          <div className="p-10 flex justify-center"><LoaderCircle className="animate-spin text-slate-400" /></div>
+        ) : !notas.length ? (
+          <div className="p-10 text-center text-sm text-slate-400">Nenhuma nota aqui ainda.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[10px] font-extrabold uppercase tracking-widest text-slate-400 border-b border-black/5">
+                  <th className="px-4 py-3">Nº</th>
+                  <th className="px-4 py-3">Emissão</th>
+                  <th className="px-4 py-3">Cliente</th>
+                  <th className="px-4 py-3 text-right">Valor</th>
+                  <th className="px-4 py-3">Situação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {notas.map((n) => (
+                  <tr key={n.id} onClick={() => onAbrir(n.id)} className="border-b border-black/5 last:border-0 hover:bg-brand-50/50 cursor-pointer">
+                    <td className="px-4 py-3 font-extrabold text-brand-950">{n.numero}<span className="text-[10px] text-slate-400 font-bold"> /{n.serie}</span></td>
+                    <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{fmtData(n.dh_emissao)}</td>
+                    <td className="px-4 py-3">
+                      <div className="font-semibold text-brand-950 truncate max-w-[280px]">{n.cliente_nome}</div>
+                      <div className="text-[11px] text-slate-400">{fmtDoc(n.cliente_doc)} · {n.cliente_uf}</div>
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold whitespace-nowrap">{brl(n.valor_total)}</td>
+                    <td className="px-4 py-3"><Badge situacao={n.situacao} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ Cadastros */
+
+function Clientes({ onError }) {
+  const [busca, setBusca] = useState('');
+  const [lista, setLista] = useState(null);
+  const [editando, setEditando] = useState(undefined);
+  const load = useCallback(() => nfeApi.clientes(busca).then(setLista).catch((e) => onError(e.message, e)), [busca, onError]);
+  useEffect(() => {
+    const t = setTimeout(load, 250);
+    return () => clearTimeout(t);
+  }, [load]);
+  return (
+    <div className="space-y-4 max-w-4xl">
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input className={`${input} pl-9`} placeholder="Buscar por nome ou CPF/CNPJ" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        </div>
+        <button className={btnPrimary} onClick={() => setEditando(null)}><Plus size={15} /> Novo cliente</button>
+      </div>
+      <div className={`${card} divide-y divide-black/5`}>
+        {(lista || []).map((c) => (
+          <button key={c.id} onClick={() => setEditando(c)} className="w-full text-left px-5 py-3 hover:bg-brand-50/50">
+            <div className="font-bold text-brand-950">{c.nome}</div>
+            <div className="text-xs text-slate-500">{fmtDoc(c.documento)} · {c.municipio} - {c.uf}{c.origem === 'cnk' ? ' · do C&K' : ''}</div>
+          </button>
+        ))}
+        {lista && !lista.length && <div className="p-8 text-center text-sm text-slate-400">Nenhum cliente encontrado.</div>}
+      </div>
+      {editando !== undefined && (
+        <Modal title={editando ? editando.nome : 'Novo cliente'} onClose={() => setEditando(undefined)} wide>
+          <ClienteForm cliente={editando} onError={onError} onCancel={() => setEditando(undefined)} onSaved={() => { setEditando(undefined); load(); }} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+const produtoVazio = { codigo: '', descricao: '', ncm: '', cfop_dentro: '5101', cfop_fora: '6101', unidade: 'UND', valor: '', cest: '', origem: '0', csosn: '102', aliq_tributos: '', ativo: 1 };
+
+function ProdutoForm({ produto, onSaved, onCancel, onError }) {
+  const [f, setF] = useState({ ...produtoVazio, ...(produto || {}) });
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.type === 'checkbox' ? (e.target.checked ? 1 : 0) : e.target.value }));
+  const save = async () => {
+    setBusy(true);
+    try {
+      onSaved(await nfeApi.saveProduto(produto?.id, { ...f, valor: num(f.valor), aliq_tributos: num(f.aliq_tributos) }));
+    } catch (err) {
+      onError(err.message, err);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="grid grid-cols-6 gap-3">
+      <div className="col-span-2"><label className={label}>Código</label><input className={input} value={f.codigo || ''} onChange={set('codigo')} /></div>
+      <div className="col-span-4"><label className={label}>Descrição *</label><input className={input} value={f.descricao} onChange={set('descricao')} /></div>
+      <div className="col-span-3 sm:col-span-2"><label className={label}>NCM *</label><input className={input} value={f.ncm} onChange={set('ncm')} placeholder="8 dígitos" /></div>
+      <div className="col-span-3 sm:col-span-2"><label className={label}>Unidade</label><input className={input} value={f.unidade} onChange={set('unidade')} /></div>
+      <div className="col-span-6 sm:col-span-2"><label className={label}>Preço padrão</label><input className={input} value={f.valor} onChange={set('valor')} inputMode="decimal" /></div>
+      <div className="col-span-3 sm:col-span-2">
+        <label className={label}>CFOP no RS</label>
+        <select className={input} value={f.cfop_dentro} onChange={(e) => setF((p) => ({ ...p, cfop_dentro: e.target.value, cfop_fora: '6' + e.target.value.slice(1) }))}>
+          <option value="5101">5101 · fabricação própria</option>
+          <option value="5102">5102 · revenda</option>
+          {!['5101', '5102'].includes(f.cfop_dentro) && <option value={f.cfop_dentro}>{f.cfop_dentro}</option>}
+        </select>
+      </div>
+      <div className="col-span-3 sm:col-span-2"><label className={label}>CFOP fora do RS</label><input className={input} value={f.cfop_fora} onChange={set('cfop_fora')} /></div>
+      <div className="col-span-6 sm:col-span-2"><label className={label}>% aprox. tributos</label><input className={input} value={f.aliq_tributos} onChange={set('aliq_tributos')} placeholder="0" inputMode="decimal" /></div>
+      <div className="col-span-3 sm:col-span-2"><label className={label}>CEST (se tiver)</label><input className={input} value={f.cest || ''} onChange={set('cest')} /></div>
+      <div className="col-span-3 sm:col-span-2">
+        <label className={label}>CSOSN</label>
+        <select className={input} value={f.csosn} onChange={set('csosn')}>
+          <option value="102">102 · Simples sem crédito</option>
+          <option value="103">103 · isenção</option>
+          <option value="400">400 · não tributada</option>
+        </select>
+      </div>
+      <label className="col-span-6 sm:col-span-2 flex items-center gap-2 text-sm font-semibold text-slate-600 mt-5">
+        <input type="checkbox" checked={Boolean(f.ativo)} onChange={set('ativo')} /> Ativo
+      </label>
+      <div className="col-span-6 flex justify-end gap-2 mt-2">
+        <button className={btnGhost} onClick={onCancel}>Cancelar</button>
+        <button className={btnPrimary} onClick={save} disabled={busy}>{busy && <LoaderCircle size={15} className="animate-spin" />} Salvar produto</button>
+      </div>
+    </div>
+  );
+}
+
+function Produtos({ onError }) {
+  const [lista, setLista] = useState(null);
+  const [editando, setEditando] = useState(undefined);
+  const load = useCallback(() => nfeApi.produtos().then(setLista).catch((e) => onError(e.message, e)), [onError]);
+  useEffect(() => {
+    load();
+  }, [load]);
+  return (
+    <div className="space-y-4 max-w-4xl">
+      <div className="flex justify-between items-center">
+        <p className="text-xs font-semibold text-slate-500">NCM e CFOP saem daqui em toda nota. Confira com a contadora os itens marcados.</p>
+        <button className={btnPrimary} onClick={() => setEditando(null)}><Plus size={15} /> Novo produto</button>
+      </div>
+      <div className={`${card} overflow-x-auto`}>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-[10px] font-extrabold uppercase tracking-widest text-slate-400 border-b border-black/5">
+              <th className="px-4 py-3">Código</th><th className="px-4 py-3">Descrição</th><th className="px-4 py-3">NCM</th><th className="px-4 py-3">CFOP</th><th className="px-4 py-3 text-right">Preço</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(lista || []).map((p) => (
+              <tr key={p.id} onClick={() => setEditando(p)} className={`border-b border-black/5 last:border-0 hover:bg-brand-50/50 cursor-pointer ${p.ativo ? '' : 'opacity-40'}`}>
+                <td className="px-4 py-2.5 font-mono text-xs">{p.codigo}</td>
+                <td className="px-4 py-2.5 font-semibold text-brand-950">{p.descricao}</td>
+                <td className="px-4 py-2.5 font-mono text-xs">{p.ncm}</td>
+                <td className="px-4 py-2.5 font-mono text-xs">{p.cfop_dentro}/{p.cfop_fora}</td>
+                <td className="px-4 py-2.5 text-right">{brl(p.valor)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {lista && !lista.length && <div className="p-8 text-center text-sm text-slate-400">Nenhum produto. Importe do C&K em Configurar ou cadastre aqui.</div>}
+      </div>
+      {editando !== undefined && (
+        <Modal title={editando ? editando.descricao : 'Novo produto'} onClose={() => setEditando(undefined)} wide>
+          <ProdutoForm produto={editando} onError={onError} onCancel={() => setEditando(undefined)} onSaved={() => { setEditando(undefined); load(); }} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ Configurar */
+
+function Configurar({ config, onSaved, onError, toast }) {
+  const [busy, setBusy] = useState('');
+  const [senha, setSenha] = useState('');
+  const fileRef = useRef(null);
+  const importRef = useRef(null);
+  const [serie, setSerie] = useState(String(config.serie));
+  const [proximo, setProximo] = useState(String(config.proximo_numero));
+  const [infCpl, setInfCpl] = useState(config.inf_cpl);
+  const [pag, setPag] = useState(config.pagamento_padrao);
+  const [sefaz, setSefaz] = useState(null);
+  const [inut, setInut] = useState({ serie: String(config.serie), inicio: '', fim: '', justificativa: '' });
+  const [chave, setChave] = useState('');
+  const [consulta, setConsulta] = useState(null);
+  const [progresso, setProgresso] = useState('');
+  const [pins, setPins] = useState({ atual: '', novo: '' });
+
+  const run = async (nome, fn) => {
+    setBusy(nome);
+    try {
+      return await fn();
+    } catch (err) {
+      onError(err.message, err);
+      return null;
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const enviarCert = () =>
+    run('cert', async () => {
+      const file = fileRef.current?.files?.[0];
+      if (!file) throw new Error('Escolha o arquivo .pfx.');
+      if (!senha) throw new Error('Digite a senha do certificado.');
+      const buf = new Uint8Array(await file.arrayBuffer());
+      let bin = '';
+      for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+      const info = await nfeApi.saveCert(btoa(bin), senha);
+      setSenha('');
+      fileRef.current.value = '';
+      toast(`Certificado de ${info.nome} salvo.`, 'success');
+      onSaved();
+    });
+
+  const trocarAmbiente = (amb) =>
+    run('amb', async () => {
+      if (amb === 1 && !confirm('Mudar para PRODUÇÃO? A partir daí as notas emitidas valem de verdade.')) return;
+      await nfeApi.saveConfig({ ambiente: amb });
+      toast(amb === 1 ? 'Agora emitindo em produção.' : 'Agora em homologação (teste).', 'success');
+      onSaved();
+    });
+
+  const importar = () =>
+    run('imp', async () => {
+      const file = importRef.current?.files?.[0];
+      if (!file) throw new Error('Escolha o arquivo classul-importacao-cnk.json.');
+      const dados = JSON.parse(await file.text());
+      const total = { clientes: 0, produtos: 0, notas: 0, ignoradas: 0 };
+      const somar = (r) => Object.keys(total).forEach((k) => (total[k] += r[k] || 0));
+      const lotes = [];
+      for (let i = 0; i < (dados.clientes || []).length; i += 150) lotes.push({ clientes: dados.clientes.slice(i, i + 150) });
+      lotes.push({ produtos: dados.produtos || [] });
+      for (let i = 0; i < (dados.notas || []).length; i += 120) lotes.push({ notas: dados.notas.slice(i, i + 120), canceladas: dados.canceladas || [] });
+      for (let i = 0; i < lotes.length; i++) {
+        setProgresso(`Importando… ${Math.round(((i + 1) / lotes.length) * 100)}%`);
+        somar(await nfeApi.importar(lotes[i]));
+      }
+      setProgresso(`Importados: ${total.clientes} clientes, ${total.produtos} produtos, ${total.notas} notas${total.ignoradas ? ` (${total.ignoradas} ignorados por dados incompletos)` : ''}.`);
+      importRef.current.value = '';
+      onSaved();
+    });
+
+  const amb = config.ambiente;
+  const c = config.cert;
+  const vence = c ? Math.ceil((new Date(c.valido_ate) - Date.now()) / 864e5) : null;
+
+  return (
+    <div className="grid lg:grid-cols-2 gap-4 max-w-5xl">
+      <section className={`${card} p-5 space-y-3`}>
+        <h3 className="font-extrabold text-brand-950 flex items-center gap-2"><KeyRound size={17} /> Certificado digital A1</h3>
+        {c ? (
+          <div className={`rounded-2xl px-4 py-3 text-sm ${vence < 30 ? 'bg-flame-50 text-flame-700' : 'bg-brand-50 text-brand-800'}`}>
+            <div className="font-bold">{c.nome}</div>
+            <div className="text-xs">CNPJ {fmtDoc(c.cnpj)} · {c.emissor}</div>
+            <div className="text-xs font-bold mt-1">Válido até {new Date(c.valido_ate).toLocaleDateString('pt-BR')} ({vence} dias)</div>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">Nenhum certificado ainda. Envie o arquivo <b>.pfx</b> e a senha. Ele fica guardado criptografado no servidor.</p>
+        )}
+        <input ref={fileRef} type="file" accept=".pfx,.p12" className="text-sm" />
+        <input type="password" className={input} placeholder="Senha do certificado" value={senha} onChange={(e) => setSenha(e.target.value)} autoComplete="new-password" />
+        <button className={btnPrimary} onClick={enviarCert} disabled={busy === 'cert'}>
+          {busy === 'cert' ? <LoaderCircle size={15} className="animate-spin" /> : <Upload size={15} />} {c ? 'Trocar certificado' : 'Enviar certificado'}
+        </button>
+      </section>
+
+      <section className={`${card} p-5 space-y-3`}>
+        <h3 className="font-extrabold text-brand-950 flex items-center gap-2"><Settings2 size={17} /> Ambiente e numeração</h3>
+        <div className="flex gap-2">
+          <button className={amb === 2 ? btnPrimary : btnGhost} onClick={() => trocarAmbiente(2)} disabled={busy === 'amb'}>Homologação (teste)</button>
+          <button className={amb === 1 ? btnDanger : btnGhost} onClick={() => trocarAmbiente(1)} disabled={busy === 'amb'}>Produção</button>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className={label}>Série</label><input className={input} value={serie} onChange={(e) => setSerie(e.target.value)} /></div>
+          <div><label className={label}>Próximo número</label><input className={input} value={proximo} onChange={(e) => setProximo(e.target.value)} /></div>
+        </div>
+        <p className="text-[11px] text-slate-500">O C&K usa a série 1 (última nota 4614). Usando a série 2 aqui, os dois nunca repetem número.</p>
+        <button className={btnGhost} disabled={busy === 'num'} onClick={() => run('num', async () => {
+          if (String(config.serie) !== serie) await nfeApi.saveConfig({ serie: Number(serie) });
+          await nfeApi.saveConfig({ proximo_numero: Number(proximo) });
+          toast('Numeração salva.', 'success');
+          onSaved();
+        })}>Salvar numeração</button>
+        <div className="flex items-center gap-2 pt-2 border-t border-black/5">
+          <button className={btnGhost} disabled={busy === 'sefaz' || !c} onClick={() => run('sefaz', async () => setSefaz(await nfeApi.sefazStatus()))}>
+            {busy === 'sefaz' ? <LoaderCircle size={15} className="animate-spin" /> : <Wifi size={15} />} Testar SEFAZ
+          </button>
+          {sefaz && <span className={`text-sm font-bold ${sefaz.online ? 'text-brand-700' : 'text-flame-600'}`}>{sefaz.cStat} · {sefaz.xMotivo}</span>}
+        </div>
+      </section>
+
+      <section className={`${card} p-5 space-y-3`}>
+        <h3 className="font-extrabold text-brand-950 flex items-center gap-2"><FileText size={17} /> Padrões da nota</h3>
+        <div>
+          <label className={label}>Forma de pagamento padrão</label>
+          <select className={input} value={pag} onChange={(e) => setPag(e.target.value)}>
+            {(config.formas_pagamento || []).map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={label}>Informações complementares padrão</label>
+          <textarea className={`${input} min-h-[80px]`} value={infCpl} onChange={(e) => setInfCpl(e.target.value)} />
+        </div>
+        <div className="text-[11px] text-slate-500">
+          Emitente: {config.emitente.razao_social} · IE {config.emitente.ie} · {config.emitente.logradouro}, {config.emitente.numero} - {config.emitente.municipio}/{config.emitente.uf}
+        </div>
+        <button className={btnGhost} disabled={busy === 'pad'} onClick={() => run('pad', async () => {
+          await nfeApi.saveConfig({ inf_cpl: infCpl, pagamento_padrao: pag });
+          toast('Padrões salvos.', 'success');
+          onSaved();
+        })}>Salvar padrões</button>
+      </section>
+
+      <section className={`${card} p-5 space-y-3`}>
+        <h3 className="font-extrabold text-brand-950 flex items-center gap-2"><Upload size={17} /> Importar do C&K</h3>
+        <p className="text-sm text-slate-500">Escolha o arquivo <b>classul-importacao-cnk.json</b> (clientes, produtos e o histórico de notas). Pode importar de novo depois: nada é duplicado.</p>
+        <input ref={importRef} type="file" accept=".json" className="text-sm" />
+        <button className={btnPrimary} onClick={importar} disabled={busy === 'imp'}>
+          {busy === 'imp' ? <LoaderCircle size={15} className="animate-spin" /> : <Upload size={15} />} Importar
+        </button>
+        {progresso && <p className="text-sm font-semibold text-brand-700">{progresso}</p>}
+      </section>
+
+      <section className={`${card} p-5 space-y-3`}>
+        <h3 className="font-extrabold text-brand-950 flex items-center gap-2"><FileSearch size={17} /> Consultar uma chave na SEFAZ</h3>
+        <p className="text-sm text-slate-500">Serve para as notas que ficaram "ENVIADA" no C&K: diz se a nota existe, foi cancelada ou nunca chegou.</p>
+        <input className={input} value={chave} onChange={(e) => setChave(e.target.value)} placeholder="44 números da chave" />
+        <button className={btnGhost} disabled={busy === 'chave' || digits(chave).length !== 44} onClick={() => run('chave', async () => setConsulta(await nfeApi.consultarChave(chave)))}>
+          {busy === 'chave' ? <LoaderCircle size={15} className="animate-spin" /> : <Search size={15} />} Consultar
+        </button>
+        {consulta && (
+          <div className="rounded-2xl bg-[#F7F8F3] px-4 py-3 text-sm">
+            <div className="font-bold">Nota {consulta.numero} · série {consulta.serie}: <Badge situacao={consulta.situacao === 'inexistente' ? 'rejeitada' : consulta.situacao} /></div>
+            <div className="text-xs text-slate-500 mt-1">{consulta.cStat} · {consulta.xMotivo}</div>
+            {consulta.situacao === 'inexistente' && <div className="text-xs font-semibold text-flame-700 mt-1">Nunca foi autorizada: inutilize este número ao lado.</div>}
+          </div>
+        )}
+      </section>
+
+      <section className={`${card} p-5 space-y-3`}>
+        <h3 className="font-extrabold text-brand-950 flex items-center gap-2"><Hash size={17} /> Inutilizar números</h3>
+        <p className="text-sm text-slate-500">Para números que foram pulados e nunca viraram nota. A SEFAZ exige que eles sejam inutilizados.</p>
+        <div className="grid grid-cols-3 gap-2">
+          <div><label className={label}>Série</label><input className={input} value={inut.serie} onChange={(e) => setInut({ ...inut, serie: e.target.value })} /></div>
+          <div><label className={label}>Do nº</label><input className={input} value={inut.inicio} onChange={(e) => setInut({ ...inut, inicio: e.target.value })} /></div>
+          <div><label className={label}>Até o nº</label><input className={input} value={inut.fim} onChange={(e) => setInut({ ...inut, fim: e.target.value })} placeholder="igual" /></div>
+        </div>
+        <input className={input} value={inut.justificativa} onChange={(e) => setInut({ ...inut, justificativa: e.target.value })} placeholder="Motivo (mín. 15 letras)" />
+        <button className={btnDanger} disabled={busy === 'inut' || !inut.inicio || inut.justificativa.trim().length < 15} onClick={() => run('inut', async () => {
+          const fim = inut.fim || inut.inicio;
+          if (!confirm(`Inutilizar a série ${inut.serie}, números ${inut.inicio} a ${fim}? Não dá para desfazer.`)) return;
+          const r = await nfeApi.inutilizar({ serie: Number(inut.serie), inicio: Number(inut.inicio), fim: Number(fim), justificativa: inut.justificativa });
+          toast(`Inutilizado. Protocolo ${r.protocolo}.`, 'success');
+          setInut({ ...inut, inicio: '', fim: '', justificativa: '' });
+          onSaved();
+        })}>
+          {busy === 'inut' ? <LoaderCircle size={15} className="animate-spin" /> : <Ban size={15} />} Inutilizar
+        </button>
+      </section>
+
+      <section className={`${card} p-5 space-y-3`}>
+        <h3 className="font-extrabold text-brand-950 flex items-center gap-2"><Lock size={17} /> Trocar PIN</h3>
+        <div className="grid grid-cols-2 gap-2">
+          <input type="password" inputMode="numeric" className={input} placeholder="PIN atual" value={pins.atual} onChange={(e) => setPins({ ...pins, atual: e.target.value.replace(/\D/g, '') })} />
+          <input type="password" inputMode="numeric" className={input} placeholder="Novo PIN" value={pins.novo} onChange={(e) => setPins({ ...pins, novo: e.target.value.replace(/\D/g, '') })} />
+        </div>
+        <button className={btnGhost} disabled={busy === 'pin' || pins.novo.length < 4} onClick={() => run('pin', async () => {
+          const r = await nfeApi.setPin(pins.novo, pins.atual);
+          setNfeToken(r.token);
+          setPins({ atual: '', novo: '' });
+          toast('PIN trocado.', 'success');
+        })}>Trocar PIN</button>
+      </section>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ Aba */
+
+const SUBTABS = [
+  { id: 'notas', label: 'Notas', Icon: FileText },
+  { id: 'emitir', label: 'Emitir', Icon: Send },
+  { id: 'clientes', label: 'Clientes', Icon: Users },
+  { id: 'produtos', label: 'Produtos', Icon: Package },
+  { id: 'config', label: 'Configurar', Icon: Settings2 }
+];
+
+export default function Notas({ onAuthError }) {
+  const toast = useToast();
+  const [gate, setGate] = useState('loading'); // loading | create | unlock | open
+  const [config, setConfig] = useState(null);
+  const [sub, setSub] = useState('notas');
+  const [aberta, setAberta] = useState(null);
+  const [rascunho, setRascunho] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const onError = useCallback(
+    (msg, err) => {
+      if (err && onAuthError(err)) return;
+      if (err instanceof NfeLockError) {
+        setNfeToken('');
+        setGate('unlock');
+        return;
+      }
+      toast(msg, 'error', 7000);
+    },
+    [onAuthError, toast]
+  );
+
+  const loadConfig = useCallback(async () => {
+    try {
+      setConfig(await nfeApi.config());
+      setGate('open');
+    } catch (err) {
+      if (err instanceof NfeLockError) {
+        const s = await nfeApi.status().catch(() => ({ has_pin: true }));
+        setGate(s.has_pin ? 'unlock' : 'create');
+      } else onError(err.message, err);
+    }
+  }, [onError]);
+
+  useEffect(() => {
+    if (!getNfeToken()) {
+      nfeApi.status().then((s) => setGate(s.has_pin ? 'unlock' : 'create')).catch((e) => onError(e.message, e));
+    } else loadConfig();
+  }, [loadConfig, onError]);
+
+  const refresh = useCallback(() => {
+    setRefreshKey((k) => k + 1);
+    loadConfig();
+  }, [loadConfig]);
+
+  if (gate === 'loading') return <div className="h-full flex items-center justify-center"><LoaderCircle className="animate-spin text-slate-400" /></div>;
+  if (gate === 'create' || gate === 'unlock') return <PinScreen mode={gate} onDone={loadConfig} toast={toast} />;
+  if (!config) return null;
+
+  const semCert = !config.has_cert;
+  return (
+    <div className="h-full overflow-y-auto p-4 sm:p-6 animate-fade-up">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight text-brand-950">Notas fiscais</h1>
+          <p className="text-xs font-semibold text-slate-400">
+            NF-e emitida direto na SEFAZ RS · {config.ambiente === 1 ? <span className="text-flame-600">produção</span> : <span className="text-yellow-600">homologação (teste)</span>} · série {config.serie}
+          </p>
+        </div>
+        <div className="flex gap-1 rounded-2xl bg-white border border-black/5 p-1 shadow-sm overflow-x-auto">
+          {SUBTABS.map(({ id, label: l, Icon }) => (
+            <button
+              key={id}
+              onClick={() => {
+                setSub(id);
+                if (id !== 'emitir') setRascunho(null);
+              }}
+              className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-bold whitespace-nowrap ${sub === id ? 'bg-brand-500/15 text-brand-700' : 'text-slate-500 hover:text-brand-900'}`}
+            >
+              <Icon size={15} /> {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {semCert && sub !== 'config' && (
+        <button onClick={() => setSub('config')} className="w-full text-left mb-4 rounded-2xl bg-sun-100 text-yellow-800 px-4 py-3 text-sm font-semibold">
+          Falta o certificado digital. Clique aqui para enviar o arquivo .pfx em Configurar.
+        </button>
+      )}
+
+      {sub === 'notas' && <Lista config={config} onAbrir={setAberta} refreshKey={refreshKey} onError={onError} />}
+      {sub === 'emitir' && (
+        <Emitir
+          key={rascunho?.id || 'nova'}
+          config={config}
+          rascunho={rascunho}
+          onError={onError}
+          toast={toast}
+          onEmitida={(n) => {
+            setRascunho(null);
+            refresh();
+            setSub('notas');
+            setAberta(n.id);
+          }}
+        />
+      )}
+      {sub === 'clientes' && <Clientes onError={onError} />}
+      {sub === 'produtos' && <Produtos onError={onError} />}
+      {sub === 'config' && <Configurar config={config} onSaved={refresh} onError={onError} toast={toast} />}
+
+      {aberta && (
+        <NotaModal
+          id={aberta}
+          onClose={() => setAberta(null)}
+          onChanged={refresh}
+          onError={onError}
+          toast={toast}
+          onCorrigir={(n) => {
+            setAberta(null);
+            setRascunho(n);
+            setSub('emitir');
+          }}
+        />
+      )}
+    </div>
+  );
+}

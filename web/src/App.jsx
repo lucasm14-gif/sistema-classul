@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Award, Layers, KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon } from 'lucide-react';
+import { Award, Layers, KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon, ReceiptText } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Board from './components/Board';
 import Settings from './components/Settings';
@@ -13,6 +13,7 @@ import Inbox from './components/Inbox';
 import Arts from './components/Arts';
 import SitePlates from './components/SitePlates';
 import Finance from './components/Finance';
+import Notas from './components/Notas';
 import Lucas, { BatSigil } from './components/Lucas';
 import UserPicker from './components/UserPicker';
 import { ToastProvider } from './components/Toast';
@@ -23,6 +24,7 @@ const TABS = [
   { id: 'board', label: 'Pedidos', icon: KanbanSquare },
   { id: 'clients', label: 'Clientes', icon: Users },
   { id: 'dashboard', label: 'Faturamento', icon: ChartColumn },
+  { id: 'notas', label: 'Notas fiscais', icon: ReceiptText },
   { id: 'leads', label: 'Leads', icon: MousePointerClick },
   { id: 'bot', label: 'Bot', icon: Bot },
   { id: 'inbox', label: 'Recebidos', icon: InboxIcon },
@@ -127,6 +129,7 @@ export default function App() {
           {tab === 'board' && <Board onAuthError={handleAuthError} />}
           {tab === 'clients' && <Clients onAuthError={handleAuthError} />}
           {tab === 'dashboard' && <Dashboard onAuthError={handleAuthError} />}
+          {tab === 'notas' && <Notas onAuthError={handleAuthError} />}
           {tab === 'leads' && <Leads onAuthError={handleAuthError} />}
           {tab === 'bot' && <BotChats onAuthError={handleAuthError} />}
           {tab === 'inbox' && <Inbox onAuthError={handleAuthError} />}

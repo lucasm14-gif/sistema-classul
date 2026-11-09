@@ -9,3 +9,8 @@ data
 projeto-extensao/
 .claude/
 fotos/
+
+# emissor antigo: certificado A1 e dados de clientes, nunca commitar
+EmissorNFe c/
+*.pfx
+*.p12
