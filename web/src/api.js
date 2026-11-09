@@ -137,6 +137,7 @@ export const nfeApi = {
   clientes: (q = '') => nfeRequest(`/api/nfe/clientes${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   saveCliente: (id, data) =>
     nfeRequest(id ? `/api/nfe/clientes/${id}` : '/api/nfe/clientes', { method: id ? 'PUT' : 'POST', body: json(data) }),
+  buscarIE: (cnpj, uf) => nfeRequest(`/api/nfe/buscar-ie?cnpj=${cnpj}&uf=${uf}`),
   ultimaDoCliente: (id) => nfeRequest(`/api/nfe/clientes/${id}/ultima`),
   copiaNota: (id) => nfeRequest(`/api/nfe/notas/${id}/copia`),
   resumo: () => nfeRequest('/api/nfe/resumo'),

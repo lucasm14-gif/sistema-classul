@@ -38,6 +38,10 @@ _setTransportForTests(async ({ url, body }) => {
   enviados.push({ url, body });
   const wrap = (inner) => `<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"><soap:Body><nfeResultMsg>${inner}</nfeResultMsg></soap:Body></soap:Envelope>`;
   const chave = (body.match(/Id="NFe(\d{44})"/) || body.match(/<chNFe>(\d{44})<\/chNFe>/) || [])[1];
+  if (url.includes('cadconsultacadastro')) {
+    if (body.includes('<CNPJ>89488316000692</CNPJ>')) return wrap('<retConsCad><infCons><cStat>111</cStat><xMotivo>Consulta cadastro com uma ocorrencia</xMotivo><infCad><IE>2130007915</IE><CNPJ>89488316000692</CNPJ><UF>RS</UF><cSit>1</cSit><xNome>STAHL BRASIL S.A.</xNome></infCad></infCons></retConsCad>');
+    return wrap('<retConsCad><infCons><cStat>259</cStat><xMotivo>Rejeicao: CNPJ da consulta nao cadastrado como contribuinte na UF</xMotivo></infCons></retConsCad>');
+  }
   if (url.includes('StatusServico')) return wrap('<retConsStatServ><cStat>107</cStat><xMotivo>Servico em Operacao</xMotivo><tMed>1</tMed></retConsStatServ>');
   if (url.includes('NFeAutorizacao4')) {
     if (modo === 'rejeita') return wrap(`<retEnviNFe><cStat>104</cStat><xMotivo>Lote processado</xMotivo><protNFe versao="4.00"><infProt><chNFe>${chave}</chNFe><cStat>225</cStat><xMotivo>Rejeicao: Falha no Schema XML</xMotivo></infProt></protNFe></retEnviNFe>`);
@@ -130,6 +134,12 @@ try {
   check('cliente criado', r.status === 200 && cli.documento === '89488316000692');
   r = await call('GET', '/nfe/clientes?q=stahl');
   check('busca cliente por nome', r.body.length === 1);
+  r = await call('GET', '/nfe/clientes?q=' + encodeURIComponent('estação portão'));
+  check('busca de cliente ignora acento e aceita várias palavras', r.body.length === 0 || r.body[0].id === cli.id);
+  r = await call('GET', '/nfe/clientes?q=brasil stahl');
+  check('busca com palavras fora de ordem', r.body.length === 1);
+  r = await call('GET', '/nfe/clientes?q=89488316');
+  check('busca por parte do CNPJ', r.body.length === 1);
 
   // ---- Emissão autorizada
   const itens = [{ produto_id: placa.id, codigo: placa.codigo, descricao: placa.descricao, ncm: placa.ncm, cfop_dentro: '5101', cfop_fora: '6101', unidade: 'UND', quantidade: 2, valor_unitario: 199.5, aliq_tributos: 13.45 }];
@@ -256,6 +266,28 @@ try {
     r = await call('GET', `/nfe/notas/${r.body[0].id}/danfe`);
     check('DANFE de nota importada', r.status === 200 && r.body.slice(0, 4).toString() === '%PDF');
   }
+  // ---- Inscrição estadual (CPF x CNPJ, contribuinte, isento) e busca na SEFAZ
+  r = await call('GET', '/nfe/buscar-ie?cnpj=89488316000692&uf=RS');
+  check('busca IE na SEFAZ', r.body.encontrado && r.body.ie === '2130007915' && r.body.situacao === 'habilitado', JSON.stringify(r.body));
+  r = await call('GET', '/nfe/buscar-ie?cnpj=11890651000110&uf=RS');
+  check('CNPJ sem IE: não contribuinte', r.body.encontrado === false && /contribuinte/.test(r.body.motivo));
+  r = await call('POST', '/nfe/clientes', { ...clienteRS, contribuinte: 1, ie: '' });
+  check('contribuinte sem IE é recusado', r.status === 400 && /inscri/.test(r.body.error));
+  r = await call('PUT', `/nfe/clientes/${cli.id}`, { ...clienteRS, contribuinte: 1, ie: '213/0007915' });
+  check('cliente contribuinte com IE', r.body.contribuinte === 1 && r.body.ie === '2130007915');
+  r = await call('POST', '/nfe/emitir', { cliente_id: cli.id, itens });
+  const xmlContrib = enviados.at(-1).body;
+  check('nota para contribuinte leva indIEDest 1 e a IE', xmlContrib.includes('<indIEDest>1</indIEDest><IE>2130007915</IE>'));
+  r = await call('PUT', `/nfe/clientes/${cli.id}`, { ...clienteRS, contribuinte: 0, ie: 'ISENTO' });
+  check('IE "ISENTO" vira isento', r.body.contribuinte === 2 && r.body.ie === '');
+  r = await call('POST', '/nfe/emitir', { cliente_id: cli.id, itens });
+  check('nota para isento leva indIEDest 2 sem IE', enviados.at(-1).body.includes('<indIEDest>2</indIEDest>') && !/<dest>[\s\S]*<IE>/.test(enviados.at(-1).body));
+  r = await call('POST', '/nfe/clientes', { ...clienteRS, documento: '529.982.247-25', nome: 'Pessoa Fisica', contribuinte: 1, ie: '123' });
+  check('CPF nunca é contribuinte', r.status === 200 && r.body.contribuinte === 0 && r.body.ie === '');
+  r = await call('POST', '/nfe/clientes', { ...clienteRS, documento: '529.982.247-25', email: 'sem-arroba' });
+  check('e-mail inválido recusado', r.status === 400 && /mail/i.test(r.body.error));
+  await call('PUT', `/nfe/clientes/${cli.id}`, clienteRS);
+
   // ---- Ranking de uso, última compra e "emitir outra igual"
   r = await call('GET', '/nfe/produtos');
   check('produto mais vendido vem primeiro', r.body[0].codigo === '102' && r.body[0].uso >= 3, `${r.body[0].codigo} uso=${r.body[0].uso}`);

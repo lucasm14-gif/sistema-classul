@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   Lock, ShieldCheck, FileText, Plus, Search, X, LoaderCircle, Send, Download, FileDown, Ban, PenLine,
   RefreshCw, Users, Package, Settings2, CheckCircle2, AlertTriangle, Clock, Trash2, Upload, KeyRound,
-  Wifi, MessageCircle, Hash, FileSearch
+  Wifi, MessageCircle, Hash, FileSearch, Building2, User
 } from 'lucide-react';
 import { nfeApi, NfeLockError, getNfeToken, setNfeToken } from '../api';
 import { useToast } from './Toast';
@@ -75,10 +75,12 @@ function Modal({ title, onClose, children, wide }) {
   );
 }
 
-// Abre um Blob (PDF) numa aba nova ou baixa com nome.
-function abrirBlob(blob, nome) {
+// Baixa um Blob com nome, ou mostra numa janela já aberta no clique (sem bloqueio de pop-up).
+function abrirBlob(blob, nome, janela) {
   const url = URL.createObjectURL(blob);
-  if (nome) {
+  if (janela) {
+    janela.location.href = url;
+  } else if (nome) {
     const a = document.createElement('a');
     a.href = url;
     a.download = nome;
@@ -86,7 +88,7 @@ function abrirBlob(blob, nome) {
   } else {
     window.open(url, '_blank');
   }
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  setTimeout(() => URL.revokeObjectURL(url), 120000);
 }
 
 /* ------------------------------------------------------------------ PIN */
@@ -138,70 +140,146 @@ function PinScreen({ mode, onDone, toast }) {
 
 const clienteVazio = {
   documento: '', nome: '', ie: '', contribuinte: 0, email: '', telefone: '', cep: '', logradouro: '', numero: '',
-  complemento: '', bairro: '', municipio: '', cod_municipio: '', uf: 'RS'
+  complemento: '', bairro: '', municipio: '', cod_municipio: '', uf: ''
 };
 
+// Enter num campo vai para o próximo; no último, cai no botão de salvar (que tem data-enter)
+// e o Enter seguinte salva. Textarea continua aceitando Enter normalmente.
+function avancarComEnter(e) {
+  if (e.key !== 'Enter' || e.shiftKey || e.defaultPrevented) return;
+  const t = e.target;
+  if (t.tagName === 'TEXTAREA' || t.tagName === 'BUTTON') return;
+  e.preventDefault();
+  const campos = [
+    ...e.currentTarget.querySelectorAll('input:not([disabled]):not([type=file]):not([readonly]), select:not([disabled]), button[data-enter]')
+  ].filter((el) => el.offsetParent !== null);
+  const prox = campos[campos.indexOf(t) + 1];
+  if (prox) {
+    prox.focus();
+    if (prox.select && prox.tagName === 'INPUT') prox.select();
+  }
+}
+
+const SITUACAO_IE = [
+  [0, 'Não contribuinte de ICMS'],
+  [1, 'Contribuinte (tem inscrição estadual)'],
+  [2, 'Isento de inscrição estadual']
+];
+
 function ClienteForm({ cliente, onSaved, onCancel, onError }) {
-  const [f, setF] = useState({ ...clienteVazio, ...(cliente || {}) });
+  const inicial = { ...clienteVazio, ...(cliente || {}) };
+  const [f, setF] = useState(inicial);
+  const [tipo, setTipo] = useState(digits(inicial.documento).length === 11 ? 'pf' : 'pj');
   const [busy, setBusy] = useState('');
-  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.type === 'checkbox' ? (e.target.checked ? 1 : 0) : e.target.value }));
+  const [aviso, setAviso] = useState('');
+  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
+  const pj = tipo === 'pj';
+  const docRef = useRef(null);
+
+  useEffect(() => {
+    docRef.current?.focus();
+  }, [tipo]);
 
   const buscarCep = async (cep = f.cep) => {
     const c = digits(cep);
-    if (c.length !== 8) return;
+    if (c.length !== 8) return null;
     setBusy('cep');
     try {
       const r = await fetch(`https://viacep.com.br/ws/${c}/json/`).then((x) => x.json());
-      if (r.erro) throw new Error('CEP não encontrado.');
+      if (r.erro) throw new Error('CEP não encontrado. Confira os números.');
       setF((p) => ({
         ...p,
         cep: c,
         logradouro: p.logradouro || r.logradouro || '',
         bairro: p.bairro || r.bairro || '',
+        complemento: p.complemento || '',
         municipio: r.localidade || '',
         cod_municipio: r.ibge || '',
         uf: r.uf || p.uf
       }));
+      return r.uf;
     } catch (err) {
       onError(err.message);
+      return null;
     } finally {
       setBusy('');
     }
   };
 
-  // CNPJ: preenche nome e endereço pela consulta pública da Receita (BrasilAPI).
+  // IE no cadastro de contribuintes da SEFAZ (usa o certificado da Classul).
+  const buscarIE = async (uf = f.uf, silencioso = false) => {
+    const d = digits(f.documento);
+    if (d.length !== 14 || !uf) {
+      if (!silencioso) onError(d.length !== 14 ? 'Preencha o CNPJ.' : 'Preencha o CEP antes (para saber o estado).');
+      return;
+    }
+    setBusy('ie');
+    try {
+      const r = await nfeApi.buscarIE(d, uf);
+      if (r.encontrado) {
+        setF((p) => ({ ...p, ie: r.ie, contribuinte: r.situacao === 'habilitado' ? 1 : p.contribuinte }));
+        setAviso(`IE ${r.ie} encontrada na SEFAZ-${uf} (${r.situacao}).`);
+      } else {
+        setF((p) => ({ ...p, contribuinte: p.ie ? p.contribuinte : 0 }));
+        setAviso(r.motivo);
+      }
+    } catch (err) {
+      if (!silencioso) onError(err.message, err);
+      else setAviso(err.message);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  // CNPJ: preenche nome e endereço pela Receita (BrasilAPI) e depois procura a IE.
   const buscarCnpj = async () => {
     const d = digits(f.documento);
     if (d.length !== 14) return;
     setBusy('cnpj');
     try {
-      const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${d}`).then((x) => (x.ok ? x.json() : Promise.reject(new Error('CNPJ não encontrado na Receita.'))));
+      const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${d}`).then((x) =>
+        x.ok ? x.json() : Promise.reject(new Error('CNPJ não encontrado na Receita. Preencha à mão.'))
+      );
+      if (r.descricao_situacao_cadastral && r.descricao_situacao_cadastral !== 'ATIVA') {
+        setAviso(`Atenção: na Receita este CNPJ está ${r.descricao_situacao_cadastral}.`);
+      }
       setF((p) => ({
         ...p,
         nome: p.nome || r.razao_social || '',
-        logradouro: [r.descricao_tipo_de_logradouro, r.logradouro].filter(Boolean).join(' ') || p.logradouro,
-        numero: r.numero || p.numero,
-        complemento: r.complemento || p.complemento,
-        bairro: r.bairro || p.bairro,
-        cep: digits(r.cep) || p.cep,
+        logradouro: p.logradouro || [r.descricao_tipo_de_logradouro, r.logradouro].filter(Boolean).join(' '),
+        numero: p.numero || r.numero || '',
+        complemento: p.complemento || r.complemento || '',
+        bairro: p.bairro || r.bairro || '',
+        cep: p.cep || digits(r.cep),
         municipio: r.municipio || p.municipio,
         cod_municipio: r.codigo_municipio_ibge ? String(r.codigo_municipio_ibge) : p.cod_municipio,
         uf: r.uf || p.uf,
         telefone: p.telefone || digits(r.ddd_telefone_1),
         email: p.email || (r.email || '').toLowerCase()
       }));
-      if (!r.codigo_municipio_ibge && r.cep) await buscarCep(r.cep);
+      let uf = r.uf;
+      if (!r.codigo_municipio_ibge && r.cep) uf = (await buscarCep(r.cep)) || uf;
+      if (!f.ie && uf) await buscarIE(uf, true);
     } catch (err) {
       onError(err.message);
     } finally {
-      setBusy('');
+      setBusy((b) => (b === 'cnpj' ? '' : b));
     }
   };
 
+  const trocarTipo = (t) => {
+    setTipo(t);
+    setAviso('');
+    // Cadastro novo: troca de tipo recomeça (os dados da empresa não servem para a pessoa física).
+    setF((p) => (cliente?.id ? { ...p, documento: '', ie: '', contribuinte: 0 } : { ...clienteVazio }));
+  };
+
+  const docOk = digits(f.documento).length === (pj ? 14 : 11);
   const save = async () => {
+    if (!docOk) return onError(pj ? 'O CNPJ tem 14 números.' : 'O CPF tem 11 números.');
     setBusy('save');
     try {
-      onSaved(await nfeApi.saveCliente(cliente?.id, f));
+      onSaved(await nfeApi.saveCliente(cliente?.id, { ...f, contribuinte: Number(f.contribuinte) }));
     } catch (err) {
       onError(err.message, err);
     } finally {
@@ -209,42 +287,91 @@ function ClienteForm({ cliente, onSaved, onCancel, onError }) {
     }
   };
 
-  const pj = digits(f.documento).length === 14;
+  const spin = (k) => busy === k && <LoaderCircle size={14} className="animate-spin text-slate-400" />;
   return (
-    <div className="grid grid-cols-6 gap-3">
-      <div className="col-span-6 sm:col-span-3">
-        <label className={label}>CPF ou CNPJ *</label>
-        <div className="flex gap-2">
-          <input className={input} value={f.documento} onChange={set('documento')} onBlur={buscarCnpj} placeholder="só números" />
-          {pj && (
-            <button type="button" onClick={buscarCnpj} className={btnGhost} title="Buscar dados na Receita">
-              {busy === 'cnpj' ? <LoaderCircle size={15} className="animate-spin" /> : <Search size={15} />}
-            </button>
-          )}
+    <div className="grid grid-cols-6 gap-3" onKeyDown={avancarComEnter}>
+      <div className="col-span-6 flex gap-2">
+        {[['pj', 'Empresa (CNPJ)'], ['pf', 'Pessoa física (CPF)']].map(([t, l]) => (
+          <button key={t} type="button" tabIndex={-1} onClick={() => trocarTipo(t)} className={tipo === t ? btnPrimary : btnGhost}>
+            {t === 'pj' ? <Building2 size={15} /> : <User size={15} />} {l}
+          </button>
+        ))}
+      </div>
+
+      <div className="col-span-6 sm:col-span-2">
+        <label className={label}>{pj ? 'CNPJ' : 'CPF'} *</label>
+        <div className="flex items-center gap-2">
+          <input
+            ref={docRef}
+            className={input}
+            value={f.documento}
+            onChange={(e) => setF((p) => ({ ...p, documento: e.target.value }))}
+            onBlur={() => {
+              setF((p) => ({ ...p, documento: fmtDoc(p.documento) }));
+              if (pj) buscarCnpj();
+            }}
+            placeholder={pj ? '00.000.000/0000-00' : '000.000.000-00'}
+            inputMode="numeric"
+          />
+          {spin('cnpj')}
         </div>
       </div>
-      <div className="col-span-6 sm:col-span-3">
-        <label className={label}>Nome / razão social *</label>
+      <div className="col-span-6 sm:col-span-4">
+        <label className={label}>{pj ? 'Razão social' : 'Nome completo'} *</label>
         <input className={input} value={f.nome} onChange={set('nome')} />
       </div>
+
+      {pj && (
+        <>
+          <div className="col-span-6 sm:col-span-3">
+            <label className={label}>Situação no ICMS</label>
+            <select className={input} value={f.contribuinte} onChange={(e) => setF((p) => ({ ...p, contribuinte: Number(e.target.value), ie: Number(e.target.value) === 2 ? '' : p.ie }))}>
+              {SITUACAO_IE.map(([v, t]) => (
+                <option key={v} value={v}>{t}</option>
+              ))}
+            </select>
+          </div>
+          <div className="col-span-6 sm:col-span-3">
+            <label className={label}>Inscrição estadual {Number(f.contribuinte) === 1 ? '*' : ''}</label>
+            <div className="flex gap-2">
+              <input
+                className={input}
+                value={f.ie || ''}
+                onChange={(e) => setF((p) => ({ ...p, ie: e.target.value, contribuinte: digits(e.target.value) && !p.contribuinte ? 1 : p.contribuinte }))}
+                disabled={Number(f.contribuinte) === 2}
+                placeholder={Number(f.contribuinte) === 2 ? 'isento' : 'só números'}
+                inputMode="numeric"
+              />
+              <button type="button" tabIndex={-1} className={btnGhost} title="Buscar a IE na SEFAZ" onClick={() => buscarIE()} disabled={busy === 'ie'}>
+                {busy === 'ie' ? <LoaderCircle size={15} className="animate-spin" /> : <Search size={15} />} SEFAZ
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+      {aviso && <div className="col-span-6 rounded-xl bg-brand-50 text-brand-800 px-3 py-2 text-xs font-semibold">{aviso}</div>}
+
       <div className="col-span-3 sm:col-span-2">
         <label className={label}>CEP *</label>
-        <div className="flex gap-2">
-          <input className={input} value={f.cep} onChange={set('cep')} onBlur={() => buscarCep()} />
-          {busy === 'cep' && <LoaderCircle size={15} className="animate-spin self-center text-slate-400" />}
+        <div className="flex items-center gap-2">
+          <input className={input} value={f.cep} onChange={set('cep')} onBlur={() => buscarCep()} inputMode="numeric" placeholder="00000-000" />
+          {spin('cep')}
         </div>
       </div>
       <div className="col-span-3 sm:col-span-4">
-        <label className={label}>Cidade / UF (pelo CEP)</label>
-        <input className={input} disabled value={f.municipio ? `${f.municipio} - ${f.uf}${f.cod_municipio ? ` · IBGE ${f.cod_municipio}` : ''}` : ''} placeholder="preencha o CEP" />
+        <label className={label}>Cidade / UF</label>
+        <div className={`${input} bg-slate-50 text-slate-500 truncate`}>
+          {f.municipio ? `${f.municipio} - ${f.uf}` : 'preenchida pelo CEP'}
+          {f.cod_municipio && <span className="text-[10px] text-slate-400"> · IBGE {f.cod_municipio}</span>}
+        </div>
       </div>
       <div className="col-span-6 sm:col-span-4">
-        <label className={label}>Endereço *</label>
+        <label className={label}>Endereço (rua) *</label>
         <input className={input} value={f.logradouro} onChange={set('logradouro')} />
       </div>
-      <div className="col-span-2 sm:col-span-2">
+      <div className="col-span-2">
         <label className={label}>Número</label>
-        <input className={input} value={f.numero} onChange={set('numero')} />
+        <input className={input} value={f.numero} onChange={set('numero')} placeholder="S/N" />
       </div>
       <div className="col-span-4 sm:col-span-3">
         <label className={label}>Bairro *</label>
@@ -252,33 +379,24 @@ function ClienteForm({ cliente, onSaved, onCancel, onError }) {
       </div>
       <div className="col-span-6 sm:col-span-3">
         <label className={label}>Complemento</label>
-        <input className={input} value={f.complemento || ''} onChange={set('complemento')} />
+        <input className={input} value={f.complemento || ''} onChange={set('complemento')} placeholder="sala, apto, bloco…" />
       </div>
-      <div className="col-span-3">
+      <div className="col-span-6 sm:col-span-3">
         <label className={label}>Telefone / WhatsApp</label>
-        <input className={input} value={f.telefone || ''} onChange={set('telefone')} />
+        <input className={input} value={f.telefone || ''} onChange={set('telefone')} inputMode="tel" placeholder="(51) 99999-9999" />
       </div>
-      <div className="col-span-3">
+      <div className="col-span-6 sm:col-span-3">
         <label className={label}>E-mail</label>
-        <input className={input} value={f.email || ''} onChange={set('email')} />
+        <input className={input} value={f.email || ''} onChange={set('email')} type="email" placeholder="opcional" />
       </div>
-      {pj && (
-        <>
-          <div className="col-span-3">
-            <label className={label}>Inscrição estadual</label>
-            <input className={input} value={f.ie || ''} onChange={set('ie')} placeholder="se tiver" />
-          </div>
-          <label className="col-span-3 flex items-center gap-2 text-sm font-semibold text-slate-600 mt-5">
-            <input type="checkbox" checked={Boolean(f.contribuinte)} onChange={set('contribuinte')} disabled={!digits(f.ie)} />
-            Contribuinte de ICMS
-          </label>
-        </>
-      )}
-      <div className="col-span-6 flex justify-end gap-2 mt-2">
-        {onCancel && <button className={btnGhost} onClick={onCancel}>Cancelar</button>}
-        <button className={btnPrimary} onClick={save} disabled={busy === 'save'}>
-          {busy === 'save' ? <LoaderCircle size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Salvar cliente
-        </button>
+      <div className="col-span-6 flex justify-between items-center gap-2 mt-2">
+        <span className="text-[11px] text-slate-400">Enter passa para o próximo campo.</span>
+        <div className="flex gap-2">
+          {onCancel && <button type="button" className={btnGhost} onClick={onCancel}>Cancelar</button>}
+          <button type="button" data-enter className={`${btnPrimary} focus:ring-4 focus:ring-brand-500/40 outline-none`} onClick={save} disabled={busy === 'save'}>
+            {busy === 'save' ? <LoaderCircle size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Salvar cliente
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -411,7 +529,7 @@ function ClientePicker({ value, onChange, onError }) {
           <div className="font-extrabold text-brand-950 truncate">{value.nome}</div>
           <div className="text-xs font-semibold text-slate-500">
             {fmtDoc(value.documento)} · {value.municipio} - {value.uf}
-            {value.contribuinte ? ' · contribuinte de ICMS' : ''}
+            {Number(value.contribuinte) === 1 ? ` · IE ${value.ie}` : Number(value.contribuinte) === 2 ? ' · isento de IE' : ''}
           </div>
         </div>
         <button className="text-xs font-bold text-brand-700 hover:underline shrink-0" onClick={() => onChange(null)}>
@@ -932,7 +1050,15 @@ function NotaModal({ id, onClose, onChanged, onCorrigir, onCopiar, onError, toas
         <div className="flex flex-wrap gap-2">
           {temXml && (
             <>
-              <button className={btnGhost} disabled={busy} onClick={() => run('pdf', async () => abrirBlob(await nfeApi.danfe(id)))}>
+              <button className={btnGhost} disabled={busy} onClick={() => run('pdf', async () => {
+                const janela = window.open('', '_blank');
+                try {
+                  abrirBlob(await nfeApi.danfe(id), null, janela);
+                } catch (err) {
+                  janela?.close();
+                  throw err;
+                }
+              })}>
                 {busy === 'pdf' ? <LoaderCircle size={15} className="animate-spin" /> : <FileText size={15} />} Ver PDF
               </button>
               <button className={btnGhost} disabled={busy} onClick={() => run('pdfd', async () => abrirBlob(await nfeApi.danfe(id), `${nomeArq}.pdf`))}>
@@ -1175,7 +1301,12 @@ function Clientes({ onError }) {
         {(lista || []).map((c) => (
           <button key={c.id} onClick={() => setEditando(c)} className="w-full text-left px-5 py-3 hover:bg-brand-50/50">
             <div className="font-bold text-brand-950">{c.nome}</div>
-            <div className="text-xs text-slate-500">{fmtDoc(c.documento)} · {c.municipio} - {c.uf}{c.origem === 'cnk' ? ' · do C&K' : ''}</div>
+            <div className="text-xs text-slate-500">
+              {fmtDoc(c.documento)} · {c.municipio} - {c.uf}
+              {c.ie ? ` · IE ${c.ie}` : ''}
+              {c.telefone ? ` · ${c.telefone}` : ''}
+              {c.origem === 'cnk' ? ' · do C&K' : ''}
+            </div>
           </button>
         ))}
         {lista && !lista.length && <div className="p-8 text-center text-sm text-slate-400">Nenhum cliente encontrado.</div>}
@@ -1192,13 +1323,39 @@ function Clientes({ onError }) {
 const produtoVazio = { codigo: '', descricao: '', ncm: '', cfop_dentro: '5101', cfop_fora: '6101', unidade: 'UND', valor: '', cest: '', origem: '0', csosn: '102', aliq_tributos: '', ativo: 1 };
 
 function ProdutoForm({ produto, onSaved, onCancel, onError }) {
-  const [f, setF] = useState({ ...produtoVazio, ...(produto || {}) });
+  const [f, setF] = useState(() => ({
+    ...produtoVazio,
+    ...(produto || {}),
+    valor: produto?.valor ? String(produto.valor).replace('.', ',') : '',
+    aliq_tributos: produto?.aliq_tributos ? String(produto.aliq_tributos).replace('.', ',') : ''
+  }));
   const [busy, setBusy] = useState(false);
+  const [ncmInfo, setNcmInfo] = useState(null);
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.type === 'checkbox' ? (e.target.checked ? 1 : 0) : e.target.value }));
+  const descRef = useRef(null);
+  useEffect(() => {
+    descRef.current?.focus();
+  }, []);
+
+  // Confere o NCM na tabela oficial (BrasilAPI) e mostra a descrição.
+  const conferirNcm = useCallback(async (ncm) => {
+    const d = digits(ncm);
+    if (d.length !== 8) return setNcmInfo(d ? { erro: 'O NCM tem 8 números.' } : null);
+    try {
+      const r = await fetch(`https://brasilapi.com.br/api/ncm/v1/${d}`);
+      setNcmInfo(r.ok ? { ok: (await r.json()).descricao } : { erro: 'Este NCM não existe na tabela oficial.' });
+    } catch {
+      setNcmInfo(null);
+    }
+  }, []);
+  useEffect(() => {
+    if (produto?.ncm) conferirNcm(produto.ncm);
+  }, [produto, conferirNcm]);
+
   const save = async () => {
     setBusy(true);
     try {
-      onSaved(await nfeApi.saveProduto(produto?.id, { ...f, valor: num(f.valor), aliq_tributos: num(f.aliq_tributos) }));
+      onSaved(await nfeApi.saveProduto(produto?.id, { ...f, ncm: digits(f.ncm), valor: num(f.valor), aliq_tributos: num(f.aliq_tributos) }));
     } catch (err) {
       onError(err.message, err);
     } finally {
@@ -1206,37 +1363,71 @@ function ProdutoForm({ produto, onSaved, onCancel, onError }) {
     }
   };
   return (
-    <div className="grid grid-cols-6 gap-3">
-      <div className="col-span-2"><label className={label}>Código</label><input className={input} value={f.codigo || ''} onChange={set('codigo')} /></div>
-      <div className="col-span-4"><label className={label}>Descrição *</label><input className={input} value={f.descricao} onChange={set('descricao')} /></div>
-      <div className="col-span-3 sm:col-span-2"><label className={label}>NCM *</label><input className={input} value={f.ncm} onChange={set('ncm')} placeholder="8 dígitos" /></div>
-      <div className="col-span-3 sm:col-span-2"><label className={label}>Unidade</label><input className={input} value={f.unidade} onChange={set('unidade')} /></div>
-      <div className="col-span-6 sm:col-span-2"><label className={label}>Preço padrão</label><input className={input} value={f.valor} onChange={set('valor')} inputMode="decimal" /></div>
+    <div className="grid grid-cols-6 gap-3" onKeyDown={avancarComEnter}>
+      <div className="col-span-6 sm:col-span-4">
+        <label className={label}>Descrição *</label>
+        <input ref={descRef} className={input} value={f.descricao} onChange={set('descricao')} placeholder="ex.: PLACA AÇO TAM 12X17CM C/ EST" />
+      </div>
+      <div className="col-span-6 sm:col-span-2">
+        <label className={label}>Código</label>
+        <input className={input} value={f.codigo || ''} onChange={set('codigo')} placeholder="opcional" />
+      </div>
       <div className="col-span-3 sm:col-span-2">
-        <label className={label}>CFOP no RS</label>
-        <select className={input} value={f.cfop_dentro} onChange={(e) => setF((p) => ({ ...p, cfop_dentro: e.target.value, cfop_fora: '6' + e.target.value.slice(1) }))}>
-          <option value="5101">5101 · fabricação própria</option>
-          <option value="5102">5102 · revenda</option>
-          {!['5101', '5102'].includes(f.cfop_dentro) && <option value={f.cfop_dentro}>{f.cfop_dentro}</option>}
+        <label className={label}>NCM *</label>
+        <input className={input} value={f.ncm} onChange={set('ncm')} onBlur={() => conferirNcm(f.ncm)} placeholder="8310.00.00" inputMode="numeric" />
+      </div>
+      <div className="col-span-3 sm:col-span-2">
+        <label className={label}>Unidade</label>
+        <select className={input} value={f.unidade} onChange={set('unidade')}>
+          {['UND', 'UN', 'PC', 'CJ', 'KIT', 'PAR', 'CX', 'M', 'M2'].concat([f.unidade]).filter((v, i, a) => v && a.indexOf(v) === i).map((u) => (
+            <option key={u} value={u}>{u}</option>
+          ))}
         </select>
       </div>
-      <div className="col-span-3 sm:col-span-2"><label className={label}>CFOP fora do RS</label><input className={input} value={f.cfop_fora} onChange={set('cfop_fora')} /></div>
-      <div className="col-span-6 sm:col-span-2"><label className={label}>% aprox. tributos</label><input className={input} value={f.aliq_tributos} onChange={set('aliq_tributos')} placeholder="0" inputMode="decimal" /></div>
-      <div className="col-span-3 sm:col-span-2"><label className={label}>CEST (se tiver)</label><input className={input} value={f.cest || ''} onChange={set('cest')} /></div>
+      <div className="col-span-6 sm:col-span-2">
+        <label className={label}>Preço padrão</label>
+        <input className={input} value={f.valor} onChange={set('valor')} inputMode="decimal" placeholder="0,00" />
+      </div>
+      {ncmInfo && (
+        <div className={`col-span-6 rounded-xl px-3 py-2 text-xs font-semibold ${ncmInfo.ok ? 'bg-brand-50 text-brand-800' : 'bg-flame-50 text-flame-700'}`}>
+          {ncmInfo.ok ? `NCM: ${ncmInfo.ok}` : ncmInfo.erro}
+        </div>
+      )}
+      <div className="col-span-6 sm:col-span-3">
+        <label className={label}>Tipo de venda (CFOP)</label>
+        <select className={input} value={f.cfop_dentro} onChange={(e) => setF((p) => ({ ...p, cfop_dentro: e.target.value, cfop_fora: '6' + e.target.value.slice(1) }))}>
+          <option value="5101">Fabricado pela Classul · 5101 / 6101</option>
+          <option value="5102">Comprado pronto (revenda) · 5102 / 6102</option>
+          {!['5101', '5102'].includes(f.cfop_dentro) && <option value={f.cfop_dentro}>{f.cfop_dentro} / {f.cfop_fora}</option>}
+        </select>
+      </div>
+      <div className="col-span-3 sm:col-span-1">
+        <label className={label}>% tributos</label>
+        <input className={input} value={f.aliq_tributos} onChange={set('aliq_tributos')} placeholder="0" inputMode="decimal" title="Valor aproximado dos tributos (Lei 12.741)" />
+      </div>
       <div className="col-span-3 sm:col-span-2">
         <label className={label}>CSOSN</label>
         <select className={input} value={f.csosn} onChange={set('csosn')}>
-          <option value="102">102 · Simples sem crédito</option>
+          <option value="102">102 · Simples, sem crédito</option>
           <option value="103">103 · isenção</option>
           <option value="400">400 · não tributada</option>
         </select>
       </div>
-      <label className="col-span-6 sm:col-span-2 flex items-center gap-2 text-sm font-semibold text-slate-600 mt-5">
-        <input type="checkbox" checked={Boolean(f.ativo)} onChange={set('ativo')} /> Ativo
+      <div className="col-span-3 sm:col-span-2">
+        <label className={label}>CEST (se tiver)</label>
+        <input className={input} value={f.cest || ''} onChange={set('cest')} inputMode="numeric" />
+      </div>
+      <label className="col-span-3 sm:col-span-2 flex items-center gap-2 text-sm font-semibold text-slate-600 mt-5">
+        <input type="checkbox" checked={Boolean(f.ativo)} onChange={set('ativo')} /> Ativo (aparece na emissão)
       </label>
-      <div className="col-span-6 flex justify-end gap-2 mt-2">
-        <button className={btnGhost} onClick={onCancel}>Cancelar</button>
-        <button className={btnPrimary} onClick={save} disabled={busy}>{busy && <LoaderCircle size={15} className="animate-spin" />} Salvar produto</button>
+      <div className="col-span-6 flex justify-between items-center gap-2 mt-2">
+        <span className="text-[11px] text-slate-400">Enter passa para o próximo campo.</span>
+        <div className="flex gap-2">
+          <button type="button" className={btnGhost} onClick={onCancel}>Cancelar</button>
+          <button type="button" data-enter className={`${btnPrimary} focus:ring-4 focus:ring-brand-500/40 outline-none`} onClick={save} disabled={busy}>
+            {busy && <LoaderCircle size={15} className="animate-spin" />} Salvar produto
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1401,7 +1592,7 @@ function Configurar({ config, onSaved, onError, toast }) {
           <div><label className={label}>Série</label><input className={input} value={serie} onChange={(e) => setSerie(e.target.value)} /></div>
           <div><label className={label}>Próximo número</label><input className={input} value={proximo} onChange={(e) => setProximo(e.target.value)} /></div>
         </div>
-        <p className="text-[11px] text-slate-500">O C&K usa a série 1 (última nota 4614). Usando a série 2 aqui, os dois nunca repetem número.</p>
+        <p className="text-[11px] text-slate-500">O C&K usa a série 1. Usando a série 2 aqui, os dois nunca repetem número.</p>
         <button className={btnGhost} disabled={busy === 'num'} onClick={() => run('num', async () => {
           if (String(config.serie) !== serie) await nfeApi.saveConfig({ serie: Number(serie) });
           await nfeApi.saveConfig({ proximo_numero: Number(proximo) });
