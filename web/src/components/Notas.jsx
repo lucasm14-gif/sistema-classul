@@ -284,14 +284,123 @@ function ClienteForm({ cliente, onSaved, onCancel, onError }) {
   );
 }
 
+// ------------------------------------------------------------------ busca inteligente
+
+// Normaliza para comparar: sem acento, minúsculo e "12 x 17" vira "12x17".
+const norm = (s) =>
+  String(s ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/(\d+(?:[.,]\d+)?)\s*[x×*]\s*(\d+(?:[.,]\d+)?)/g, '$1x$2')
+    .replace(/c\/\s*/g, 'com ');
+
+// Como as pessoas falam × como está escrito no cadastro do C&K.
+const SINONIMOS = {
+  homenagem: ['placa'], inauguracao: ['placa'], jazigo: ['placa'], placa: ['placa', 'plaqueta'], plaqueta: ['placa', 'cracha'],
+  inox: ['inox', 'aco'], aco: ['aco', 'inox'], metal: ['aco', 'metal', 'latao'], dourada: ['latao', 'dour'], latao: ['latao'],
+  pin: ['pin', 'boton'], pins: ['pin', 'boton'], boton: ['boton', 'pin'], botom: ['boton'], botton: ['boton'], broche: ['boton', 'pin', 'broche'],
+  estojo: ['estojo', 'est'], caixa: ['estojo'], veludo: ['vel'], com: ['com'], trofeu: ['trofeu'], medalha: ['medalha'],
+  cracha: ['cracha'], acrilico: ['acril'], quadro: ['moldura', 'quadro'], moldura: ['moldura'], ima: ['magneto', 'ima'], tapete: ['tapete', 'capacho']
+};
+
+function pontuar(produto, tokens) {
+  const palavras = norm(`${produto.codigo || ''} ${produto.descricao}`).split(/[^a-z0-9.,/]+/).filter(Boolean);
+  let total = 0;
+  for (const t of tokens) {
+    const alvos = [t, ...(SINONIMOS[t] || [])];
+    let melhor = 0;
+    for (const w of palavras) {
+      for (const a of alvos) {
+        if (w === a) melhor = Math.max(melhor, a === t ? 6 : 4);
+        else if (w.startsWith(a)) melhor = Math.max(melhor, a === t ? 4 : 3);
+        else if (w.length >= 3 && a.startsWith(w)) melhor = Math.max(melhor, 3);
+        else if (a.length >= 3 && w.includes(a)) melhor = Math.max(melhor, 2);
+      }
+    }
+    if (!melhor) return 0; // todo termo digitado precisa aparecer
+    total += melhor;
+  }
+  return total + Math.log2((produto.uso || 0) + 1);
+}
+
+function buscarProdutos(produtos, texto, limite = 8) {
+  const tokens = norm(texto).split(/[^a-z0-9.,/]+/).filter((t) => t && t !== 'de' && t !== 'tam' && t !== 'cm');
+  if (!tokens.length) return [...produtos].sort((a, b) => (b.uso || 0) - (a.uso || 0)).slice(0, limite);
+  return produtos
+    .map((p) => ({ p, s: pontuar(p, tokens) }))
+    .filter((x) => x.s > 0)
+    .sort((a, b) => b.s - a.s)
+    .slice(0, limite)
+    .map((x) => x.p);
+}
+
+// Lista com setas ↑ ↓, Enter escolhe e Esc fecha.
+function useNavegacao(itens, onEscolher) {
+  const [ativo, setAtivo] = useState(0);
+  useEffect(() => setAtivo(0), [itens.length]);
+  const onKeyDown = (e) => {
+    if (!itens.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setAtivo((a) => (a + 1) % itens.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setAtivo((a) => (a - 1 + itens.length) % itens.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      onEscolher(itens[Math.min(ativo, itens.length - 1)]);
+    }
+  };
+  return { ativo, setAtivo, onKeyDown };
+}
+
+// Destaca no texto os termos digitados (comparação sem acento e sem maiúscula).
+const simples = (s) => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+function Realce({ texto, termos }) {
+  const t = simples(termos).split(/[\s,]+/).filter((x) => x.length >= 2);
+  const base = simples(texto);
+  if (!t.length || base.length !== texto.length) return texto;
+  const marcas = new Array(texto.length).fill(false);
+  for (const termo of t) {
+    let i = base.indexOf(termo);
+    while (i >= 0) {
+      for (let k = i; k < i + termo.length; k++) marcas[k] = true;
+      i = base.indexOf(termo, i + termo.length);
+    }
+  }
+  const partes = [];
+  let atual = '';
+  let marcado = marcas[0];
+  [...texto].forEach((ch, i) => {
+    if (marcas[i] !== marcado) {
+      partes.push([atual, marcado]);
+      atual = '';
+      marcado = marcas[i];
+    }
+    atual += ch;
+  });
+  partes.push([atual, marcado]);
+  return partes.map(([p, m], i) => (m ? <span key={i} className="text-brand-600 underline decoration-2 underline-offset-2">{p}</span> : <span key={i}>{p}</span>));
+}
+
+/* ------------------------------------------------------------------ Cliente na emissão */
+
 function ClientePicker({ value, onChange, onError }) {
   const [busca, setBusca] = useState('');
   const [lista, setLista] = useState([]);
   const [aberto, setAberto] = useState(false);
   const [novo, setNovo] = useState(false);
+  const escolher = (c) => {
+    onChange(c);
+    setAberto(false);
+    setBusca('');
+  };
+  const nav = useNavegacao(aberto ? lista : [], escolher);
+
   useEffect(() => {
     if (!aberto) return undefined;
-    const t = setTimeout(() => nfeApi.clientes(busca).then(setLista).catch((e) => onError(e.message, e)), 250);
+    const t = setTimeout(() => nfeApi.clientes(busca).then(setLista).catch((e) => onError(e.message, e)), busca ? 200 : 0);
     return () => clearTimeout(t);
   }, [busca, aberto, onError]);
 
@@ -302,6 +411,7 @@ function ClientePicker({ value, onChange, onError }) {
           <div className="font-extrabold text-brand-950 truncate">{value.nome}</div>
           <div className="text-xs font-semibold text-slate-500">
             {fmtDoc(value.documento)} · {value.municipio} - {value.uf}
+            {value.contribuinte ? ' · contribuinte de ICMS' : ''}
           </div>
         </div>
         <button className="text-xs font-bold text-brand-700 hover:underline shrink-0" onClick={() => onChange(null)}>
@@ -317,43 +427,56 @@ function ClientePicker({ value, onChange, onError }) {
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             className={`${input} pl-9`}
-            placeholder="Buscar cliente por nome ou CPF/CNPJ"
+            placeholder="Digite o nome, CPF ou CNPJ do cliente"
             value={busca}
+            autoFocus
             onFocus={() => setAberto(true)}
-            onChange={(e) => setBusca(e.target.value)}
+            onBlur={() => setTimeout(() => setAberto(false), 150)}
+            onChange={(e) => {
+              setBusca(e.target.value);
+              setAberto(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setAberto(false);
+              nav.onKeyDown(e);
+            }}
           />
         </div>
         <button className={btnGhost} onClick={() => setNovo(true)}>
           <Plus size={15} /> Novo
         </button>
       </div>
-      {aberto && lista.length > 0 && (
-        <div className="absolute z-20 mt-1 w-full max-h-72 overflow-y-auto rounded-2xl border border-black/10 bg-white shadow-xl">
-          {lista.map((c) => (
+      {aberto && (
+        <div className="absolute z-20 mt-1 w-full max-h-80 overflow-y-auto rounded-2xl border border-black/10 bg-white shadow-xl">
+          {!busca && lista.length > 0 && <div className="px-4 pt-2.5 pb-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Recentes</div>}
+          {lista.map((c, i) => (
             <button
               key={c.id}
-              onClick={() => {
-                onChange(c);
-                setAberto(false);
-              }}
-              className="w-full text-left px-4 py-2.5 hover:bg-brand-50 border-b border-black/5 last:border-0"
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => nav.setAtivo(i)}
+              onClick={() => escolher(c)}
+              className={`w-full text-left px-4 py-2.5 border-b border-black/5 last:border-0 ${i === nav.ativo ? 'bg-brand-50' : ''}`}
             >
-              <div className="font-bold text-sm text-brand-950 truncate">{c.nome}</div>
-              <div className="text-xs text-slate-500">
-                {fmtDoc(c.documento)} · {c.municipio} - {c.uf}
-              </div>
+              <div className="font-bold text-sm text-brand-950 truncate"><Realce texto={c.nome} termos={busca} /></div>
+              <div className="text-xs text-slate-500">{fmtDoc(c.documento)} · {c.municipio} - {c.uf}</div>
             </button>
           ))}
+          {busca && !lista.length && (
+            <button onMouseDown={(e) => e.preventDefault()} onClick={() => setNovo(true)} className="w-full text-left px-4 py-3 text-sm font-bold text-brand-700 hover:bg-brand-50">
+              + Cadastrar novo cliente {digits(busca).length >= 11 ? fmtDoc(busca) : `"${busca}"`}
+            </button>
+          )}
         </div>
       )}
       {novo && (
         <Modal title="Novo cliente" onClose={() => setNovo(false)} wide>
           <ClienteForm
+            cliente={digits(busca).length >= 11 ? { documento: digits(busca) } : busca ? { nome: busca } : null}
             onCancel={() => setNovo(false)}
             onError={onError}
             onSaved={(c) => {
               setNovo(false);
-              onChange(c);
+              escolher(c);
             }}
           />
         </Modal>
@@ -362,62 +485,154 @@ function ClientePicker({ value, onChange, onError }) {
   );
 }
 
+/* ------------------------------------------------------------------ Produto na emissão */
+
+function ProdutoBusca({ produtos, onEscolher, onNovo }) {
+  const [texto, setTexto] = useState('');
+  const [aberto, setAberto] = useState(false);
+  const sugestoes = useMemo(() => buscarProdutos(produtos, texto), [produtos, texto]);
+  const escolher = (p) => {
+    onEscolher(p);
+    setTexto('');
+  };
+  const nav = useNavegacao(aberto ? sugestoes : [], escolher);
+  const inputRef = useRef(null);
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <Package size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <input
+          ref={inputRef}
+          className={`${input} pl-9 pr-24`}
+          placeholder='Digite o produto: "12x17", "estojo 20x16", "medalha"…'
+          value={texto}
+          onFocus={() => setAberto(true)}
+          onBlur={() => setTimeout(() => setAberto(false), 150)}
+          onChange={(e) => {
+            setTexto(e.target.value);
+            setAberto(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setAberto(false);
+            if (e.key === 'Enter' && !sugestoes.length && texto.trim()) {
+              e.preventDefault();
+              onNovo(texto.trim());
+              return;
+            }
+            nav.onKeyDown(e);
+          }}
+        />
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-300 hidden sm:block">↑ ↓ Enter</span>
+      </div>
+      {aberto && (
+        <div className="absolute z-20 mt-1 w-full max-h-96 overflow-y-auto rounded-2xl border border-black/10 bg-white shadow-xl">
+          {!texto && <div className="px-4 pt-2.5 pb-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Mais vendidos</div>}
+          {sugestoes.map((p, i) => (
+            <button
+              key={p.id}
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => nav.setAtivo(i)}
+              onClick={() => escolher(p)}
+              className={`w-full text-left px-4 py-2.5 border-b border-black/5 last:border-0 flex items-center justify-between gap-3 ${i === nav.ativo ? 'bg-brand-50' : ''}`}
+            >
+              <div className="min-w-0">
+                <div className="font-bold text-sm text-brand-950 truncate"><Realce texto={p.descricao} termos={texto} /></div>
+                <div className="text-[11px] text-slate-500">
+                  {p.codigo ? `cód. ${p.codigo} · ` : ''}NCM {p.ncm} · {p.cfop_dentro === '5101' ? 'fabricação' : 'revenda'}
+                  {p.uso ? ` · saiu ${p.uso}×` : ''}
+                </div>
+              </div>
+              <span className="text-sm font-extrabold text-brand-700 shrink-0">{p.valor ? brl(p.valor) : ''}</span>
+            </button>
+          ))}
+          {texto.trim() && (
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => onNovo(texto.trim())}
+              className="w-full text-left px-4 py-2.5 text-sm font-bold text-brand-700 hover:bg-brand-50"
+            >
+              + Cadastrar "{texto.trim()}" como produto novo
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ Emitir */
 
-function Emitir({ config, rascunho, onEmitida, onError, toast }) {
+// inicial: { tipo: 'corrigir' | 'copiar', nota?, cliente?, itens, pagamento, frete, inf_cpl }
+function Emitir({ config, inicial, onEmitida, onError, toast }) {
   const [produtos, setProdutos] = useState([]);
-  const [cliente, setCliente] = useState(null);
-  const [itens, setItens] = useState([]);
-  const [tPag, setTPag] = useState(config.pagamento_padrao || '17');
-  const [frete, setFrete] = useState('');
-  const [infCpl, setInfCpl] = useState(config.inf_cpl || '');
+  const [cliente, setCliente] = useState(inicial?.cliente || null);
+  const [ultima, setUltima] = useState(null);
+  const [itens, setItens] = useState(() => (inicial?.itens || []).map((i, k) => ({ ...i, _k: `i${k}` })));
+  const [tPag, setTPag] = useState(inicial?.pagamento?.tPag || config.pagamento_padrao || '17');
+  const [frete, setFrete] = useState(inicial?.frete ? String(inicial.frete).replace('.', ',') : '');
+  const [infCpl, setInfCpl] = useState(inicial?.inf_cpl ?? config.inf_cpl ?? '');
   const [busy, setBusy] = useState(false);
   const [resultado, setResultado] = useState(null);
-  const notaId = rascunho?.id || null;
+  const [novoProduto, setNovoProduto] = useState(null);
+  const [foco, setFoco] = useState(null);
+  const corrigindo = inicial?.tipo === 'corrigir' ? inicial.nota : null;
 
+  const carregarProdutos = useCallback(
+    () => nfeApi.produtos().then((p) => setProdutos(p.filter((x) => x.ativo))).catch((e) => onError(e.message, e)),
+    [onError]
+  );
   useEffect(() => {
-    nfeApi.produtos().then((p) => setProdutos(p.filter((x) => x.ativo))).catch((e) => onError(e.message, e));
-  }, [onError]);
+    carregarProdutos();
+  }, [carregarProdutos]);
 
-  // "Corrigir e reenviar": carrega os dados da nota rejeitada.
+  // Na nota rejeitada, o cliente vem do id guardado nos dados.
   useEffect(() => {
-    if (!rascunho?.dados) return;
-    const d = rascunho.dados;
-    if (d.cliente_id) nfeApi.clientes(rascunho.cliente_doc || '').then((l) => setCliente(l.find((c) => c.id === d.cliente_id) || null)).catch(() => {});
-    setItens((d.itens || []).map((i, k) => ({ ...i, _k: k })));
-    setTPag(d.pagamento?.tPag || '17');
-    setFrete(d.frete ? String(d.frete).replace('.', ',') : '');
-    setInfCpl(d.inf_cpl ?? config.inf_cpl);
-  }, [rascunho, config.inf_cpl]);
+    if (corrigindo?.dados?.cliente_id && !cliente) {
+      nfeApi.clientes(corrigindo.cliente_doc || '').then((l) => setCliente(l.find((c) => c.id === corrigindo.dados.cliente_id) || null)).catch(() => {});
+    }
+  }, [corrigindo, cliente]);
+
+  // Última compra do cliente escolhido (para repetir com um clique).
+  useEffect(() => {
+    setUltima(null);
+    if (!cliente?.id || corrigindo) return;
+    nfeApi.ultimaDoCliente(cliente.id).then(setUltima).catch(() => {});
+  }, [cliente, corrigindo]);
 
   const fora = cliente && cliente.uf !== config.emitente.uf;
-  const addProduto = (id) => {
-    const p = produtos.find((x) => String(x.id) === String(id));
-    if (!p) return;
-    setItens((l) => [
-      ...l,
-      {
-        _k: Date.now(), produto_id: p.id, codigo: p.codigo, descricao: p.descricao, ncm: p.ncm, cest: p.cest, cfop_dentro: p.cfop_dentro,
-        cfop_fora: p.cfop_fora, unidade: p.unidade, origem: p.origem, csosn: p.csosn, aliq_tributos: p.aliq_tributos,
-        quantidade: 1, valor_unitario: p.valor ? String(p.valor).replace('.', ',') : '', desconto: '', info_adicional: ''
-      }
-    ]);
+
+  const itemDoProduto = (p) => ({
+    _k: `n${Date.now()}${Math.random()}`, produto_id: p.id, codigo: p.codigo, descricao: p.descricao, ncm: p.ncm, cest: p.cest,
+    cfop_dentro: p.cfop_dentro, cfop_fora: p.cfop_fora, unidade: p.unidade, origem: p.origem, csosn: p.csosn,
+    aliq_tributos: p.aliq_tributos, quantidade: 1, valor_unitario: p.valor ? String(p.valor).replace('.', ',') : '', desconto: '', info_adicional: ''
+  });
+  const addProduto = (p) => {
+    const item = itemDoProduto(p);
+    setItens((l) => [...l, item]);
+    setFoco(item._k);
+  };
+  const repetirUltima = () => {
+    setItens(ultima.itens.map((i, k) => ({ ...i, _k: `u${Date.now()}${k}`, valor_unitario: String(i.valor_unitario).replace('.', ','), desconto: i.desconto ? String(i.desconto).replace('.', ',') : '' })));
+    toast(`Itens da nota ${ultima.numero} copiados. Confira quantidades e valores.`, 'info');
   };
   const setItem = (k, campo) => (e) => setItens((l) => l.map((i) => (i._k === k ? { ...i, [campo]: e.target.value } : i)));
 
   const totalProdutos = itens.reduce((s, i) => s + num(i.quantidade) * num(i.valor_unitario) - num(i.desconto), 0);
   const total = totalProdutos + num(frete);
+  const faltaValor = itens.some((i) => !(num(i.valor_unitario) > 0) || !(num(i.quantidade) > 0));
 
   const emitir = async () => {
     if (!cliente) return onError('Escolha o cliente.');
     if (!itens.length) return onError('Adicione pelo menos um produto.');
+    if (faltaValor) return onError('Tem item sem quantidade ou valor.');
     const amb = config.ambiente === 1 ? 'PRODUÇÃO (vale como nota fiscal de verdade)' : 'homologação (teste, sem valor fiscal)';
-    if (!confirm(`Emitir a nota ${notaId ? `nº ${rascunho.numero} de novo` : `nº ${config.proximo_numero}`} de ${brl(total)} para ${cliente.nome}?\n\nAmbiente: ${amb}`)) return;
+    if (!confirm(`Emitir a nota ${corrigindo ? `nº ${corrigindo.numero} de novo` : `nº ${config.proximo_numero}`} de ${brl(total)} para ${cliente.nome}?\n\nAmbiente: ${amb}`)) return;
     setBusy(true);
     setResultado(null);
     try {
       const nota = await nfeApi.emitir({
-        nota_id: notaId,
+        nota_id: corrigindo?.id || null,
         cliente_id: cliente.id,
         itens: itens.map(({ _k, ...i }) => ({ ...i, quantidade: num(i.quantidade), valor_unitario: num(i.valor_unitario), desconto: num(i.desconto), cfop: fora ? i.cfop_fora : i.cfop_dentro })),
         pagamento: { tPag },
@@ -443,68 +658,91 @@ function Emitir({ config, rascunho, onEmitida, onError, toast }) {
           Ambiente de <b>homologação</b>: as notas são de teste e não têm valor fiscal. Mude para produção em Configurar quando os testes estiverem ok.
         </div>
       )}
-      {notaId && (
+      {corrigindo && (
         <div className="rounded-2xl bg-flame-50 text-flame-700 px-4 py-3 text-sm font-semibold">
-          Corrigindo a nota nº {rascunho.numero} (rejeitada: {rascunho.motivo}). Ela será reenviada com o mesmo número.
+          Corrigindo a nota nº {corrigindo.numero} (rejeitada: {corrigindo.motivo}). Ela será reenviada com o mesmo número.
+        </div>
+      )}
+      {inicial?.tipo === 'copiar' && (
+        <div className="rounded-2xl bg-brand-50 text-brand-800 px-4 py-3 text-sm font-semibold">
+          Nova nota baseada na nº {inicial.nota.numero}. Confira cliente, quantidades e valores antes de emitir.
         </div>
       )}
 
       <section className={`${card} p-5`}>
-        <h3 className={label}>Cliente</h3>
+        <h3 className={label}>1 · Cliente</h3>
         <ClientePicker value={cliente} onChange={setCliente} onError={onError} />
         {fora && <p className="text-xs font-semibold text-slate-500 mt-2">Cliente de outro estado: a nota sai como "venda fora do estado" (CFOP 6xxx).</p>}
+        {ultima && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-[#F7F8F3] px-4 py-2.5">
+            <div className="text-xs font-semibold text-slate-600">
+              Última compra: nota {ultima.numero} em {fmtData(ultima.dh_emissao).slice(0, 8)} · {brl(ultima.valor_total)} ·{' '}
+              {ultima.itens.map((i) => `${num(i.quantidade)}× ${i.descricao}`).join(', ').slice(0, 90)}
+            </div>
+            <button className="text-xs font-extrabold text-brand-700 hover:underline" onClick={repetirUltima}>
+              Repetir itens
+            </button>
+          </div>
+        )}
       </section>
 
       <section className={`${card} p-5`}>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className={label}>Produtos</h3>
-          <select className={`${inputAuto} max-w-xs`} value="" onChange={(e) => addProduto(e.target.value)}>
-            <option value="">+ Adicionar produto…</option>
-            {produtos.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.codigo ? `${p.codigo} · ` : ''}{p.descricao}
-              </option>
-            ))}
-          </select>
-        </div>
-        {!itens.length && <p className="text-sm text-slate-400">Nenhum produto ainda. Os produtos são cadastrados na aba Produtos (com NCM e CFOP).</p>}
-        <div className="space-y-2">
-          {itens.map((i) => (
-            <div key={i._k} className="grid grid-cols-12 gap-2 items-end rounded-2xl bg-[#F7F8F3] p-3">
-              <div className="col-span-12 sm:col-span-5">
-                <label className={label}>Descrição</label>
-                <input className={input} value={i.descricao} onChange={setItem(i._k, 'descricao')} />
-                <div className="text-[10px] font-semibold text-slate-400 mt-1">
-                  NCM {i.ncm} · CFOP {fora ? i.cfop_fora : i.cfop_dentro} · {i.unidade}
+        <h3 className={label}>2 · Produtos</h3>
+        <ProdutoBusca produtos={produtos} onEscolher={addProduto} onNovo={(descricao) => setNovoProduto({ descricao })} />
+        {!produtos.length && <p className="text-xs text-slate-400 mt-2">Nenhum produto cadastrado ainda: importe do C&K em Configurar ou cadastre pelo campo acima.</p>}
+        <div className="space-y-2 mt-3">
+          {itens.map((i, idx) => {
+            const subtotal = num(i.quantidade) * num(i.valor_unitario) - num(i.desconto);
+            return (
+              <div key={i._k} className="grid grid-cols-12 gap-2 items-end rounded-2xl bg-[#F7F8F3] p-3">
+                <div className="col-span-12 sm:col-span-5">
+                  <label className={label}>Item {idx + 1}</label>
+                  <input className={input} value={i.descricao} onChange={setItem(i._k, 'descricao')} />
+                  <div className="text-[10px] font-semibold text-slate-400 mt-1">
+                    NCM {i.ncm} · CFOP {fora ? i.cfop_fora : i.cfop_dentro} · {i.unidade}
+                  </div>
+                </div>
+                <div className="col-span-3 sm:col-span-1">
+                  <label className={label}>Qtd</label>
+                  <input
+                    className={input}
+                    value={i.quantidade}
+                    onChange={setItem(i._k, 'quantidade')}
+                    inputMode="decimal"
+                    ref={(el) => {
+                      if (el && foco === i._k) {
+                        el.focus();
+                        el.select();
+                        setFoco(null);
+                      }
+                    }}
+                  />
+                </div>
+                <div className="col-span-4 sm:col-span-2">
+                  <label className={label}>Valor un.</label>
+                  <input className={`${input} ${!(num(i.valor_unitario) > 0) ? '!border-flame-300' : ''}`} value={i.valor_unitario} onChange={setItem(i._k, 'valor_unitario')} inputMode="decimal" placeholder="0,00" />
+                </div>
+                <div className="col-span-3 sm:col-span-2">
+                  <label className={label}>Desconto</label>
+                  <input className={input} value={i.desconto} onChange={setItem(i._k, 'desconto')} inputMode="decimal" placeholder="0,00" />
+                </div>
+                <div className="col-span-2 sm:col-span-2 flex items-center justify-end gap-2 pb-2">
+                  <span className="text-sm font-extrabold text-brand-950">{brl(subtotal)}</span>
+                  <button className="p-1.5 text-slate-400 hover:text-flame-600" title="Tirar item" onClick={() => setItens((l) => l.filter((x) => x._k !== i._k))}>
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+                <div className="col-span-12">
+                  <input className={input} value={i.info_adicional || ''} onChange={setItem(i._k, 'info_adicional')} placeholder="Informação adicional do item (opcional, ex.: texto da placa)" />
                 </div>
               </div>
-              <div className="col-span-3 sm:col-span-1">
-                <label className={label}>Qtd</label>
-                <input className={input} value={i.quantidade} onChange={setItem(i._k, 'quantidade')} inputMode="decimal" />
-              </div>
-              <div className="col-span-4 sm:col-span-2">
-                <label className={label}>Valor un.</label>
-                <input className={input} value={i.valor_unitario} onChange={setItem(i._k, 'valor_unitario')} inputMode="decimal" placeholder="0,00" />
-              </div>
-              <div className="col-span-3 sm:col-span-2">
-                <label className={label}>Desconto</label>
-                <input className={input} value={i.desconto} onChange={setItem(i._k, 'desconto')} inputMode="decimal" placeholder="0,00" />
-              </div>
-              <div className="col-span-2 sm:col-span-2 flex items-center justify-end gap-2 pb-2">
-                <span className="text-sm font-extrabold text-brand-950">{brl(num(i.quantidade) * num(i.valor_unitario) - num(i.desconto))}</span>
-                <button className="p-1.5 text-slate-400 hover:text-flame-600" onClick={() => setItens((l) => l.filter((x) => x._k !== i._k))}>
-                  <Trash2 size={15} />
-                </button>
-              </div>
-              <div className="col-span-12">
-                <input className={input} value={i.info_adicional || ''} onChange={setItem(i._k, 'info_adicional')} placeholder="Informação adicional do item (opcional, ex.: texto da placa)" />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
       <section className={`${card} p-5 grid grid-cols-6 gap-3`}>
+        <h3 className={`${label} col-span-6`}>3 · Pagamento e observações</h3>
         <div className="col-span-6 sm:col-span-3">
           <label className={label}>Forma de pagamento</label>
           <select className={input} value={tPag} onChange={(e) => setTPag(e.target.value)}>
@@ -520,7 +758,7 @@ function Emitir({ config, rascunho, onEmitida, onError, toast }) {
         <div className="col-span-6">
           <label className={label}>Informações complementares</label>
           <textarea className={`${input} min-h-[70px]`} value={infCpl} onChange={(e) => setInfCpl(e.target.value)} />
-          <div className="flex gap-2 mt-1.5">
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
             {['*PAGAMENTO JA EFETUADO; ', '*PAGAMENTO VIA PIX CHAVE CNPJ 18605962000130; '].map((t) => (
               <button key={t} className="text-[11px] font-bold text-brand-700 hover:underline" onClick={() => setInfCpl((v) => (v.includes(t.trim()) ? v : t + v))}>
                 + {t.replace(/[*;]/g, '').trim().toLowerCase()}
@@ -530,14 +768,16 @@ function Emitir({ config, rascunho, onEmitida, onError, toast }) {
         </div>
       </section>
 
-      <div className={`${card} p-5 flex flex-wrap items-center justify-between gap-3`}>
+      <div className={`${card} p-5 flex flex-wrap items-center justify-between gap-3 sticky bottom-3 z-10`}>
         <div>
-          <div className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Total da nota</div>
+          <div className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
+            Total da nota · {itens.length} {itens.length === 1 ? 'item' : 'itens'}
+          </div>
           <div className="text-2xl font-extrabold text-brand-950">{brl(total)}</div>
         </div>
-        <button className={`${btnPrimary} px-6 py-3`} onClick={emitir} disabled={busy}>
+        <button className={`${btnPrimary} px-6 py-3`} onClick={emitir} disabled={busy || !cliente || !itens.length}>
           {busy ? <LoaderCircle size={16} className="animate-spin" /> : <Send size={16} />}
-          {busy ? 'Enviando para a SEFAZ…' : notaId ? `Reenviar nota ${rascunho.numero}` : `Emitir nota nº ${config.proximo_numero}`}
+          {busy ? 'Enviando para a SEFAZ…' : corrigindo ? `Reenviar nota ${corrigindo.numero}` : `Emitir nota nº ${config.proximo_numero}`}
         </button>
       </div>
 
@@ -553,20 +793,45 @@ function Emitir({ config, rascunho, onEmitida, onError, toast }) {
           {resultado.situacao === 'rejeitada' && <p className="text-xs text-slate-500 mt-2">Corrija o que a SEFAZ apontou e clique em reenviar: o número é o mesmo.</p>}
         </div>
       )}
+
+      {novoProduto && (
+        <Modal title="Novo produto" onClose={() => setNovoProduto(null)} wide>
+          <ProdutoForm
+            produto={novoProduto}
+            onError={onError}
+            onCancel={() => setNovoProduto(null)}
+            onSaved={(p) => {
+              setNovoProduto(null);
+              carregarProdutos();
+              addProduto(p);
+            }}
+          />
+        </Modal>
+      )}
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ Detalhe da nota */
 
-function NotaModal({ id, onClose, onChanged, onCorrigir, onError, toast }) {
+function NotaModal({ id, onClose, onChanged, onCorrigir, onCopiar, onError, toast }) {
   const [nota, setNota] = useState(null);
   const [acao, setAcao] = useState('');
   const [texto, setTexto] = useState('');
   const [fone, setFone] = useState('');
   const [busy, setBusy] = useState('');
 
-  const load = useCallback(() => nfeApi.nota(id).then(setNota).catch((e) => onError(e.message, e)), [id, onError]);
+  const load = useCallback(
+    () =>
+      nfeApi
+        .nota(id)
+        .then((n) => {
+          setNota(n);
+          setFone((f) => f || n.cliente_telefone || '');
+        })
+        .catch((e) => onError(e.message, e)),
+    [id, onError]
+  );
   useEffect(() => {
     load();
   }, [load]);
@@ -645,6 +910,11 @@ function NotaModal({ id, onClose, onChanged, onCorrigir, onError, toast }) {
           {nota.situacao === 'rejeitada' && (
             <button className={btnPrimary} onClick={() => onCorrigir(nota)}>
               <PenLine size={15} /> Corrigir e reenviar
+            </button>
+          )}
+          {['autorizada', 'cancelada'].includes(nota.situacao) && (
+            <button className={btnGhost} disabled={busy} onClick={() => run('copia', () => onCopiar(nota))}>
+              {busy === 'copia' ? <LoaderCircle size={15} className="animate-spin" /> : <Plus size={15} />} Emitir outra igual
             </button>
           )}
           {autorizada && nota.origem !== 'cnk' && (
@@ -727,7 +997,7 @@ function NotaModal({ id, onClose, onChanged, onCorrigir, onError, toast }) {
 
 /* ------------------------------------------------------------------ Lista */
 
-function Lista({ config, onAbrir, refreshKey, onError }) {
+function Lista({ config, onAbrir, onNova, refreshKey, onError }) {
   const [notas, setNotas] = useState(null);
   const [resumo, setResumo] = useState(null);
   const [busca, setBusca] = useState('');
@@ -763,13 +1033,19 @@ function Lista({ config, onAbrir, refreshKey, onError }) {
           <div className={label}>Próximo número</div>
           <div className="text-2xl font-extrabold text-brand-950">{config.proximo_numero} <span className="text-xs text-slate-400">série {config.serie}</span></div>
         </div>
-        <div className={`${card} p-4 ${pend.pendente || pend.rejeitada ? 'ring-2 ring-sun-300' : ''}`}>
+        <div
+          className={`${card} p-4 ${pend.pendente || pend.rejeitada ? 'ring-2 ring-sun-300 cursor-pointer' : ''}`}
+          onClick={() => (pend.pendente || pend.enviando ? setSituacao('pendente') : pend.rejeitada ? setSituacao('rejeitada') : null)}
+        >
           <div className={label}>Precisam de atenção</div>
           <div className="text-2xl font-extrabold text-brand-950">{(pend.pendente || 0) + (pend.rejeitada || 0) + (pend.enviando || 0)}</div>
         </div>
       </div>
 
       <div className={`${card} p-4 flex flex-wrap gap-2`}>
+        <button className={btnPrimary} onClick={onNova}>
+          <Plus size={15} /> Nova nota
+        </button>
         <div className="relative flex-1 min-w-[200px]">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input className={`${input} pl-9`} placeholder="Número, cliente, CPF/CNPJ ou chave" value={busca} onChange={(e) => setBusca(e.target.value)} />
@@ -919,6 +1195,8 @@ function ProdutoForm({ produto, onSaved, onCancel, onError }) {
 
 function Produtos({ onError }) {
   const [lista, setLista] = useState(null);
+  const [busca, setBusca] = useState('');
+  const visiveis = useMemo(() => (lista ? (busca ? buscarProdutos(lista, busca, 200) : lista) : []), [lista, busca]);
   const [editando, setEditando] = useState(undefined);
   const load = useCallback(() => nfeApi.produtos().then(setLista).catch((e) => onError(e.message, e)), [onError]);
   useEffect(() => {
@@ -926,10 +1204,14 @@ function Produtos({ onError }) {
   }, [load]);
   return (
     <div className="space-y-4 max-w-4xl">
-      <div className="flex justify-between items-center">
-        <p className="text-xs font-semibold text-slate-500">NCM e CFOP saem daqui em toda nota. Confira com a contadora os itens marcados.</p>
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input className={`${input} pl-9`} placeholder='Buscar: "12x17", "estojo", código…' value={busca} onChange={(e) => setBusca(e.target.value)} />
+        </div>
         <button className={btnPrimary} onClick={() => setEditando(null)}><Plus size={15} /> Novo produto</button>
       </div>
+      <p className="text-xs font-semibold text-slate-500">NCM e CFOP saem daqui em toda nota. Os mais vendidos aparecem primeiro na emissão.</p>
       <div className={`${card} overflow-x-auto`}>
         <table className="w-full text-sm">
           <thead>
@@ -938,10 +1220,13 @@ function Produtos({ onError }) {
             </tr>
           </thead>
           <tbody>
-            {(lista || []).map((p) => (
+            {visiveis.map((p) => (
               <tr key={p.id} onClick={() => setEditando(p)} className={`border-b border-black/5 last:border-0 hover:bg-brand-50/50 cursor-pointer ${p.ativo ? '' : 'opacity-40'}`}>
                 <td className="px-4 py-2.5 font-mono text-xs">{p.codigo}</td>
-                <td className="px-4 py-2.5 font-semibold text-brand-950">{p.descricao}</td>
+                <td className="px-4 py-2.5 font-semibold text-brand-950">
+                  {p.descricao}
+                  {p.uso > 0 && <span className="ml-2 text-[10px] font-bold text-slate-400">saiu {p.uso}×</span>}
+                </td>
                 <td className="px-4 py-2.5 font-mono text-xs">{p.ncm}</td>
                 <td className="px-4 py-2.5 font-mono text-xs">{p.cfop_dentro}/{p.cfop_fora}</td>
                 <td className="px-4 py-2.5 text-right">{brl(p.valor)}</td>
@@ -1184,7 +1469,7 @@ export default function Notas({ onAuthError }) {
   const [config, setConfig] = useState(null);
   const [sub, setSub] = useState('notas');
   const [aberta, setAberta] = useState(null);
-  const [rascunho, setRascunho] = useState(null);
+  const [inicial, setInicial] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const onError = useCallback(
@@ -1243,7 +1528,7 @@ export default function Notas({ onAuthError }) {
               key={id}
               onClick={() => {
                 setSub(id);
-                if (id !== 'emitir') setRascunho(null);
+                if (id !== 'emitir') setInicial(null);
               }}
               className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-bold whitespace-nowrap ${sub === id ? 'bg-brand-500/15 text-brand-700' : 'text-slate-500 hover:text-brand-900'}`}
             >
@@ -1259,16 +1544,27 @@ export default function Notas({ onAuthError }) {
         </button>
       )}
 
-      {sub === 'notas' && <Lista config={config} onAbrir={setAberta} refreshKey={refreshKey} onError={onError} />}
+      {sub === 'notas' && (
+        <Lista
+          config={config}
+          onAbrir={setAberta}
+          onNova={() => {
+            setInicial(null);
+            setSub('emitir');
+          }}
+          refreshKey={refreshKey}
+          onError={onError}
+        />
+      )}
       {sub === 'emitir' && (
         <Emitir
-          key={rascunho?.id || 'nova'}
+          key={inicial ? `${inicial.tipo}-${inicial.nota?.id}` : 'nova'}
           config={config}
-          rascunho={rascunho}
+          inicial={inicial}
           onError={onError}
           toast={toast}
           onEmitida={(n) => {
-            setRascunho(null);
+            setInicial(null);
             refresh();
             setSub('notas');
             setAberta(n.id);
@@ -1288,7 +1584,13 @@ export default function Notas({ onAuthError }) {
           toast={toast}
           onCorrigir={(n) => {
             setAberta(null);
-            setRascunho(n);
+            setInicial({ tipo: 'corrigir', nota: n, itens: n.dados?.itens, pagamento: n.dados?.pagamento, frete: n.dados?.frete, inf_cpl: n.dados?.inf_cpl });
+            setSub('emitir');
+          }}
+          onCopiar={async (n) => {
+            const c = await nfeApi.copiaNota(n.id);
+            setAberta(null);
+            setInicial({ tipo: 'copiar', nota: n, ...c, inf_cpl: undefined });
             setSub('emitir');
           }}
         />

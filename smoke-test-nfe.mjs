@@ -132,7 +132,7 @@ try {
   check('busca cliente por nome', r.body.length === 1);
 
   // ---- Emissão autorizada
-  const itens = [{ codigo: placa.codigo, descricao: placa.descricao, ncm: placa.ncm, cfop_dentro: '5101', cfop_fora: '6101', unidade: 'UND', quantidade: 2, valor_unitario: 199.5, aliq_tributos: 13.45 }];
+  const itens = [{ produto_id: placa.id, codigo: placa.codigo, descricao: placa.descricao, ncm: placa.ncm, cfop_dentro: '5101', cfop_fora: '6101', unidade: 'UND', quantidade: 2, valor_unitario: 199.5, aliq_tributos: 13.45 }];
   r = await call('POST', '/nfe/emitir', { cliente_id: cli.id, itens, pagamento: { tPag: '17' } });
   const n1 = r.body;
   check('nota 1 autorizada', r.status === 200 && n1.situacao === 'autorizada' && n1.numero === 1 && n1.protocolo, `${n1.situacao} ${n1.motivo || ''}`);
@@ -255,6 +255,20 @@ try {
     check('notas importadas aparecem em produção', r.body.length === procs.length && r.body[0].origem === 'cnk');
     r = await call('GET', `/nfe/notas/${r.body[0].id}/danfe`);
     check('DANFE de nota importada', r.status === 200 && r.body.slice(0, 4).toString() === '%PDF');
+  }
+  // ---- Ranking de uso, última compra e "emitir outra igual"
+  r = await call('GET', '/nfe/produtos');
+  check('produto mais vendido vem primeiro', r.body[0].codigo === '102' && r.body[0].uso >= 3, `${r.body[0].codigo} uso=${r.body[0].uso}`);
+  r = await call('GET', `/nfe/clientes/${cli.id}/ultima`);
+  check('última compra do cliente', r.status === 200 && r.body.itens.length === 1 && r.body.itens[0].codigo === '102');
+  r = await call('GET', `/nfe/notas/${n3.id}/copia`);
+  check('copiar nota traz cliente e itens', r.body.cliente?.id === cli.id && r.body.itens[0].quantidade === 2);
+  r = await call('GET', `/nfe/notas/${n3.id}`);
+  check('nota traz telefone do cliente', r.body.cliente_telefone === '5133049900');
+  if (procs.length) {
+    const imp = (await call('GET', '/nfe/notas?ambiente=1')).body[0];
+    r = await call('GET', `/nfe/notas/${imp.id}/copia`);
+    check('copiar nota do C&K lê os itens do XML', r.status === 200 && r.body.itens.length > 0 && /^5|^6/.test(r.body.itens[0].cfop_dentro) && r.body.itens[0].valor_unitario > 0);
   }
 } catch (err) {
   console.error(err);
