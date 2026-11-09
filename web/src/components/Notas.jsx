@@ -487,7 +487,7 @@ function ClientePicker({ value, onChange, onError }) {
 
 /* ------------------------------------------------------------------ Produto na emissão */
 
-function ProdutoBusca({ produtos, onEscolher, onNovo }) {
+function ProdutoBusca({ produtos, onEscolher, onNovo, inputRef, onEnterVazio }) {
   const [texto, setTexto] = useState('');
   const [aberto, setAberto] = useState(false);
   const sugestoes = useMemo(() => buscarProdutos(produtos, texto), [produtos, texto]);
@@ -496,7 +496,6 @@ function ProdutoBusca({ produtos, onEscolher, onNovo }) {
     setTexto('');
   };
   const nav = useNavegacao(aberto ? sugestoes : [], escolher);
-  const inputRef = useRef(null);
 
   return (
     <div className="relative">
@@ -515,6 +514,12 @@ function ProdutoBusca({ produtos, onEscolher, onNovo }) {
           }}
           onKeyDown={(e) => {
             if (e.key === 'Escape') setAberto(false);
+            // Campo vazio + Enter: a nota já tem itens, então segue para o botão de emitir.
+            if (e.key === 'Enter' && !texto.trim() && onEnterVazio?.()) {
+              e.preventDefault();
+              setAberto(false);
+              return;
+            }
             if (e.key === 'Enter' && !sugestoes.length && texto.trim()) {
               e.preventDefault();
               onNovo(texto.trim());
@@ -576,6 +581,34 @@ function Emitir({ config, inicial, onEmitida, onError, toast }) {
   const [resultado, setResultado] = useState(null);
   const [novoProduto, setNovoProduto] = useState(null);
   const [foco, setFoco] = useState(null);
+  // Fluxo só no Enter: cliente → produto → qtd → valor → próximo produto → (vazio) → Emitir.
+  const produtoRef = useRef(null);
+  const emitirRef = useRef(null);
+  const valorRefs = useRef({});
+  const qtdRefs = useRef({});
+  // Item recém-adicionado: cursor direto na quantidade.
+  useEffect(() => {
+    if (!foco) return;
+    const el = qtdRefs.current[foco];
+    if (el) {
+      el.focus();
+      el.select();
+    }
+    setFoco(null);
+  }, [foco, itens]);
+  const focar = (el) => {
+    el?.focus();
+    el?.select?.();
+  };
+  const escolherCliente = (c) => {
+    setCliente(c);
+    if (c) focar(produtoRef.current);
+  };
+  const enterPara = (alvo) => (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    focar(typeof alvo === 'function' ? alvo() : alvo);
+  };
   const corrigindo = inicial?.tipo === 'corrigir' ? inicial.nota : null;
 
   const carregarProdutos = useCallback(
@@ -671,7 +704,7 @@ function Emitir({ config, inicial, onEmitida, onError, toast }) {
 
       <section className={`${card} p-5`}>
         <h3 className={label}>1 · Cliente</h3>
-        <ClientePicker value={cliente} onChange={setCliente} onError={onError} />
+        <ClientePicker value={cliente} onChange={escolherCliente} onError={onError} />
         {fora && <p className="text-xs font-semibold text-slate-500 mt-2">Cliente de outro estado: a nota sai como "venda fora do estado" (CFOP 6xxx).</p>}
         {ultima && (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-[#F7F8F3] px-4 py-2.5">
@@ -688,7 +721,20 @@ function Emitir({ config, inicial, onEmitida, onError, toast }) {
 
       <section className={`${card} p-5`}>
         <h3 className={label}>2 · Produtos</h3>
-        <ProdutoBusca produtos={produtos} onEscolher={addProduto} onNovo={(descricao) => setNovoProduto({ descricao })} />
+        <ProdutoBusca
+          produtos={produtos}
+          inputRef={produtoRef}
+          onEscolher={addProduto}
+          onNovo={(descricao) => setNovoProduto({ descricao })}
+          onEnterVazio={() => {
+            if (!itens.length) return false;
+            focar(emitirRef.current);
+            return true;
+          }}
+        />
+        <p className="text-[11px] font-semibold text-slate-400 mt-1.5">
+          Dica: só no Enter — escolha o produto, Enter, quantidade, Enter, valor, Enter. Com o campo vazio, Enter vai para Emitir.
+        </p>
         {!produtos.length && <p className="text-xs text-slate-400 mt-2">Nenhum produto cadastrado ainda: importe do C&K em Configurar ou cadastre pelo campo acima.</p>}
         <div className="space-y-2 mt-3">
           {itens.map((i, idx) => {
@@ -708,23 +754,26 @@ function Emitir({ config, inicial, onEmitida, onError, toast }) {
                     className={input}
                     value={i.quantidade}
                     onChange={setItem(i._k, 'quantidade')}
+                    onKeyDown={enterPara(() => valorRefs.current[i._k])}
                     inputMode="decimal"
-                    ref={(el) => {
-                      if (el && foco === i._k) {
-                        el.focus();
-                        el.select();
-                        setFoco(null);
-                      }
-                    }}
+                    ref={(el) => (qtdRefs.current[i._k] = el)}
                   />
                 </div>
                 <div className="col-span-4 sm:col-span-2">
                   <label className={label}>Valor un.</label>
-                  <input className={`${input} ${!(num(i.valor_unitario) > 0) ? '!border-flame-300' : ''}`} value={i.valor_unitario} onChange={setItem(i._k, 'valor_unitario')} inputMode="decimal" placeholder="0,00" />
+                  <input
+                    className={`${input} ${!(num(i.valor_unitario) > 0) ? '!border-flame-300' : ''}`}
+                    value={i.valor_unitario}
+                    onChange={setItem(i._k, 'valor_unitario')}
+                    onKeyDown={enterPara(() => produtoRef.current)}
+                    ref={(el) => (valorRefs.current[i._k] = el)}
+                    inputMode="decimal"
+                    placeholder="0,00"
+                  />
                 </div>
                 <div className="col-span-3 sm:col-span-2">
                   <label className={label}>Desconto</label>
-                  <input className={input} value={i.desconto} onChange={setItem(i._k, 'desconto')} inputMode="decimal" placeholder="0,00" />
+                  <input className={input} value={i.desconto} onChange={setItem(i._k, 'desconto')} onKeyDown={enterPara(() => produtoRef.current)} inputMode="decimal" placeholder="0,00" />
                 </div>
                 <div className="col-span-2 sm:col-span-2 flex items-center justify-end gap-2 pb-2">
                   <span className="text-sm font-extrabold text-brand-950">{brl(subtotal)}</span>
@@ -775,7 +824,7 @@ function Emitir({ config, inicial, onEmitida, onError, toast }) {
           </div>
           <div className="text-2xl font-extrabold text-brand-950">{brl(total)}</div>
         </div>
-        <button className={`${btnPrimary} px-6 py-3`} onClick={emitir} disabled={busy || !cliente || !itens.length}>
+        <button ref={emitirRef} className={`${btnPrimary} px-6 py-3 focus:ring-4 focus:ring-brand-500/40 outline-none`} onClick={emitir} disabled={busy || !cliente || !itens.length}>
           {busy ? <LoaderCircle size={16} className="animate-spin" /> : <Send size={16} />}
           {busy ? 'Enviando para a SEFAZ…' : corrigindo ? `Reenviar nota ${corrigindo.numero}` : `Emitir nota nº ${config.proximo_numero}`}
         </button>
