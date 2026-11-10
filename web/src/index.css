@@ -102,68 +102,34 @@ body {
   letter-spacing: -0.006em;
 }
 
-/* Fundo: formas brancas macias e desfocadas atrás do vidro (como a referência). */
+/* Fundo: formas brancas macias atrás da moldura. São só gradientes parados —
+   sem blur, sem animação — para não custar nada à placa de vídeo. */
 .backdrop {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  overflow: hidden;
   background:
-    radial-gradient(60% 55% at 78% 8%, rgb(255 255 255 / 0.95), transparent 62%),
+    radial-gradient(38vmax 30vmax at 82% 2%, #ffffff, rgb(255 255 255 / 0.55) 45%, transparent 72%),
+    radial-gradient(30vmax 26vmax at 34% 104%, #ffffff, rgb(255 255 255 / 0.5) 45%, transparent 72%),
     radial-gradient(45% 50% at 8% 92%, rgb(255 255 255 / 0.8), transparent 60%),
     radial-gradient(40% 45% at 40% 45%, rgb(200 200 196 / 0.55), transparent 65%),
     linear-gradient(135deg, #dededb, #ececea 45%, #d9d9d6);
 }
-.backdrop::before,
-.backdrop::after {
-  content: '';
-  position: absolute;
-  border-radius: 46% 54% 60% 40% / 52% 44% 56% 48%;
-  filter: blur(46px);
-  animation: drift 26s ease-in-out infinite alternate;
-}
-.backdrop::before {
-  width: 46vmax;
-  height: 38vmax;
-  right: -6vmax;
-  top: -12vmax;
-  background: radial-gradient(circle at 35% 35%, #ffffff, #f2f2f0 45%, rgb(190 190 186 / 0.75) 78%, transparent 80%);
-}
-.backdrop::after {
-  width: 34vmax;
-  height: 30vmax;
-  left: 22vmax;
-  bottom: -14vmax;
-  background: radial-gradient(circle at 60% 30%, #ffffff, #ededeb 50%, rgb(176 176 172 / 0.7) 80%, transparent 82%);
-  animation-duration: 34s;
-  animation-direction: alternate-reverse;
-}
-@keyframes drift {
-  from {
-    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
-  }
-  to {
-    transform: translate3d(-3vmax, 2.5vmax, 0) rotate(14deg) scale(1.08);
-  }
-}
 
 /* Moldura de vidro que abraça a barra lateral e o conteúdo. */
 .frame {
-  background: var(--frame);
+  /* Sem backdrop-filter: desfocar a tela inteira a cada quadro era o que mais pesava. */
+  background: rgb(255 255 255 / 0.5);
   border: 1px solid var(--frame-edge);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.7),
-    0 40px 80px -40px rgb(20 20 22 / 0.28);
-  -webkit-backdrop-filter: blur(26px) saturate(120%);
-  backdrop-filter: blur(26px) saturate(120%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.7);
 }
 
 /* ------------------------------- Superfícies ------------------------------- */
 
 /* Cartões: sombra longa e suave no lugar da sombra curta padrão. */
 .shadow-sm {
-  --tw-shadow: 0 1px 0 rgb(255 255 255 / 0.6) inset, 0 18px 40px -28px rgb(20 20 22 / 0.35);
+  --tw-shadow: 0 1px 2px rgb(20 20 22 / 0.04), 0 6px 14px -10px rgb(20 20 22 / 0.22);
 }
 .border-black\/5 {
   border-color: var(--hairline);
@@ -179,9 +145,9 @@ body {
   background-color: #f2f2f0;
 }
 .bg-brand-950\/60 {
-  background-color: rgb(20 20 22 / 0.42);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  background-color: rgb(20 20 22 / 0.5);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 /* Sombras coloridas dos botões (eram verdes): mais discretas no preto. */
@@ -336,17 +302,12 @@ select:focus-visible {
 }
 .dark .backdrop {
   background:
-    radial-gradient(55% 50% at 80% 4%, rgb(255 255 255 / 0.1), transparent 62%),
-    radial-gradient(45% 50% at 6% 96%, rgb(255 255 255 / 0.06), transparent 60%),
+    radial-gradient(38vmax 30vmax at 82% 2%, rgb(255 255 255 / 0.13), transparent 70%),
+    radial-gradient(30vmax 26vmax at 34% 104%, rgb(255 255 255 / 0.08), transparent 70%),
     linear-gradient(135deg, #0b0b0d, #070708 50%, #0e0e10);
 }
-.dark .backdrop::before {
-  background: radial-gradient(circle at 35% 35%, rgb(255 255 255 / 0.2), rgb(255 255 255 / 0.07) 50%, transparent 78%);
-}
-.dark .backdrop::after {
-  background: radial-gradient(circle at 60% 30%, rgb(255 255 255 / 0.13), rgb(255 255 255 / 0.04) 55%, transparent 80%);
-}
 .dark .frame {
+  background: rgb(255 255 255 / 0.035);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
 }
 
@@ -453,19 +414,8 @@ select:focus-visible {
   }
 }
 .animate-fade-up {
-  animation: fadeUp 0.6s var(--ease-out) backwards;
+  animation: fadeUp 0.35s var(--ease-out) backwards;
 }
-
-/* Entrada em cascata dos blocos de cada aba. */
-main .animate-fade-up > * {
-  animation: fadeUp 0.7s var(--ease-out) backwards;
-}
-main .animate-fade-up > *:nth-child(1) { animation-delay: 0.02s; }
-main .animate-fade-up > *:nth-child(2) { animation-delay: 0.08s; }
-main .animate-fade-up > *:nth-child(3) { animation-delay: 0.14s; }
-main .animate-fade-up > *:nth-child(4) { animation-delay: 0.2s; }
-main .animate-fade-up > *:nth-child(5) { animation-delay: 0.26s; }
-main .animate-fade-up > *:nth-child(n + 6) { animation-delay: 0.32s; }
 
 @keyframes railIn {
   from {
@@ -519,7 +469,7 @@ main .animate-fade-up > *:nth-child(n + 6) { animation-delay: 0.32s; }
   .dark .nav-item.is-active:hover {
     background: var(--ink);
     color: var(--surface);
-    box-shadow: 0 10px 24px -12px rgb(10 10 11 / 0.55);
+    box-shadow: 0 4px 10px -6px rgb(10 10 11 / 0.5);
   }
   .dark .nav-item.is-active {
     color: #0a0a0b;
@@ -537,7 +487,7 @@ main .animate-fade-up > *:nth-child(n + 6) { animation-delay: 0.32s; }
     border-radius: 999px;
     background: var(--surface);
     border: 1px solid var(--hairline);
-    box-shadow: 0 14px 30px -24px rgb(20 20 22 / 0.4);
+    box-shadow: 0 4px 10px -8px rgb(20 20 22 / 0.3);
   }
   .orb {
     display: inline-flex;
