@@ -155,7 +155,7 @@ res = await call('entregas_proximas', { dias: 4 });
 check('entregas próximas responde com hoje e listas', Boolean(res.body.result.hoje) && Array.isArray(res.body.result.proximos));
 
 res = await call('faturamento', {});
-check('faturamento responde', typeof res.body.result.faturado === 'number');
+check('faturamento vem só das notas (pedidos do quadro não contam)', res.body.result.faturado === 0 && res.body.result.notas_autorizadas === 0, JSON.stringify(res.body.result));
 
 res = await call('resumo_do_dia', {});
 check('resumo do dia lista o que está pronto', res.body.result.prontos_para_retirada.length === 1);

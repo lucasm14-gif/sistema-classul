@@ -171,19 +171,6 @@ check(
   Boolean(deliveredResp.order.delivered_at) && deliveredResp.order.has_invoice === false
 );
 
-// dá um valor ao pedido para o faturamento
-await fetch(`${B}/orders/${o2.id}`, { method: 'PUT', headers: H, body: JSON.stringify({ value: '250,00' }) });
-
-r = await fetch(`${B}/stats`, { headers: H });
-const stats = await r.json();
-check(
-  'stats do mês atual',
-  stats.month.count === 1 && stats.month.total === 250 && stats.months.length === 6,
-  `total=${stats.month.total} count=${stats.month.count}`
-);
-check('stats: NF pendente listada', stats.pending_invoices.length === 1 && stats.pending_invoices[0].id === o2.id);
-check('stats: pedidos em aberto zerados', stats.open.count === 0);
-
 // sessão de upload de NF exige categoria válida e Drive conectado
 r = await fetch(`${B}/orders/${o2.id}/attachments/session`, {
   method: 'POST',
@@ -196,9 +183,6 @@ check('sessão NF sem Drive conectado → erro claro', r.status === 400 && /Goog
 r = await fetch(`${B}/orders/${o2.id}/status`, { method: 'PATCH', headers: H, body: JSON.stringify({ status: 'pronto' }) });
 check('sair de entregue limpa delivered_at', (await r.json()).order.delivered_at === null);
 
-r = await fetch(`${B}/stats`, { headers: H });
-check('stats zera após reverter entrega', (await r.json()).month.count === 0);
-
 // ---------- Status de pagamento ----------
 
 r = await fetch(`${B}/orders/${o2.id}`, { headers: H });
@@ -210,15 +194,7 @@ check('status de pagamento inválido → 400', r.status === 400);
 r = await fetch(`${B}/orders/${o2.id}`, { method: 'PUT', headers: H, body: JSON.stringify({ payment_status: 'pago' }) });
 check('marcar como pago', (await r.json()).payment_status === 'pago');
 
-// pedido pago e entregue conta em month.paid; a receber zera
 await fetch(`${B}/orders/${o2.id}/status`, { method: 'PATCH', headers: H, body: JSON.stringify({ status: 'entregue' }) });
-r = await fetch(`${B}/stats`, { headers: H });
-let payStats = await r.json();
-check(
-  'stats: recebido no mês e a receber',
-  payStats.month.paid === 250 && payStats.receivable.count === 0,
-  `paid=${payStats.month.paid} receivable=${payStats.receivable.count}`
-);
 
 // novo pedido com sinal entra no a receber
 r = await fetch(`${B}/orders`, {
@@ -228,9 +204,6 @@ r = await fetch(`${B}/orders`, {
 });
 const sinalOrder = await r.json();
 check('criar pedido com sinal', sinalOrder.payment_status === 'sinal');
-r = await fetch(`${B}/stats`, { headers: H });
-payStats = await r.json();
-check('a receber inclui pedido com sinal', payStats.receivable.count === 1 && payStats.receivable.total === 100);
 
 // ---------- Código de retirada ----------
 

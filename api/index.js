@@ -37,8 +37,6 @@ import {
   createOrder,
   updateOrderFields,
   moveOrderStatus,
-  parseValueBRL,
-  monthKeySP,
   dayKeySP,
   OrderError
 } from '../lib/orders.js';
@@ -733,78 +731,6 @@ app.delete('/api/clients/:id', h(async (req, res) => {
   await q('UPDATE orders SET client_id = NULL WHERE client_id = $1', [client.id]);
   await q('DELETE FROM clients WHERE id = $1', [client.id]);
   res.json({ ok: true });
-}));
-
-// ---------- Faturamento ----------
-
-// Valores são texto livre ("150,00") — a soma é feita aqui, igual ao frontend.
-app.get('/api/stats', h(async (req, res) => {
-  const selected = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? req.query.month : monthKeySP(new Date());
-
-  const { rows: delivered } = await q(
-    "SELECT * FROM orders WHERE status = 'entregue' AND delivered_at IS NOT NULL ORDER BY delivered_at DESC, id DESC"
-  );
-  const { rows: open } = await q("SELECT * FROM orders WHERE archived = 0 AND status != 'entregue'");
-  const { rows: invoiceRows } = await q(
-    "SELECT DISTINCT order_id FROM attachments WHERE category = 'nota_fiscal'"
-  );
-  const invoiceSet = new Set(invoiceRows.map((r) => r.order_id));
-
-  // últimos 6 meses (incluindo o atual)
-  const months = [];
-  const now = new Date();
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 15);
-    months.push({ key: monthKeySP(d), total: 0, count: 0 });
-  }
-  const monthMap = new Map(months.map((m) => [m.key, m]));
-
-  const monthOrders = [];
-  let monthTotal = 0;
-  let monthPaid = 0;
-  for (const o of delivered) {
-    const key = monthKeySP(o.delivered_at);
-    const bucket = monthMap.get(key);
-    if (bucket) {
-      bucket.total += parseValueBRL(o.value);
-      bucket.count += 1;
-    }
-    if (key === selected) {
-      monthOrders.push({ ...serializeOrder(o), has_invoice: invoiceSet.has(o.id) });
-      monthTotal += parseValueBRL(o.value);
-      if (o.payment_status === 'pago') monthPaid += parseValueBRL(o.value);
-    }
-  }
-
-  const pendingInvoices = delivered
-    .filter((o) => !invoiceSet.has(o.id))
-    .map((o) => serializeOrder(o));
-
-  // a receber: qualquer pedido ativo (no quadro ou entregue) ainda não pago
-  const { rows: unpaid } = await q(
-    "SELECT * FROM orders WHERE archived = 0 AND payment_status != 'pago'"
-  );
-
-  res.json({
-    selected_month: selected,
-    month: {
-      total: monthTotal,
-      paid: monthPaid,
-      count: monthOrders.length,
-      avg: monthOrders.length ? monthTotal / monthOrders.length : 0
-    },
-    open: {
-      count: open.length,
-      total: open.reduce((sum, o) => sum + parseValueBRL(o.value), 0)
-    },
-    receivable: {
-      count: unpaid.length,
-      total: unpaid.reduce((sum, o) => sum + parseValueBRL(o.value), 0)
-    },
-    months,
-    month_orders: monthOrders,
-    pending_invoices: pendingInvoices
-  });
 }));
 
 // ---------- Leads do WhatsApp (cliques do site) ----------

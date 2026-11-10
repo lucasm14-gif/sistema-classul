@@ -198,7 +198,6 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ file_id: fileId, category })
     }),
-  getStats: (month) => request(`/api/stats${month ? `?month=${month}` : ''}`),
   getLeads: () => request('/api/leads'),
   getPlates: () => request('/api/plates'),
   savePlatesSettings: (data) => request('/api/plates-settings', { method: 'PUT', body: JSON.stringify(data) }),
