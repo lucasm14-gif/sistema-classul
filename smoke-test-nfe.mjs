@@ -337,7 +337,15 @@ try {
 
   // ---- Ranking de uso, última compra e "emitir outra igual"
   r = await call('GET', '/nfe/produtos');
-  check('produto mais vendido vem primeiro', r.body[0].codigo === '102' && r.body[0].uso >= 3, `${r.body[0].codigo} uso=${r.body[0].uso}`);
+  const nomesProd = r.body.map((p) => p.descricao);
+  check('produtos em ordem alfabética', nomesProd.join('|') === [...nomesProd].sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })).join('|'), nomesProd.join(', '));
+  check('vendas do produto continuam contadas', r.body.find((p) => p.codigo === '102')?.uso >= 3);
+  r = await call('POST', '/nfe/clientes', { ...clienteRS, documento: '33.000.167/0001-01', nome: 'Água Mineral Ltda' });
+  r = await call('GET', '/nfe/clientes');
+  const nomesCli = r.body.map((c) => c.nome);
+  check('clientes em ordem alfabética (acento no lugar certo)', nomesCli.join('|') === [...nomesCli].sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })).join('|') && nomesCli[0].startsWith('Água'), nomesCli.join(', '));
+  r = await call('GET', '/nfe/clientes?q=ltda');
+  check('busca de cliente em ordem alfabética', r.body.length >= 1 && r.body.map((c) => c.nome).join('|') === r.body.map((c) => c.nome).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })).join('|'));
   r = await call('GET', `/nfe/clientes/${cli.id}/ultima`);
   check('última compra do cliente', r.status === 200 && r.body.itens.length === 1 && r.body.itens[0].codigo === '102');
   r = await call('GET', `/nfe/notas/${n3.id}/copia`);

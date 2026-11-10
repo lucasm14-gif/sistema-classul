@@ -539,13 +539,10 @@ function pontuar(produto, tokens) {
 
 function buscarProdutos(produtos, texto, limite = 8) {
   const tokens = norm(texto).split(/[^a-z0-9.,/]+/).filter((t) => t && t !== 'de' && t !== 'tam' && t !== 'cm');
-  if (!tokens.length) return [...produtos].sort((a, b) => (b.uso || 0) - (a.uso || 0)).slice(0, limite);
-  return produtos
-    .map((p) => ({ p, s: pontuar(p, tokens) }))
-    .filter((x) => x.s > 0)
-    .sort((a, b) => b.s - a.s)
-    .slice(0, limite)
-    .map((x) => x.p);
+  // Sempre em ordem alfabética; digitar só filtra.
+  const alfa = (a, b) => String(a.descricao).localeCompare(String(b.descricao), 'pt-BR', { sensitivity: 'base' });
+  if (!tokens.length) return [...produtos].sort(alfa).slice(0, limite);
+  return produtos.filter((p) => pontuar(p, tokens) > 0).sort(alfa).slice(0, limite);
 }
 
 // Lista com setas ↑ ↓, Enter escolhe e Esc fecha.
@@ -677,7 +674,7 @@ function ClientePicker({ value, onChange, onError }) {
       </div>
       {aberto && (
         <div className="absolute z-20 mt-1 w-full max-h-80 overflow-y-auto rounded-2xl border border-black/10 bg-white shadow-xl">
-          {!busca && lista.length > 0 && <div className="px-4 pt-2.5 pb-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Recentes</div>}
+          {!busca && lista.length > 0 && <div className="px-4 pt-2.5 pb-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Clientes de A a Z</div>}
           {lista.map((c, i) => (
             <button
               key={c.id}
@@ -719,7 +716,7 @@ function ClientePicker({ value, onChange, onError }) {
 function ProdutoBusca({ produtos, onEscolher, onNovo, inputRef, onEnterVazio }) {
   const [texto, setTexto] = useState('');
   const [aberto, setAberto] = useState(false);
-  const sugestoes = useMemo(() => buscarProdutos(produtos, texto), [produtos, texto]);
+  const sugestoes = useMemo(() => buscarProdutos(produtos, texto, 300), [produtos, texto]);
   const escolher = (p) => {
     onEscolher(p);
     setTexto('');
@@ -761,7 +758,7 @@ function ProdutoBusca({ produtos, onEscolher, onNovo, inputRef, onEnterVazio }) 
       </div>
       {aberto && (
         <div className="absolute z-20 mt-1 w-full max-h-96 overflow-y-auto rounded-2xl border border-black/10 bg-white shadow-xl">
-          {!texto && <div className="px-4 pt-2.5 pb-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Mais vendidos</div>}
+          {!texto && <div className="px-4 pt-2.5 pb-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Produtos de A a Z</div>}
           {sugestoes.map((p, i) => (
             <button
               key={p.id}
