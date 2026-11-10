@@ -412,7 +412,7 @@ export default function OrderModal({ order, onClose, onSaved, onDeleted, onArchi
             <label className={label}>{isCaseOnly ? 'Cor do estojo' : 'Estojo'}</label>
             {choice(CASE_COLORS, form.case_color, (v) => setForm((f) => ({ ...f, case_color: v })), {
               Preto: 'bg-brand-950 text-white border-brand-950 shadow-md',
-              Azul: 'bg-sky-100 text-sky-700 border-sky-400',
+              Azul: 'bg-blue-100 text-blue-800 border-blue-500',
               Vermelho: 'bg-flame-100 text-flame-700 border-flame-500'
             })}
           </div>

@@ -3,7 +3,8 @@ import { UserRound, Check, Plus, ChevronDown } from 'lucide-react';
 import { api } from '../api';
 import { getUser, setUser } from '../api';
 
-const AVATAR_COLORS = ['#4a9c33', '#ee3b33', '#eabf00', '#2563eb', '#7c3aed', '#db2777', '#0891b2'];
+// Tons de grafite: os avatares acompanham o visual monocromático.
+const AVATAR_COLORS = ['#111113', '#3a3a3e', '#5b5b60', '#26262a', '#77777c', '#48484d', '#8e8e93'];
 
 export function colorFor(name) {
   let h = 0;
@@ -11,7 +12,8 @@ export function colorFor(name) {
   return AVATAR_COLORS[h] || AVATAR_COLORS[0];
 }
 
-export default function UserPicker({ onAuthError, compact = false }) {
+// `rail`: versão da barra lateral — avatar + nome, e a lista abre para o lado.
+export default function UserPicker({ onAuthError, compact = false, rail = false }) {
   const [current, setCurrent] = useState(getUser());
   const [employees, setEmployees] = useState([]);
   const [open, setOpen] = useState(false);
@@ -63,7 +65,9 @@ export default function UserPicker({ onAuthError, compact = false }) {
       <button
         onClick={() => setOpen((o) => !o)}
         className={
-          compact
+          rail
+            ? 'w-full flex items-center justify-center xl:justify-start gap-2.5 p-1 xl:pr-3 rounded-full hover:bg-black/[0.05] transition-colors'
+            : compact
             ? 'flex items-center justify-center p-1 rounded-full hover:bg-black/[0.07] transition-colors'
             : 'flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-full bg-black/[0.04] hover:bg-black/[0.07] transition-colors'
         }
@@ -71,7 +75,7 @@ export default function UserPicker({ onAuthError, compact = false }) {
       >
         {current ? (
           <span
-            className="w-7 h-7 rounded-full flex items-center justify-center text-white font-extrabold text-xs shrink-0"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-white font-extrabold text-xs shrink-0"
             style={{ backgroundColor: colorFor(current) }}
           >
             {current.charAt(0).toUpperCase()}
@@ -81,7 +85,13 @@ export default function UserPicker({ onAuthError, compact = false }) {
             <UserRound size={15} />
           </span>
         )}
-        {!compact && (
+        {rail && (
+          <span className="hidden xl:block min-w-0 text-left leading-tight">
+            <span className="block text-[13px] font-bold text-brand-950 truncate">{current || 'Quem é você?'}</span>
+            <span className="block text-[10px] font-medium text-slate-400">trocar usuário</span>
+          </span>
+        )}
+        {!compact && !rail && (
           <>
             <span className="hidden sm:block text-sm font-bold text-brand-950 max-w-[120px] truncate">
               {current || 'Quem é você?'}
@@ -92,7 +102,7 @@ export default function UserPicker({ onAuthError, compact = false }) {
       </button>
 
       {open && (
-        <div className={`absolute ${compact ? 'left-full bottom-0 ml-4' : 'right-0 mt-2'} w-60 bg-white rounded-2xl shadow-2xl border border-black/5 p-2 z-50 animate-fade-up`}>
+        <div className={`absolute ${compact || rail ? 'left-full bottom-0 ml-4' : 'right-0 mt-2'} w-60 bg-white rounded-2xl shadow-2xl border border-black/5 p-2 z-50 animate-fade-up`}>
           <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest px-2 py-1.5">
             Funcionário
           </p>

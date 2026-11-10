@@ -55,7 +55,8 @@ export default function UpcomingDeliveries({ orders, onOpen }) {
 
   return (
     <div className="px-4 sm:px-6 pb-5 shrink-0">
-      <div className="bg-white border border-black/5 rounded-3xl shadow-sm p-4 sm:p-5">
+      {/* Bloco de tinta (preto), como o painel de destaque da referência. */}
+      <div className="ink border rounded-3xl p-4 sm:p-5">
         <div className="flex items-center gap-2 mb-3">
           <CalendarClock size={16} className="text-brand-600" />
           <h3 className="font-extrabold tracking-tight text-brand-950 text-sm">Próximas entregas (4 dias)</h3>

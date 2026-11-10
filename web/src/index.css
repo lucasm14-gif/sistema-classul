@@ -1,184 +1,425 @@
 @import "tailwindcss";
 
+/* =============================================================================
+   Classul — visual "estúdio": monocromático, blocos brancos bem arredondados
+   sobre um fundo cinza fosco, pílulas pretas como destaque e tipografia leve.
+
+   Quase tudo aqui é feito trocando os tokens do Tailwind v4 (--color-*,
+   --radius-*, --font-weight-*): os componentes seguem usando as mesmas classes
+   (bg-brand-600, text-brand-950…) e mudam de cara sem mexer na lógica.
+   A escala "brand" deixou de ser verde e virou a escala de TINTA (preto→cinza).
+   ============================================================================= */
+
 @theme {
-  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Geist", "Helvetica Neue", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* Verde da logo Classul */
-  --color-brand-50: #f2faec;
-  --color-brand-100: #e3f5d3;
-  --color-brand-200: #c8eaac;
-  --color-brand-300: #a4da7b;
-  --color-brand-400: #82c953;
-  --color-brand-500: #62bb46;
-  --color-brand-600: #4a9c33;
-  --color-brand-700: #3a7a2a;
-  --color-brand-800: #316225;
-  --color-brand-900: #2a5222;
-  --color-brand-950: #12290e;
+  /* Pesos mais leves: o sistema inteiro usa extrabold/bold nos rótulos. */
+  --font-weight-medium: 400;
+  --font-weight-semibold: 500;
+  --font-weight-bold: 500;
+  --font-weight-extrabold: 600;
 
-  /* Vermelho da logo */
-  --color-flame-50: #fef2f2;
-  --color-flame-100: #fee2e1;
-  --color-flame-500: #ee3b33;
-  --color-flame-600: #d92a22;
-  --color-flame-700: #b71f19;
+  /* Cantos mais generosos, como os blocos da referência. */
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.375rem;
+  --radius-3xl: 1.875rem;
 
-  /* Amarelo da logo */
-  --color-sun-100: #fff9c2;
-  --color-sun-300: #ffe94d;
-  --color-sun-400: #ffd600;
-  --color-sun-500: #eabf00;
+  /* Tinta (era o verde da marca). 500–950 = pretos; 50–400 = cinzas de apoio. */
+  --color-brand-50: #f3f3f1;
+  --color-brand-100: #e9e9e6;
+  --color-brand-200: #dcdcd8;
+  --color-brand-300: #bdbdb8;
+  --color-brand-400: #8c8c88;
+  --color-brand-500: #1a1a1c;
+  --color-brand-600: #111113;
+  --color-brand-700: #2e2e32;
+  --color-brand-800: #1e1e21;
+  --color-brand-900: #141416;
+  --color-brand-950: #0a0a0b;
+
+  /* Cinzas neutros (eram azulados). */
+  --color-slate-50: #f7f7f5;
+  --color-slate-100: #f0f0ee;
+  --color-slate-200: #e2e2df;
+  --color-slate-300: #c6c6c2;
+  --color-slate-400: #979793;
+  --color-slate-500: #70706c;
+  --color-slate-600: #4f4f4c;
+  --color-slate-700: #38383a;
+  --color-slate-800: #232325;
+  --color-slate-900: #141416;
+
+  /* Azul do "Novo pedido" vira cinza: a cor fica só para alerta. */
+  --color-sky-100: #ececea;
+  --color-sky-400: #8c8c88;
+  --color-sky-500: #a9a9a5;
+  --color-sky-700: #3a3a3c;
+
+  /* Alerta (vermelho) e atenção (âmbar), dessaturados para conviver com o P&B. */
+  --color-flame-50: #fbefed;
+  --color-flame-100: #f6dcd8;
+  --color-flame-200: #efbfb9;
+  --color-flame-300: #e59c94;
+  --color-flame-400: #dc6f65;
+  --color-flame-500: #d2493e;
+  --color-flame-600: #bb372d;
+  --color-flame-700: #962a22;
+
+  --color-sun-100: #f6efd6;
+  --color-sun-300: #e9d68a;
+  --color-sun-400: #dcbc45;
+  --color-sun-500: #c4a22c;
+  --color-yellow-600: #8f6f10;
+  --color-yellow-700: #7a5e0e;
+  --color-yellow-800: #644d0c;
+  --color-yellow-900: #4a3909;
+}
+
+:root {
+  --page: #e6e6e3;
+  --frame: rgb(255 255 255 / 0.38);
+  --frame-edge: rgb(255 255 255 / 0.85);
+  --surface: #ffffff;
+  --ink: #0a0a0b;
+  --hairline: rgb(10 10 11 / 0.07);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
-  background-color: #f4f6ef;
-  color: #1c2417;
+  background-color: var(--page);
+  color: #19191b;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01", "cv11";
+  letter-spacing: -0.006em;
 }
 
-/* ------------------------------- Modo escuro -------------------------------
-   Feito só com CSS: o Tailwind v4 gera os utilitários a partir de variáveis
-   (--color-*), então trocar as variáveis aqui reescurece o sistema inteiro sem
-   mexer em nenhum componente. As exceções são tokens usados com dois papéis
-   (ex.: `bg-white` é superfície mas `text-white` é rótulo de botão colorido);
-   esses recebem regras explícitas abaixo. Regras fora de @layer vencem os
-   utilitários do Tailwind, que ficam na camada `utilities`. */
+/* Fundo: formas brancas macias e desfocadas atrás do vidro (como a referência). */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background:
+    radial-gradient(60% 55% at 78% 8%, rgb(255 255 255 / 0.95), transparent 62%),
+    radial-gradient(45% 50% at 8% 92%, rgb(255 255 255 / 0.8), transparent 60%),
+    radial-gradient(40% 45% at 40% 45%, rgb(200 200 196 / 0.55), transparent 65%),
+    linear-gradient(135deg, #dededb, #ececea 45%, #d9d9d6);
+}
+.backdrop::before,
+.backdrop::after {
+  content: '';
+  position: absolute;
+  border-radius: 46% 54% 60% 40% / 52% 44% 56% 48%;
+  filter: blur(46px);
+  animation: drift 26s ease-in-out infinite alternate;
+}
+.backdrop::before {
+  width: 46vmax;
+  height: 38vmax;
+  right: -6vmax;
+  top: -12vmax;
+  background: radial-gradient(circle at 35% 35%, #ffffff, #f2f2f0 45%, rgb(190 190 186 / 0.75) 78%, transparent 80%);
+}
+.backdrop::after {
+  width: 34vmax;
+  height: 30vmax;
+  left: 22vmax;
+  bottom: -14vmax;
+  background: radial-gradient(circle at 60% 30%, #ffffff, #ededeb 50%, rgb(176 176 172 / 0.7) 80%, transparent 82%);
+  animation-duration: 34s;
+  animation-direction: alternate-reverse;
+}
+@keyframes drift {
+  from {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  to {
+    transform: translate3d(-3vmax, 2.5vmax, 0) rotate(14deg) scale(1.08);
+  }
+}
 
-.dark {
+/* Moldura de vidro que abraça a barra lateral e o conteúdo. */
+.frame {
+  background: var(--frame);
+  border: 1px solid var(--frame-edge);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.7),
+    0 40px 80px -40px rgb(20 20 22 / 0.28);
+  -webkit-backdrop-filter: blur(26px) saturate(120%);
+  backdrop-filter: blur(26px) saturate(120%);
+}
+
+/* ------------------------------- Superfícies ------------------------------- */
+
+/* Cartões: sombra longa e suave no lugar da sombra curta padrão. */
+.shadow-sm {
+  --tw-shadow: 0 1px 0 rgb(255 255 255 / 0.6) inset, 0 18px 40px -28px rgb(20 20 22 / 0.35);
+}
+.border-black\/5 {
+  border-color: var(--hairline);
+}
+
+/* Colunas do quadro e painéis de fundo: vidro claro. */
+.bg-black\/\[0\.03\] {
+  background-color: rgb(255 255 255 / 0.42);
+}
+
+/* Fundo do corpo dos modais. */
+.bg-\[\#F7F8F3\] {
+  background-color: #f2f2f0;
+}
+.bg-brand-950\/60 {
+  background-color: rgb(20 20 22 / 0.42);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+/* Sombras coloridas dos botões (eram verdes): mais discretas no preto. */
+.shadow-brand-600\/25,
+.shadow-brand-600\/20,
+.shadow-brand-600\/30,
+.shadow-brand-500\/30 {
+  --tw-shadow-color: rgb(10 10 11 / 0.16);
+}
+
+/* ------------------------------- Tipografia -------------------------------- */
+
+/* Título de cada aba: grande e leve, como "Management" na referência. */
+/* (fora de cartões: os títulos das telas de PIN ficam do tamanho normal) */
+main h2.text-xl:not(.bg-white *),
+main h1.text-2xl:not(.bg-white *),
+main h1.text-xl:not(.bg-white *) {
+  font-size: clamp(1.9rem, 1.2rem + 1.9vw, 2.75rem);
+  line-height: 1.02;
+  font-weight: 400;
+  letter-spacing: -0.045em;
+  margin-bottom: 0.35rem;
+}
+main h2.text-xl:not(.bg-white *) svg,
+main h1.text-2xl:not(.bg-white *) svg,
+main h1.text-xl:not(.bg-white *) svg {
+  width: 0.72em;
+  height: 0.72em;
+  stroke-width: 1.5;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
+}
+
+/* Números alinhados em tabelas e valores. */
+.tabular-nums,
+table {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------- Campos ---------------------------------- */
+
+input,
+textarea,
+select {
+  transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+}
+.border-2.border-slate-200 {
+  border-width: 1px;
+  border-color: rgb(10 10 11 / 0.12);
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  box-shadow: 0 0 0 4px rgb(10 10 11 / 0.06);
+}
+input[type='checkbox'],
+input[type='radio'],
+input[type='range'] {
+  accent-color: var(--ink);
+  box-shadow: none;
+}
+
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
+/* ------------------------------ Bloco de tinta ------------------------------
+   `.ink` inverte um bloco para preto (o card "File Preview"/"Team" da
+   referência). Usa a mesma troca de variáveis do modo escuro, então tudo que
+   estiver dentro acompanha sozinho. */
+
+.dark,
+.ink {
   color-scheme: dark;
 
-  /* Os pretos só aparecem com opacidade (bg-black/5, border-black/5,
-     divide-black/5, hover:bg-black/[0.07]) — invertê-los transforma todos os
-     véus escuros em véus claros de uma vez. */
+  /* Os pretos só aparecem com opacidade (véus e fios) — viram brancos. */
   --color-black: #ffffff;
+  --hairline: rgb(255 255 255 / 0.09);
+  --ink: #f5f5f4;
 
-  /* Cinzas frios (azul-ardósia): texto secundário e fundos de selo/avatar. */
-  --color-slate-200: #1f2832;
-  --color-slate-300: #2e3946;
-  --color-slate-400: #7c8a9b;
-  --color-slate-500: #95a3b4;
-  --color-slate-600: #b6c1ce;
+  --color-slate-50: #19191b;
+  --color-slate-100: #1d1d20;
+  --color-slate-200: #26262a;
+  --color-slate-300: #3a3a3f;
+  --color-slate-400: #85858a;
+  --color-slate-500: #a0a0a5;
+  --color-slate-600: #c2c2c6;
 
-  /* Tons claros — no sistema aparecem só como fundo, então viram vidros tingidos. */
-  --color-brand-50: #142420;
-  --color-brand-100: #183028;
-  --color-brand-300: #2a4d3c;
-  --color-flame-50: #2c1a1f;
-  --color-flame-100: #3a1f25;
-  --color-sun-100: #2b2716;
-  --color-sky-100: #132a3b;
+  /* Tinta invertida: 500–950 claros (texto e botões), 50–300 vidros escuros. */
+  --color-brand-50: #1b1b1e;
+  --color-brand-100: #242428;
+  --color-brand-200: #303035;
+  --color-brand-300: #45454b;
+  --color-brand-400: #8a8a90;
+  --color-brand-500: #f1f1f0;
+  --color-brand-600: #f4f4f3;
+  --color-brand-700: #ffffff;
+  --color-brand-800: #e6e6e5;
+  --color-brand-900: #ededec;
+  --color-brand-950: #f7f7f6;
 
-  /* Superfícies de vidro (estilo painel): gradiente sutil + fio de luz no topo. */
-  --glass-top: rgb(44 56 68 / 0.62);
-  --glass-bottom: rgb(22 29 37 / 0.62);
-  --glass-edge: rgb(255 255 255 / 0.07);
-  --glass-solid: #161d25;
+  --color-sky-100: #232327;
+  --color-sky-500: #6f6f75;
+  --color-sky-700: #cfcfd3;
+
+  --color-flame-50: #2a1715;
+  --color-flame-100: #3a1e1b;
+  --color-flame-600: #ff8f85;
+  --color-flame-700: #ffa59c;
+  --color-sun-100: #2a2412;
+  --color-yellow-600: #e7c95f;
+  --color-yellow-700: #e7c95f;
+  --color-yellow-800: #edd47a;
+  --color-yellow-900: #f3df95;
+
+  --surface: #151517;
+  --frame: rgb(255 255 255 / 0.035);
+  --frame-edge: rgb(255 255 255 / 0.09);
+}
+
+.dark {
+  --page: #08080a;
+}
+
+.ink {
+  background-color: #0b0b0c;
+  background-image:
+    radial-gradient(90% 120% at 100% 0%, rgb(255 255 255 / 0.09), transparent 55%),
+    radial-gradient(60% 90% at 0% 100%, rgb(255 255 255 / 0.05), transparent 60%);
+  color: #f1f1f0;
+  border-color: rgb(255 255 255 / 0.08);
 }
 
 .dark body {
-  background-color: #090d12;
-  background-image:
-    radial-gradient(1100px 650px at 12% -8%, rgb(56 120 140 / 0.22), transparent 60%),
-    radial-gradient(900px 600px at 92% 4%, rgb(70 90 160 / 0.16), transparent 60%),
-    radial-gradient(900px 700px at 60% 110%, rgb(98 187 70 / 0.07), transparent 60%);
-  background-attachment: fixed;
-  color: #e4ebf2;
+  color: #ececeb;
+}
+.dark .backdrop {
+  background:
+    radial-gradient(55% 50% at 80% 4%, rgb(255 255 255 / 0.1), transparent 62%),
+    radial-gradient(45% 50% at 6% 96%, rgb(255 255 255 / 0.06), transparent 60%),
+    linear-gradient(135deg, #0b0b0d, #070708 50%, #0e0e10);
+}
+.dark .backdrop::before {
+  background: radial-gradient(circle at 35% 35%, rgb(255 255 255 / 0.2), rgb(255 255 255 / 0.07) 50%, transparent 78%);
+}
+.dark .backdrop::after {
+  background: radial-gradient(circle at 60% 30%, rgb(255 255 255 / 0.13), rgb(255 255 255 / 0.04) 55%, transparent 80%);
+}
+.dark .frame {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06);
 }
 
-/* Superfícies dos cards, colunas e painéis: vidro escuro com gradiente. */
-.dark .bg-white {
-  background-color: var(--glass-solid);
-  background-image: linear-gradient(160deg, var(--glass-top), var(--glass-bottom));
-  border-color: var(--glass-edge);
-  --tw-inset-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+/* Superfícies no escuro. `bg-white` é superfície; `text-white` continua rótulo. */
+:is(.dark, .ink) .bg-white {
+  background-color: var(--surface);
+  border-color: var(--hairline);
 }
-.dark .bg-white\/85,
-.dark .bg-white\/90,
-.dark .bg-white\/95 {
-  background-color: rgb(17 23 30 / 0.78);
-  background-image: linear-gradient(170deg, rgb(255 255 255 / 0.04), transparent 40%);
-  -webkit-backdrop-filter: blur(24px) saturate(140%);
-  backdrop-filter: blur(24px) saturate(140%);
+.ink .bg-white {
+  background-color: rgb(255 255 255 / 0.07);
 }
-.dark .ring-white {
-  --tw-ring-color: #161d25;
+:is(.dark, .ink) :is(.bg-white\/85, .bg-white\/90, .bg-white\/95) {
+  background-color: rgb(21 21 23 / 0.86);
 }
-
-/* Painéis grandes (colunas do quadro, blocos de fundo): vidro bem leve. */
-.dark .bg-black\/\[0\.03\] {
-  background-color: transparent;
-  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0.015));
+:is(.dark, .ink) .ring-white {
+  --tw-ring-color: #151517;
 }
-
-/* Bordas finas ficam um pouco mais visíveis no vidro. */
-.dark .border-black\/5 {
-  border-color: var(--glass-edge);
+:is(.dark, .ink) .bg-black\/\[0\.03\] {
+  background-color: rgb(255 255 255 / 0.035);
 }
-
-/* Fundo creme fixo do corpo dos modais (Pedido, Cliente, chat do Bot) — no
-   modo escuro vira uma superfície escura atrás dos cards. */
 .dark .bg-\[\#F7F8F3\] {
-  background-color: #0c1117;
+  background-color: #0d0d0f;
 }
-
-/* Fundo dos modais: escurece e desfoca o que está atrás. */
 .dark .bg-brand-950\/60 {
-  background-color: rgb(4 7 10 / 0.68);
+  background-color: rgb(0 0 0 / 0.66);
+}
+.dark .shadow-sm {
+  --tw-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+:is(.dark, .ink) .border-2.border-slate-200 {
+  border-color: rgb(255 255 255 / 0.13);
 }
 
-/* Textos que eram verde-escuro precisam clarear (os mesmos tons seguem
-   servindo de fundo em bg-brand-600/700, por isso não troco as variáveis). */
-.dark .text-brand-950 {
-  color: #eef3f8;
+/* Botões de tinta no escuro ficam brancos — o rótulo passa a ser preto. */
+:is(.dark, .ink) :is(.bg-brand-500, .bg-brand-600, .bg-brand-700, .bg-brand-950):not([class*='bg-brand-500/']),
+:is(.dark, .ink) :is(.bg-brand-500, .bg-brand-600, .bg-brand-700, .bg-brand-950) .text-white {
+  color: #0a0a0b;
 }
-.dark .text-brand-900 {
-  color: #dce6ef;
-}
-.dark .text-brand-800 {
-  color: #bfe6ab;
-}
-.dark .text-brand-700 {
-  color: #9fdb80;
-}
-.dark .text-brand-600 {
-  color: #8fd46b;
-}
-.dark .text-sky-700 {
-  color: #8cc8f0;
-}
-.dark .text-yellow-700,
-.dark .text-yellow-800 {
-  color: #f0d36b;
-}
-.dark .text-flame-700 {
-  color: #ff9d97;
-}
-.dark .text-flame-600 {
-  color: #ff8b84;
+:is(.dark, .ink) :is(.shadow-brand-600\/25, .shadow-brand-600\/20, .shadow-brand-600\/30) {
+  --tw-shadow-color: rgb(0 0 0 / 0.5);
 }
 
-/* Campos de formulário. */
-.dark input,
-.dark textarea,
-.dark select {
-  background-color: rgb(8 12 17 / 0.55);
-  color: #e4ebf2;
+:is(.dark, .ink) :is(input, textarea, select) {
+  background-color: rgb(255 255 255 / 0.04);
+  color: #ececeb;
 }
-.dark input::placeholder,
-.dark textarea::placeholder {
-  color: #66748a;
+:is(.dark, .ink) :is(input, textarea)::placeholder {
+  color: #6d6d72;
+}
+:is(.dark, .ink) :is(input, textarea, select):focus-visible {
+  box-shadow: 0 0 0 4px rgb(255 255 255 / 0.07);
 }
 
 ::selection {
-  background: #c8eaac;
-  color: #12290e;
+  background: #0a0a0b;
+  color: #ffffff;
+}
+:is(.dark, .ink) ::selection,
+.ink::selection {
+  background: #f5f5f4;
+  color: #0a0a0b;
 }
 
-.dark ::selection {
-  background: #2f6b4a;
-  color: #f2faec;
-}
+/* ------------------------------ Barras de rolagem --------------------------- */
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(10 10 11 / 0.16) transparent;
+}
+.dark *,
+.ink * {
+  scrollbar-color: rgb(255 255 255 / 0.16) transparent;
+}
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -187,50 +428,151 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(18, 41, 14, 0.15);
+  background: rgb(10 10 11 / 0.14);
   border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(18, 41, 14, 0.3);
+  background: rgb(10 10 11 / 0.3);
 }
-.dark ::-webkit-scrollbar-thumb {
-  background: rgba(200, 215, 230, 0.14);
+:is(.dark, .ink) ::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.14);
 }
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: rgba(200, 215, 230, 0.28);
-}
+
+/* --------------------------------- Movimento -------------------------------- */
 
 @keyframes fadeUp {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(14px);
+  }
+  /* As animações usam fill "backwards" (não "both"): um transform que sobra
+     depois do fim vira âncora de position:fixed e desloca o cartão arrastado. */
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-fade-up {
+  animation: fadeUp 0.6s var(--ease-out) backwards;
+}
+
+/* Entrada em cascata dos blocos de cada aba. */
+main .animate-fade-up > * {
+  animation: fadeUp 0.7s var(--ease-out) backwards;
+}
+main .animate-fade-up > *:nth-child(1) { animation-delay: 0.02s; }
+main .animate-fade-up > *:nth-child(2) { animation-delay: 0.08s; }
+main .animate-fade-up > *:nth-child(3) { animation-delay: 0.14s; }
+main .animate-fade-up > *:nth-child(4) { animation-delay: 0.2s; }
+main .animate-fade-up > *:nth-child(5) { animation-delay: 0.26s; }
+main .animate-fade-up > *:nth-child(n + 6) { animation-delay: 0.32s; }
+
+@keyframes railIn {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
+  }
+}
+.rail-in {
+  animation: railIn 0.7s var(--ease-out) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0s !important;
+    transition-duration: 0.001ms !important;
   }
 }
 
-.animate-fade-up {
-  animation: fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+/* ------------------------------ Barra lateral ------------------------------- */
+
+/* Em @layer components para os utilitários (hidden, sm:inline-flex…) vencerem. */
+@layer components {
+  .nav-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    height: 2.6rem;
+    border-radius: 999px;
+    color: var(--color-slate-500);
+    font-size: 0.82rem;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: color 0.25s, background-color 0.25s, transform 0.35s var(--ease-out);
+  }
+  .nav-item:hover {
+    color: var(--color-brand-950);
+    background: rgb(10 10 11 / 0.05);
+  }
+  .dark .nav-item:hover {
+    background: rgb(255 255 255 / 0.07);
+  }
+  .nav-item.is-active,
+  .dark .nav-item.is-active:hover {
+    background: var(--ink);
+    color: var(--surface);
+    box-shadow: 0 10px 24px -12px rgb(10 10 11 / 0.55);
+  }
+  .dark .nav-item.is-active {
+    color: #0a0a0b;
+    box-shadow: none;
+  }
+  .nav-item:active {
+    transform: scale(0.97);
+  }
+
+  /* Pílulas do topo: círculo preto + pílula branca. */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    height: 2.75rem;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    box-shadow: 0 14px 30px -24px rgb(20 20 22 / 0.4);
+  }
+  .orb {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    flex: none;
+    border-radius: 999px;
+    background: var(--ink);
+    color: var(--surface);
+    transition: transform 0.35s var(--ease-out), background-color 0.25s;
+  }
+  .dark .orb {
+    color: #0a0a0b;
+  }
+  button.orb:hover {
+    transform: scale(1.06);
+  }
+  .orb-ghost {
+    background: var(--surface);
+    color: var(--color-slate-600);
+    border: 1px solid var(--hairline);
+  }
+  .dark .orb-ghost {
+    color: var(--color-slate-600);
+  }
+  .orb-ghost:hover {
+    color: var(--color-brand-950);
+  }
 }
 
-/* Item ativo da barra lateral: fio de luz à esquerda, como no painel de referência. */
-.nav-active::before {
-  content: '';
-  position: absolute;
-  left: -14px;
-  top: 25%;
-  bottom: 25%;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--color-brand-500);
-  box-shadow: 0 0 12px var(--color-brand-500);
-}
-
-/* Cores dos gráficos (Faturamento). Uma cor por entidade, sempre na mesma ordem
-   (categoria de produto, ano); o modo escuro tem os próprios tons, conferidos
-   contra o fundo escuro. "Demais" é sempre cinza. */
+/* ------------------------------ Gráficos -----------------------------------
+   Cores dos gráficos (Faturamento). Uma cor por entidade, sempre na mesma
+   ordem; a barra principal agora é tinta. "Demais" é sempre cinza. */
 :root {
   --viz-1: #2a78d6;
   --viz-2: #eb6834;
@@ -241,9 +583,9 @@ body {
   --viz-7: #6250d6;
   --viz-8: #e34948;
   --viz-demais: #a3a3a0;
-  --viz-barra: #62bb46;
-  --viz-barra-forte: #3a7a2a;
-  --viz-comparacao: #64748b;
+  --viz-barra: #2a2a2d;
+  --viz-barra-forte: #0a0a0b;
+  --viz-comparacao: #9a9a96;
   --viz-superficie: #ffffff;
 }
 .dark {
@@ -255,9 +597,9 @@ body {
   --viz-6: #008300;
   --viz-7: #9085e9;
   --viz-8: #e66767;
-  --viz-demais: #5f6670;
-  --viz-barra: #4a9c33;
-  --viz-barra-forte: #82c953;
-  --viz-comparacao: #95a3b4;
-  --viz-superficie: #161d25;
+  --viz-demais: #5f5f64;
+  --viz-barra: #d4d4d2;
+  --viz-barra-forte: #ffffff;
+  --viz-comparacao: #77777c;
+  --viz-superficie: #151517;
 }

@@ -135,7 +135,7 @@ export default function Board({ onAuthError }) {
       </div>
 
       <DragDropContext onDragEnd={onDragEnd}>
-        <div className="flex-1 min-h-0 overflow-x-auto px-4 sm:px-6 pb-4 pt-1">
+        <div className="flex-1 min-h-[24rem] overflow-x-auto px-4 sm:px-6 pb-4 pt-1">
           <div className="grid grid-cols-4 gap-4 min-w-[920px] h-full">
             {COLUMNS.map((col) => {
               const cards = visible.filter((o) => o.status === col.id);

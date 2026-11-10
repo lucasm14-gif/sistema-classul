@@ -151,7 +151,7 @@ export default function Arts({ onAuthError }) {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="p-4 sm:p-6 space-y-5 animate-fade-up">
       <header>
         <h1 className="text-2xl font-extrabold text-brand-950 flex items-center gap-2"><Award size={24} /> Artes de placa</h1>
         <p className="text-sm text-slate-500 mt-1">Protótipo: a IA separa os textos e a arte sai no modelo. Nada é enviado ao cliente sem você conferir.</p>

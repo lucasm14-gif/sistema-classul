@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Award, Layers, KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon, ReceiptText } from 'lucide-react';
+import { Award, Layers, KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon, ReceiptText, Clock3 } from 'lucide-react';
 import Faturamento from './components/Faturamento';
 import Board from './components/Board';
 import Settings from './components/Settings';
@@ -36,6 +36,26 @@ const TABS = [
   { id: 'settings', label: 'Configurações', icon: SettingsIcon }
 ];
 
+// Pílula do topo: círculo preto com relógio + hora e data de hoje.
+function Clock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 20000);
+    return () => clearInterval(t);
+  }, []);
+  const hora = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const dia = now.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }).replace(/\./g, '');
+  return (
+    <div className="pill hidden sm:inline-flex pr-5" title={now.toLocaleDateString('pt-BR', { dateStyle: 'full' })}>
+      <span className="orb -ml-px">
+        <Clock3 size={16} strokeWidth={1.6} />
+      </span>
+      <span className="ml-3 font-mono text-[13px] text-brand-950">{hora}</span>
+      <span className="ml-2.5 text-xs font-medium text-slate-400 capitalize">{dia}</span>
+    </div>
+  );
+}
+
 export default function App() {
   const [authed, setAuthed] = useState(() => Boolean(getToken()));
   const [tab, setTab] = useState('board');
@@ -63,69 +83,95 @@ export default function App() {
     return <Login onSuccess={() => setAuthed(true)} />;
   }
 
+  const current = Math.max(0, TABS.findIndex((t) => t.id === tab));
+
   return (
     <ToastProvider>
-      <div className="min-h-screen flex">
-        {/* Barra lateral de ícones (estilo painel): navegação no meio, conta e tema embaixo. */}
-        <aside className="sticky top-3 z-30 shrink-0 self-start h-[calc(100vh-1.5rem)] w-[68px] sm:w-[76px] ml-3 my-3 rounded-[1.75rem] bg-white/85 backdrop-blur-xl border border-black/5 shadow-sm flex flex-col items-center py-4">
-          <img src="/logo.png" alt="Classul" title="Classul · Gestão de Pedidos" className="w-11 h-11 object-contain shrink-0" />
-          <span className="mt-1 text-[10px] font-extrabold tracking-tight text-brand-950">Classul</span>
+      <div className="backdrop" aria-hidden="true" />
+      {/* Moldura de vidro: barra lateral em bloco branco + área de conteúdo. */}
+      <div className="relative h-dvh p-2 sm:p-3">
+        {/* O vidro é uma camada irmã, não um pai: backdrop-filter num ancestral
+            viraria âncora de position:fixed e deslocaria o cartão arrastado. */}
+        <div className="frame absolute inset-2 sm:inset-3 rounded-[2rem] sm:rounded-[2.5rem]" aria-hidden="true" />
+        <div className="relative z-[1] h-full p-2 sm:p-3 flex gap-2 sm:gap-3">
+          <aside className="rail-in z-30 shrink-0 w-[68px] xl:w-[214px] rounded-[1.6rem] sm:rounded-[1.9rem] bg-white border border-black/5 shadow-sm flex flex-col py-4 xl:py-5">
+            <div className="flex items-center justify-center xl:justify-start gap-2.5 px-3 xl:px-5 shrink-0">
+              <img src="/logo.png" alt="Classul" title="Classul · Gestão de Pedidos" className="w-10 h-10 object-contain shrink-0" />
+              <div className="hidden xl:block leading-none">
+                <p className="text-[15px] font-extrabold tracking-tight text-brand-950">Classul</p>
+                <p className="mt-1 text-[10px] font-medium text-slate-400">Gestão de pedidos</p>
+              </div>
+            </div>
 
-          <nav className="mt-5 flex-1 min-h-0 w-full overflow-y-auto overflow-x-visible flex flex-col items-center gap-1.5 px-3.5 [scrollbar-width:none]">
-            {TABS.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                onClick={() => setTab(id)}
-                title={label}
-                aria-label={label}
-                className={`relative shrink-0 w-11 h-11 flex items-center justify-center rounded-2xl transition-all ${
-                  tab === id
-                    ? 'nav-active bg-brand-500/15 text-brand-600 ring-1 ring-brand-500/25'
-                    : 'text-slate-400 hover:text-brand-900 hover:bg-black/[0.05]'
-                }`}
-              >
-                <Icon size={19} strokeWidth={tab === id ? 2.4 : 2} />
-              </button>
-            ))}
-          </nav>
+            <nav className="mt-5 xl:mt-7 flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5 px-3 [scrollbar-width:none]">
+              {TABS.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  onClick={() => setTab(id)}
+                  title={label}
+                  aria-label={label}
+                  aria-current={tab === id ? 'page' : undefined}
+                  className={`nav-item shrink-0 justify-center xl:justify-start xl:px-4 ${tab === id ? 'is-active' : ''}`}
+                >
+                  <Icon size={17} strokeWidth={1.6} className="shrink-0" />
+                  <span className="hidden xl:inline">{label}</span>
+                </button>
+              ))}
+            </nav>
 
-          <div className="mt-3 pt-3 border-t border-black/5 w-10 flex flex-col items-center gap-1.5">
-            <button
-              onClick={() => {
-                toggleTheme();
-                setDark(isDark());
-              }}
-              title={dark ? 'Modo claro' : 'Modo escuro'}
-              className="w-10 h-10 flex items-center justify-center rounded-2xl text-slate-400 hover:text-brand-800 hover:bg-black/[0.05] transition-colors"
-            >
-              {dark ? <Sun size={17} /> : <Moon size={17} />}
-            </button>
-            <button
-              onClick={() => {
-                clearToken();
-                setAuthed(false);
-              }}
-              title="Sair"
-              className="w-10 h-10 flex items-center justify-center rounded-2xl text-slate-400 hover:text-flame-600 hover:bg-flame-50 transition-colors"
-            >
-              <LogOut size={17} />
-            </button>
-            {/* Entrada discreta para a área pessoal. */}
-            <button
-              onClick={() => setLucasOpen(true)}
-              aria-label="Área pessoal"
-              className="group p-1.5 text-slate-400 hover:text-brand-900 transition-colors"
-            >
-              <BatSigil
-                className="w-7 opacity-40 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500"
-                style={{ fill: 'currentColor' }}
-              />
-            </button>
-            <UserPicker onAuthError={handleAuthError} compact />
-          </div>
-        </aside>
+            <div className="mt-3 pt-3 mx-3 border-t border-black/5 flex flex-col items-center xl:items-stretch gap-2 shrink-0">
+              <UserPicker onAuthError={handleAuthError} rail />
+              <div className="flex flex-col xl:flex-row items-center justify-between gap-1">
+                <button
+                  onClick={() => {
+                    clearToken();
+                    setAuthed(false);
+                  }}
+                  title="Sair"
+                  className="w-9 h-9 flex items-center justify-center rounded-full text-slate-400 hover:text-flame-600 hover:bg-flame-50 transition-colors"
+                >
+                  <LogOut size={16} strokeWidth={1.6} />
+                </button>
+                {/* Entrada discreta para a área pessoal. */}
+                <button
+                  onClick={() => setLucasOpen(true)}
+                  aria-label="Área pessoal"
+                  className="group p-1.5 text-slate-400 hover:text-brand-900 transition-colors"
+                >
+                  <BatSigil
+                    className="w-7 opacity-40 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500"
+                    style={{ fill: 'currentColor' }}
+                  />
+                </button>
+              </div>
+            </div>
+          </aside>
 
-        <main className="flex-1 min-w-0 overflow-hidden">
+          <div className="flex-1 min-w-0 flex flex-col">
+            {/* Topo: onde estou + pílulas (hora, tema). */}
+            <header className="shrink-0 flex items-center gap-2 sm:gap-3 px-2 sm:px-4 pt-1 pb-2 sm:pb-3">
+              <p className="flex items-baseline gap-2.5 min-w-0 text-[11px] font-medium uppercase text-slate-400">
+                <span className="font-mono text-brand-950">{String(current + 1).padStart(2, '0')}</span>
+                <span className="w-6 h-px bg-black/20 self-center" />
+                <span className="truncate">{TABS[current].label}</span>
+              </p>
+              <div className="ml-auto flex items-center gap-2">
+                <Clock />
+                <button
+                  onClick={() => {
+                    toggleTheme();
+                    setDark(isDark());
+                  }}
+                  title={dark ? 'Modo claro' : 'Modo escuro'}
+                  aria-label={dark ? 'Modo claro' : 'Modo escuro'}
+                  className="orb"
+                >
+                  {dark ? <Sun size={16} strokeWidth={1.6} /> : <Moon size={16} strokeWidth={1.6} />}
+                </button>
+              </div>
+            </header>
+
+            <main key={tab} className="flex-1 min-h-0 overflow-y-auto rounded-[1.5rem]">
           {tab === 'board' && <Board onAuthError={handleAuthError} />}
           {tab === 'clients' && <Clients onAuthError={handleAuthError} />}
           {tab === 'dashboard' && <Faturamento onAuthError={handleAuthError} />}
@@ -139,7 +185,9 @@ export default function App() {
           {tab === 'finance' && <Finance onAuthError={handleAuthError} />}
           {tab === 'archived' && <Archived onAuthError={handleAuthError} />}
           {tab === 'settings' && <Settings onAuthError={handleAuthError} />}
-        </main>
+            </main>
+          </div>
+        </div>
       </div>
 
       {lucasOpen && <Lucas onAuthError={handleAuthError} onExit={() => setLucasOpen(false)} />}

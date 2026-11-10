@@ -13,7 +13,7 @@ export default function OrderCard({ order, dragging, onClick }) {
         dragging ? 'shadow-2xl shadow-brand-900/20 ring-2 ring-brand-400 rotate-2 scale-[1.03]' : 'shadow-sm'
       }`}
     >
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex flex-wrap items-center justify-between gap-y-1.5 mb-2">
         <span className="flex items-center gap-1.5 text-[11px] font-extrabold text-brand-600 tracking-wider">
           {order.order_number}
           {order.pickup_code && (

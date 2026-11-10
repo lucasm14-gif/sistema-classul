@@ -31,21 +31,25 @@ export default function Login({ onSuccess }) {
   };
 
   return (
-    <div className="relative min-h-screen bg-brand-950 flex items-center justify-center p-4 overflow-hidden">
-      {/* blobs decorativos com as cores da marca */}
-      <div className="pointer-events-none absolute -top-32 -left-32 w-[34rem] h-[34rem] rounded-full bg-brand-500/25 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-40 -right-24 w-[30rem] h-[30rem] rounded-full bg-brand-400/20 blur-3xl" />
-      <div className="pointer-events-none absolute top-1/3 right-1/4 w-72 h-72 rounded-full bg-flame-500/15 blur-3xl" />
+    <div className="relative h-dvh flex items-center justify-center p-4 overflow-hidden">
+      <div className="backdrop" aria-hidden="true" />
+      <div className="frame absolute inset-2 sm:inset-3 rounded-[2rem] sm:rounded-[2.5rem]" aria-hidden="true" />
 
-      <div className="relative w-full max-w-md animate-fade-up">
+      <div className="relative z-[1] w-full max-w-md animate-fade-up">
         <form
           onSubmit={submit}
-          className="bg-white/95 backdrop-blur rounded-[2rem] shadow-2xl shadow-black/40 p-10"
+          className="bg-white rounded-[2.25rem] border border-black/5 shadow-sm p-8 sm:p-10"
         >
-          <div className="flex flex-col items-center mb-8 text-center">
-            <img src="/logo.png" alt="Classul" className="w-28 h-28 object-contain drop-shadow-sm mb-2" />
-            <h1 className="text-2xl font-extrabold tracking-tight text-brand-950">Bem-vindo de volta</h1>
-            <p className="text-sm text-slate-500 mt-1">Gestão de Pedidos da Classul</p>
+          <div className="mb-9">
+            <div className="flex items-center justify-between mb-10">
+              <img src="/logo.png" alt="Classul" className="w-12 h-12 object-contain" />
+              <span className="font-mono text-[11px] uppercase text-slate-400">Gestão de pedidos</span>
+            </div>
+            <h1 className="text-[2.6rem] leading-[1] font-medium tracking-[-0.045em] text-brand-950">
+              Bem-vindo
+              <br />
+              <span className="text-slate-400">de volta.</span>
+            </h1>
           </div>
 
           <label className="block text-[11px] font-extrabold text-slate-400 uppercase tracking-widest mb-2">
@@ -59,7 +63,7 @@ export default function Login({ onSuccess }) {
               onChange={(e) => setValue(e.target.value)}
               placeholder="Digite a senha"
               autoFocus
-              className="w-full border-2 border-slate-200 rounded-2xl pl-11 pr-4 py-3.5 text-sm font-medium outline-none transition-colors focus:border-brand-500 bg-white"
+              className="w-full border-2 border-slate-200 rounded-full pl-11 pr-4 py-3.5 text-sm font-medium outline-none transition-colors focus:border-brand-500 bg-white"
             />
           </div>
           {error && (
@@ -70,7 +74,7 @@ export default function Login({ onSuccess }) {
           <button
             type="submit"
             disabled={loading}
-            className="group w-full bg-brand-600 hover:bg-brand-700 text-white font-extrabold rounded-2xl py-3.5 flex items-center justify-center gap-2 transition-all shadow-lg shadow-brand-600/30 hover:shadow-xl hover:shadow-brand-600/40 hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0"
+            className="group w-full bg-brand-600 hover:bg-brand-700 text-white font-extrabold rounded-full py-3.5 flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0"
           >
             {loading ? (
               <LoaderCircle size={18} className="animate-spin" />
@@ -82,7 +86,7 @@ export default function Login({ onSuccess }) {
             )}
           </button>
         </form>
-        <p className="text-center text-xs text-white/40 mt-6 font-medium">
+        <p className="text-center text-xs text-slate-400 mt-6 font-medium">
           classul.com.br · placas e brindes
         </p>
       </div>
