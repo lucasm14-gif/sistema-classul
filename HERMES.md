@@ -24,7 +24,7 @@ Autenticação: `Authorization: Bearer <CHAVE_DO_HERMES>` (ou o header `X-Hermes
 ```bash
 curl -H "Authorization: Bearer $CHAVE" \
   https://sistema-classul.vercel.app/api/hermes/ping
-# {"ok":true,"sistema":"Classul","ferramentas":33,"pre_atendimento":"hermes"}
+# {"ok":true,"sistema":"Classul","ferramentas":48,"pre_atendimento":"hermes"}
 ```
 
 ### Pegar o catálogo de ferramentas
@@ -92,7 +92,7 @@ async function conversar(mensagens) {
 }
 ```
 
-### As 33 ferramentas
+### As 48 ferramentas
 
 **Pedidos** — `listar_pedidos`, `buscar_pedido` (por número, id, código de retirada de 4
 dígitos ou telefone), `criar_pedido`, `atualizar_pedido`, `mover_pedido`, `arquivar_pedido`,
@@ -119,6 +119,50 @@ ser apontadas pelo `id` (vem no `lucas_painel`) ou por `busca`, um trecho do tí
 trecho bater em mais de uma, o erro devolve as opções com id. `dias` da rotina aceita nomes
 (`["segunda","quarta"]`), dígitos (`"135"`, 0 = domingo), `"todos"`, `"dias úteis"` ou
 `"fim de semana"`.
+
+**Finanças** (a aba com PIN) — `financas_resumo`: saldos, cartões, investimentos, gastos e
+entradas do mês, categorias, últimos lançamentos e contas a pagar.
+
+**Notas fiscais** (a aba com PIN) — `notas_listar`, `nota_detalhe` (por id ou número),
+`nfe_situacao` (ambiente, próximo número, certificado, SEFAZ no ar), `nfe_clientes`,
+`nfe_produtos`. Só leitura: emitir, cancelar e carta de correção continuam pela tela.
+
+**Arquivos** — `arquivos_do_pedido`, `arquivos_recebidos`, `placas_do_site`, `leads_do_site`,
+`enviar_arquivo` (manda por WhatsApp como documento) e `baixar_arquivo` (base64, até 3 MB).
+
+O Hermes entra em Finanças e Notas **sem PIN**: a chave dele basta, como na área do Lucas.
+
+#### Arquivos: a "ref"
+
+Toda listagem devolve, para cada arquivo, `{ ref, nome, baixar }`. A `ref` é o que identifica
+o arquivo em qualquer lugar:
+
+| Ref | O que é |
+|---|---|
+| `nfe:<id>:pdf` / `nfe:<id>:xml` | DANFE e XML autorizado de uma nota |
+| `drive:<fileId>` | anexo de pedido ou arquivo recebido de cliente |
+| `placa:<id>:jpg` (ou `svg`, `foto`, `arte`, `logo`, `logo2`) | arquivos de uma placa do site |
+
+Três jeitos de usar:
+
+```bash
+# 1. mandar direto por WhatsApp (para o Lucas ou para o cliente)
+{"tool":"enviar_arquivo","args":{"telefone":"5551999999999","ref":"nfe:12:pdf","legenda":"Segue a nota"}}
+
+# 2. pegar o conteúdo em base64 (até 3 MB)
+{"tool":"baixar_arquivo","args":{"ref":"nfe:12:xml"}}
+
+# 3. baixar o binário (qualquer tamanho que a Vercel deixe passar, ~4 MB)
+curl -H "Authorization: Bearer $CHAVE" -OJ \
+  "https://sistema-classul.vercel.app/api/hermes/arquivo?ref=nfe:12:pdf"
+```
+
+#### Catálogo para o atendimento
+
+`GET /api/hermes/tools?perfil=atendimento` devolve o catálogo **sem** finanças, notas, área do
+Lucas e `baixar_arquivo`. Use esse no laço que conversa com cliente: quem escreve no WhatsApp
+pode tentar convencer o modelo a chamar ferramenta, e o que ele não enxerga ele não chama.
+O catálogo completo fica para as conversas com o Lucas.
 
 A descrição e os campos de cada uma vêm no `/api/hermes/tools` — esta lista é só o resumo.
 
@@ -197,7 +241,7 @@ Não é preciso mexer na Evolution: o webhook dela continua apontando para
   é o que fazer se a VPS for comprometida.
 - Com o interruptor desligado, nenhuma chamada do Hermes passa, mesmo com a chave certa.
 - Toda troca fica registrada (entrada e saída, com erro quando houver) e aparece no painel.
-  As chamadas `lucas_*` entram no registro só com o nome e se deu certo — sem argumentos,
+  As chamadas das áreas com PIN (`lucas_*`, finanças, notas, `baixar_arquivo`) entram no registro só com o nome e se deu certo — sem argumentos,
   resultado nem mensagem de erro —, porque o painel do Hermes não pede o PIN da área.
 
 ## 5. Orçamento em PDF (botão da extensão)
@@ -217,6 +261,6 @@ consulta `GET /claude/tarefa/ID` a cada 4 s.
 
 ---
 
-Testes: `node smoke-test-hermes.mjs` (64 verificações, banco em memória, nada sai para a
+Testes: `node smoke-test-hermes.mjs` (70 verificações, banco em memória, nada sai para a
 internet — a Evolution é mockada e o "Hermes" é um servidor local).
 Orçamento: `node smoke-test-quotes.mjs` (24 verificações, Hermes falso local).

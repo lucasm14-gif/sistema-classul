@@ -357,6 +357,59 @@ try {
     r = await call('GET', `/nfe/notas/${imp.id}/copia`);
     check('copiar nota do C&K lê os itens do XML', r.status === 200 && r.body.itens.length > 0 && /^5|^6/.test(r.body.itens[0].cfop_dentro) && r.body.itens[0].valor_unitario > 0);
   }
+
+  // ---- Hermes: entra nas notas sem PIN, baixa e manda os arquivos
+  {
+    const { setSettings } = await import(`file://${ROOT}/lib/db.js`);
+    await setSettings({
+      hermes_token: 'chave-hermes', hermes_enabled: '1',
+      evolution_url: 'https://evolution.exemplo.com', evolution_apikey: 'fake', evolution_instance: 'classul'
+    });
+    const HER = { 'Content-Type': 'application/json', Authorization: 'Bearer chave-hermes' };
+    const tool = async (name, args = {}) => (await call('POST', '/hermes/call', { tool: name, args }, HER)).body;
+    const realFetch = globalThis.fetch;
+    const docs = [];
+    globalThis.fetch = async (url, opts) => {
+      if (String(url).includes('/message/sendMedia/')) {
+        docs.push(JSON.parse(opts.body));
+        return { ok: true, status: 200, json: async () => ({ key: { id: 'DOC' } }) };
+      }
+      return realFetch(url, opts);
+    };
+
+    let t = await tool('notas_listar', { ambiente: 2, situacao: 'autorizada' });
+    const nota = t.result?.notas?.[0];
+    check('Hermes lista as notas sem PIN', t.ok && nota && nota.arquivos.pdf.ref === `nfe:${nota.id}:pdf`, t.error);
+    t = await tool('nota_detalhe', { id: nota.id });
+    check('Hermes abre a nota com itens e sem XML no corpo', t.ok && t.result.itens.length > 0 && !('xml_proc' in t.result) && t.result.arquivos.xml.ref === `nfe:${nota.id}:xml`, t.error);
+    t = await tool('nota_detalhe', { numero: String(nota.numero), serie: nota.serie, ambiente: 2 });
+    check('Hermes acha a nota pelo número', t.ok && t.result.id === nota.id, t.error);
+    t = await tool('nfe_situacao');
+    check('Hermes vê a situação da emissão', t.ok && t.result.ambiente === 'homologação' && t.result.sefaz?.online === true && t.result.tem_certificado, JSON.stringify(t.result?.sefaz || t.error));
+    t = await tool('nfe_clientes', { busca: 'stahl' });
+    check('Hermes consulta clientes fiscais', t.ok && t.result.length > 0, t.error);
+    t = await tool('nfe_produtos');
+    check('Hermes consulta produtos', t.ok && t.result.length > 0, t.error);
+
+    t = await tool('baixar_arquivo', { ref: `nfe:${nota.id}:pdf` });
+    check('Hermes baixa o DANFE em base64', t.ok && Buffer.from(t.result.base64, 'base64').subarray(0, 5).toString() === '%PDF-' && t.result.tipo === 'application/pdf', t.error);
+    r = await call('GET', `/hermes/arquivo?ref=nfe:${nota.id}:xml`, null, HER);
+    check('Hermes baixa o XML como arquivo', r.status === 200 && r.body.toString().includes('<nfeProc') && r.body.toString().includes(nota.chave));
+    r = await call('GET', `/hermes/arquivo?ref=nfe:${nota.id}:pdf`, null, { Authorization: 'Bearer errada' });
+    check('arquivo não sai sem a chave do Hermes', r.status === 401);
+    r = await call('GET', '/hermes/arquivo?ref=nfe:999999:pdf', null, HER);
+    check('ref de nota inexistente dá 404', r.status === 404);
+
+    t = await tool('enviar_arquivo', { telefone: '51999990000', ref: `nfe:${nota.id}:pdf`, legenda: 'Segue a nota' });
+    check('Hermes manda o DANFE por WhatsApp', t.ok && docs.length === 1 && docs[0].mediatype === 'document' && docs[0].mimetype === 'application/pdf' && /^NFe-\d{6}-serie2\.pdf$/.test(docs[0].fileName) && docs[0].caption === 'Segue a nota', t.error);
+    t = await tool('enviar_arquivo', { telefone: '51999990000', ref: 'banana' });
+    check('ref inválida é recusada', t.ok === false && /ref/i.test(t.error));
+
+    const ev = (await call('GET', '/hermes/events?limit=100', null, H)).body;
+    const priv = ev.filter((e) => ['notas_listar', 'nota_detalhe', 'baixar_arquivo'].includes(e.name));
+    check('registro do Hermes não guarda o conteúdo das notas', priv.length >= 3 && priv.every((e) => !e.args && !e.result));
+    globalThis.fetch = realFetch;
+  }
 } catch (err) {
   console.error(err);
   fails++;

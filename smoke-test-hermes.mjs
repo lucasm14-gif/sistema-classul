@@ -253,8 +253,12 @@ check('"dias úteis" vira segunda a sexta', res.body.result.days === '12345');
 res = await call('lucas_criar_rotina', { titulo: 'Meditar', dias: ['feriado'] });
 check('dia desconhecido vira erro explicado', res.body.ok === false && /Dia da semana/.test(res.body.error));
 
-res = await call('lucas_marcar_rotina', { busca: 'academia', dia: '2026-09-21' });
-check('marca rotina num dia', res.body.result.feita === true && res.body.result.dia === '2026-09-21');
+// última segunda-feira: o histórico do painel só cobre os últimos 28 dias
+const seg = new Date(Date.now() - 3 * 3600e3);
+seg.setUTCDate(seg.getUTCDate() - ((seg.getUTCDay() + 6) % 7));
+const SEGUNDA = seg.toISOString().slice(0, 10);
+res = await call('lucas_marcar_rotina', { busca: 'academia', dia: SEGUNDA });
+check('marca rotina num dia', res.body.result.feita === true && res.body.result.dia === SEGUNDA);
 
 res = await call('lucas_atualizar_rotina', { id: rotinaId, ativa: false });
 check('pausa a rotina sem apagar', res.body.result.active === 0);
@@ -264,7 +268,7 @@ const painel = res.body.result;
 check('painel traz missões, rotinas e números',
   painel.missoes.length === 2 && painel.rotinas.length === 2 && painel.numeros.tasks_late === 1);
 check('painel traz o histórico quando pedido',
-  painel.rotinas.find((r) => r.id === rotinaId).historico.includes('2026-09-21'));
+  painel.rotinas.find((r) => r.id === rotinaId).historico.includes(SEGUNDA));
 
 res = await call('lucas_apagar_rotina', { id: rotinaId });
 check('apaga rotina', res.body.result.apagada.titulo === 'Academia');
@@ -272,6 +276,40 @@ res = await call('lucas_apagar_missao', { busca: 'internet' });
 check('apaga missão', res.body.result.apagada.titulo === 'Pagar internet');
 res = await call('lucas_painel');
 check('painel reflete o que foi apagado', res.body.result.missoes.length === 1 && res.body.result.rotinas.length === 1);
+
+// ------------------------------------------- 7b. áreas com PIN e arquivos
+{
+  const { q } = await import(`file://${ROOT}/lib/db.js`);
+  res = await call('financas_resumo');
+  check('finanças: entra sem PIN e avisa que falta configurar a Pluggy', res.body.ok === false && /Pluggy/.test(res.body.error), res.body.error);
+
+  const { rows: ped } = await q('SELECT id FROM orders ORDER BY id LIMIT 1');
+  await q(
+    "INSERT INTO attachments (order_id, drive_file_id, name, mime_type, size, web_view_link) VALUES ($1, 'ARQ123', 'arte.pdf', 'application/pdf', 2048, 'https://drive.exemplo/arte')",
+    [ped[0].id]
+  );
+  res = await call('arquivos_do_pedido', { id: ped[0].id });
+  const arq = res.body.result?.arquivos?.[0];
+  check('lista os anexos do pedido com a ref', res.body.ok && arq.ref === 'drive:ARQ123' && arq.nome === 'arte.pdf' && arq.baixar.includes('/api/hermes/arquivo?ref=drive%3AARQ123'), JSON.stringify(res.body));
+
+  await q("INSERT INTO chat_files (phone, chat_name, drive_file_id, name, mime_type, size) VALUES ('5551988887777', 'Cliente Arquivo', 'REC9', 'logo.png', 'image/png', 512)");
+  res = await call('arquivos_recebidos', { telefone: '51988887777' });
+  check('lista os arquivos recebidos por telefone', res.body.ok && res.body.result.total === 1 && res.body.result.arquivos[0].ref === 'drive:REC9', JSON.stringify(res.body));
+
+  res = await call('leads_do_site', { dias: 7 });
+  check('leads do site', res.body.ok && typeof res.body.result.total === 'number', res.body.error);
+  res = await call('placas_do_site');
+  check('placas do site', res.body.ok && Array.isArray(res.body.result), res.body.error);
+
+  r = await fetch(`${B}/hermes/tools`, { headers: HER });
+  const todas = (await r.json()).tools.map((t) => t.name);
+  r = await fetch(`${B}/hermes/tools?perfil=atendimento`, { headers: HER });
+  const atend = (await r.json()).tools.map((t) => t.name);
+  check('catálogo completo tem finanças, notas e arquivos',
+    ['financas_resumo', 'notas_listar', 'nota_detalhe', 'enviar_arquivo', 'baixar_arquivo'].every((n) => todas.includes(n)));
+  check('perfil atendimento esconde as áreas com PIN',
+    atend.includes('enviar_mensagem') && !atend.some((n) => n.startsWith('lucas_') || n.startsWith('nfe') || n.startsWith('nota') || n === 'financas_resumo' || n === 'baixar_arquivo'));
+}
 
 // ------------------------------------------------------------- 8. registro
 r = await fetch(`${B}/hermes/events?limit=100`, { headers: ADMIN });

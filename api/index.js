@@ -41,6 +41,7 @@ import {
   OrderError
 } from '../lib/orders.js';
 import { TOOLS, toolsFor, runTool, isPrivateTool, forwardIncomingToHermes } from '../lib/hermes.js';
+import { resolverArquivo } from '../lib/hermes-acesso.js';
 import {
   lucasOverview,
   lucasYearOverview,
@@ -209,7 +210,8 @@ app.get('/api/hermes/ping', async (req, res) => {
 app.get('/api/hermes/tools', async (req, res) => {
   try {
     if (!(await requireHermes(req, res))) return;
-    res.json({ ok: true, total: TOOLS.length, tools: toolsFor(String(req.query.format || '')) });
+    const tools = toolsFor(String(req.query.format || ''), { perfil: String(req.query.perfil || '') });
+    res.json({ ok: true, total: tools.length, tools });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -222,16 +224,38 @@ app.post('/api/hermes/call', async (req, res) => {
     if (!(await requireHermes(req, res))) return;
     const { tool, args } = req.body || {};
     if (!tool) return res.status(400).json({ ok: false, error: 'Informe o nome da ferramenta em "tool".' });
-    // Ferramentas da área do Lucas ficam no registro sem o conteúdo: o registro
-    // aparece na aba Hermes, que não pede o PIN.
+    // Ferramentas das áreas com PIN (Lucas, finanças, notas) ficam no registro sem o
+    // conteúdo: o registro aparece na aba Hermes, que não pede PIN.
     const privado = isPrivateTool(String(tool));
     try {
       const result = await runTool(String(tool), args || {});
       await logHermes('entrada', tool, privado ? {} : { args, result });
       res.json({ ok: true, tool, result });
     } catch (err) {
-      await logHermes('entrada', tool, privado ? { ok: false, error: 'área do Lucas (detalhe omitido)' } : { args, ok: false, error: err.message });
+      await logHermes('entrada', tool, privado ? { ok: false, error: 'área com PIN (detalhe omitido)' } : { args, ok: false, error: err.message });
       res.json({ ok: false, tool, error: err.message });
+    }
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Binário de um arquivo do sistema (nota em PDF/XML, anexo, recebido, placa), pela
+// mesma "ref" que as ferramentas devolvem. É por aqui que o Hermes baixa arquivo grande.
+app.get('/api/hermes/arquivo', async (req, res) => {
+  try {
+    if (!(await requireHermes(req, res))) return;
+    const ref = String(req.query.ref || '');
+    try {
+      const f = await resolverArquivo(ref);
+      await logHermes('entrada', 'arquivo', {});
+      res.setHeader('Content-Type', f.mime);
+      res.setHeader('Content-Disposition', `attachment; filename="${f.nome.replace(/[^\w.\- ]/g, '_')}"`);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.send(f.buffer);
+    } catch (err) {
+      await logHermes('entrada', 'arquivo', { ok: false, error: 'arquivo não entregue (detalhe omitido)' });
+      res.status(err.status || 404).json({ ok: false, error: err.message });
     }
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
