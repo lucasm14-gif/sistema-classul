@@ -227,3 +227,37 @@ body {
   background: var(--color-brand-500);
   box-shadow: 0 0 12px var(--color-brand-500);
 }
+
+/* Cores dos gráficos (Faturamento). Uma cor por entidade, sempre na mesma ordem
+   (categoria de produto, ano); o modo escuro tem os próprios tons, conferidos
+   contra o fundo escuro. "Demais" é sempre cinza. */
+:root {
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-4: #eda100;
+  --viz-5: #e87ba4;
+  --viz-6: #008300;
+  --viz-7: #6250d6;
+  --viz-8: #e34948;
+  --viz-demais: #a3a3a0;
+  --viz-barra: #62bb46;
+  --viz-barra-forte: #3a7a2a;
+  --viz-comparacao: #64748b;
+  --viz-superficie: #ffffff;
+}
+.dark {
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-4: #c98500;
+  --viz-5: #d55181;
+  --viz-6: #008300;
+  --viz-7: #9085e9;
+  --viz-8: #e66767;
+  --viz-demais: #5f6670;
+  --viz-barra: #4a9c33;
+  --viz-barra-forte: #82c953;
+  --viz-comparacao: #95a3b4;
+  --viz-superficie: #161d25;
+}

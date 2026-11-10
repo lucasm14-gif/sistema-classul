@@ -165,7 +165,10 @@ export const nfeApi = {
 
 // Faturamento: só precisa do login (as notas autorizadas já foram emitidas com o PIN).
 export const faturamentoApi = {
-  painel: (periodo) => request(`/api/faturamento${periodo ? `?periodo=${periodo}` : ''}`)
+  painel: (filtros = {}) => {
+    const qs = new URLSearchParams(Object.entries(filtros).filter(([, v]) => v !== '' && v != null)).toString();
+    return request(`/api/faturamento${qs ? `?${qs}` : ''}`);
+  }
 };
 
 export const api = {

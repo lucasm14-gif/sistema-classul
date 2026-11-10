@@ -308,14 +308,31 @@ try {
 
   // ---- Faturamento pelas notas autorizadas (só produção)
   r = await call('GET', '/faturamento', null, H);
-  check('faturamento abre só com login', r.status === 200 && Array.isArray(r.body.meses));
+  check('faturamento abre só com login', r.status === 200 && Array.isArray(r.body.serie) && Array.isArray(r.body.anos));
   if (procs.length) {
-    const ultimo = r.body.meses.at(-1)?.mes;
+    const ultAno = r.body.anos.at(-1);
+    const ultimo = `${ultAno.ano}-${String(ultAno.meses.findLastIndex((v) => v > 0) + 1).padStart(2, '0')}`;
     r = await call('GET', `/faturamento?periodo=${ultimo}`, null, H);
     const soma = r.body.categorias.reduce((s2, c) => s2 + c.total, 0);
     check('faturamento lê os itens das notas importadas', r.body.pendentes === 0 && r.body.resumo.notas > 0 && r.body.categorias.length > 0, JSON.stringify(r.body.resumo));
     check('itens somam o total das notas', Math.abs(soma - r.body.resumo.total) < 1, `${soma} x ${r.body.resumo.total}`);
-    check('homologação fica fora do faturamento', !r.body.ultimas.some((n) => n.serie === 2));
+    check('homologação fica fora do faturamento', !r.body.notas.some((n) => n.serie === 2));
+    const totalMes = r.body.resumo.total;
+    const ano = ultimo.slice(0, 4);
+    r = await call('GET', `/faturamento?de=${ano}-01-01&ate=${ano}-12-31&granularidade=mes`, null, H);
+    check('ano inteiro: 12 meses na série', r.body.serie.length === 12 && r.body.filtros.granularidade === 'mes');
+    check('série soma o total do período', Math.abs(r.body.serie.reduce((s2, p) => s2 + p.total, 0) - r.body.resumo.total) < 1);
+    const doAno = r.body.anos.find((a) => a.ano === ano);
+    check('total do ano bate com o período do ano', doAno && Math.abs(doAno.total - r.body.resumo.total) < 1, `${doAno?.total} x ${r.body.resumo.total}`);
+    check('mês do ano bate com o mês filtrado', Math.abs(doAno.meses[Number(ultimo.slice(5)) - 1] - totalMes) < 1);
+    const cat = r.body.categorias[0];
+    const rc = await call('GET', `/faturamento?de=${ano}-01-01&ate=${ano}-12-31&categoria=${encodeURIComponent(cat.chave)}`, null, H);
+    check('filtro de categoria soma só os itens dela', Math.abs(rc.body.resumo.total - cat.total) < 1 && rc.body.categorias.length === 1, `${rc.body.resumo.total} x ${cat.total}`);
+    const cli = r.body.clientes[0];
+    const rk = await call('GET', `/faturamento?de=${ano}-01-01&ate=${ano}-12-31&cliente=${encodeURIComponent(cli.nome)}`, null, H);
+    check('filtro de cliente', rk.body.resumo.total >= cli.total - 1 && rk.body.notas.every((n) => n.cliente === cli.nome || n.documento === cli.documento));
+    const rd = await call('GET', `/faturamento?de=${ultimo}-01&ate=${ultimo}-10&granularidade=dia`, null, H);
+    check('série por dia no intervalo', rd.body.serie.length === 10);
   }
 
   // ---- Ranking de uso, última compra e "emitir outra igual"
