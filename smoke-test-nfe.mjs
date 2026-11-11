@@ -175,6 +175,25 @@ try {
     pagamento: { tPag: '18' }
   });
   check('cliente de SP usa CFOP 6101', r.body.situacao === 'autorizada' && enviados.at(-1).body.includes('<CFOP>6101</CFOP>') && enviados.at(-1).body.includes('<idDest>2</idDest>'));
+  const xmlFora = enviados.at(-1).body;
+  check('venda fora do estado: natureza, totais do destino zerados e sem grupo de DIFAL', xmlFora.includes('<natOp>VENDA FORA DO ESTADO</natOp>') && xmlFora.includes('<vICMSDeson>0.00</vICMSDeson><vFCPUFDest>0.00</vFCPUFDest><vICMSUFDest>0.00</vICMSUFDest><vICMSUFRemet>0.00</vICMSUFRemet><vFCP>') && !xmlFora.includes('<ICMSUFDest>'));
+  {
+    const xsdFora = `${ROOT}/EmissorNFe c/PRJNFe/xsd/enviNFe_v4.00.xsd`;
+    if (fs.existsSync(xsdFora)) {
+      const tmp = path.join(os.tmpdir(), `envi-fora-${process.pid}.xml`);
+      fs.writeFileSync(tmp, xmlFora.match(/<enviNFe[\s\S]*<\/enviNFe>/)[0]);
+      let ok = true;
+      try {
+        execFileSync('xmllint', ['--noout', '--schema', xsdFora, tmp], { stdio: 'pipe' });
+      } catch (e) {
+        ok = false;
+        console.log(String(e.stderr));
+      }
+      fs.unlinkSync(tmp);
+      check('nota fora do estado passa no schema oficial', ok);
+    }
+  }
+  check('nota dentro do estado continua sem os totais do destino', !enviada.includes('vICMSUFDest'));
 
   // ---- Rejeição e reenvio com o mesmo número
   modo = 'rejeita';
