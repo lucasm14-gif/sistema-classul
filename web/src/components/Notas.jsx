@@ -1037,7 +1037,7 @@ function Emitir({ config, inicial, onEmitida, onError, toast }) {
           <label className={label}>Informações complementares</label>
           <textarea className={`${input} min-h-[70px]`} value={infCpl} onChange={(e) => setInfCpl(e.target.value)} />
           <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
-            {['*PAGAMENTO JA EFETUADO; ', '*PAGAMENTO VIA PIX CHAVE CNPJ 18605962000130; '].map((t) => (
+            {['*PAGAMENTO JA EFETUADO; ', '*PAGAMENTO VIA TED - ITAÚ - AG 6201 - C/C 50305-6 - CHAVE PIX CNPJ 18605962000130; '].map((t) => (
               <button key={t} className="text-[11px] font-bold text-brand-700 hover:underline" onClick={() => setInfCpl((v) => (v.includes(t.trim()) ? v : t + v))}>
                 + {t.replace(/[*;]/g, '').trim().toLowerCase()}
               </button>
