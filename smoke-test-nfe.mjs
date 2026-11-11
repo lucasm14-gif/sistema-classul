@@ -149,6 +149,10 @@ try {
   check('valor total 399,00', n1.valor_total === 399);
   const enviada = enviados.at(-1).body;
   check('XML de homologação usa o nome obrigatório', enviada.includes('NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO'));
+  {
+    const textos = [...enviada.matchAll(/<(xLgr|xBairro|xMun|xProd|infCpl|natOp)>([^<]*)</g)].map((m) => m[2]);
+    check('textos da nota em maiúsculas', textos.length > 5 && textos.every((t) => t === t.toLocaleUpperCase('pt-BR')), textos.filter((t) => t !== t.toLocaleUpperCase('pt-BR')).join(' | '));
+  }
   check('CFOP 5101 e CSOSN 102', enviada.includes('<CFOP>5101</CFOP>') && enviada.includes('<CSOSN>102</CSOSN>'));
   check('valor aprox. de tributos preenchido', enviada.includes('<vTotTrib>53.67</vTotTrib>'));
 
@@ -375,10 +379,13 @@ try {
   const nomesProd = r.body.map((p) => p.descricao);
   check('produtos em ordem alfabética', nomesProd.join('|') === [...nomesProd].sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })).join('|'), nomesProd.join(', '));
   check('vendas do produto continuam contadas', r.body.find((p) => p.codigo === '102')?.uso >= 3);
-  r = await call('POST', '/nfe/clientes', { ...clienteRS, documento: '33.000.167/0001-01', nome: 'Água Mineral Ltda' });
+  r = await call('POST', '/nfe/clientes', { ...clienteRS, documento: '33.000.167/0001-01', nome: 'Água Mineral Ltda', bairro: 'Centro Histórico', email: 'Contato@AguaMineral.com.br' });
+  check('cadastro gravado em maiúsculas, menos o e-mail', r.body.nome === 'ÁGUA MINERAL LTDA' && r.body.bairro === 'CENTRO HISTÓRICO' && r.body.logradouro === 'RUA BOA VISTA' && r.body.email === 'contato@aguamineral.com.br', JSON.stringify([r.body.nome, r.body.bairro, r.body.email]));
+  r = await call('POST', '/nfe/produtos', { descricao: 'Placa de teste minúscula', ncm: '83100000', codigo: 'abc1', unidade: 'und' });
+  check('produto gravado em maiúsculas', r.body.descricao === 'PLACA DE TESTE MINÚSCULA' && r.body.codigo === 'ABC1' && r.body.unidade === 'UND');
   r = await call('GET', '/nfe/clientes');
   const nomesCli = r.body.map((c) => c.nome);
-  check('clientes em ordem alfabética (acento no lugar certo)', nomesCli.join('|') === [...nomesCli].sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })).join('|') && nomesCli[0].startsWith('Água'), nomesCli.join(', '));
+  check('clientes em ordem alfabética (acento no lugar certo)', nomesCli.join('|') === [...nomesCli].sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })).join('|') && nomesCli[0].startsWith('ÁGUA'), nomesCli.join(', '));
   r = await call('GET', '/nfe/clientes?q=ltda');
   check('busca de cliente em ordem alfabética', r.body.length >= 1 && r.body.map((c) => c.nome).join('|') === r.body.map((c) => c.nome).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })).join('|'));
   r = await call('GET', `/nfe/clientes/${cli.id}/ultima`);

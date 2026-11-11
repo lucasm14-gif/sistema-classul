@@ -9,8 +9,11 @@ import { nfeApi, NfeLockError, getNfeToken, setNfeToken } from '../api';
 import { useToast } from './Toast';
 
 const label = 'block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5';
+// Padrão da Classul: o que se digita aparece em MAIÚSCULAS (o servidor grava assim).
+// O placeholder continua normal; o e-mail usa inputEmail.
 const input =
-  'w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-medium outline-none transition-colors focus:border-brand-500 bg-white disabled:bg-slate-50 disabled:text-slate-400';
+  'w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm font-medium outline-none transition-colors focus:border-brand-500 bg-white disabled:bg-slate-50 disabled:text-slate-400 not-placeholder-shown:uppercase';
+const inputEmail = input.replace(' not-placeholder-shown:uppercase', '');
 const btn = 'inline-flex items-center justify-center gap-2 rounded-xl font-bold text-sm px-4 py-2.5 transition-colors disabled:opacity-50';
 const btnPrimary = `${btn} bg-brand-600 hover:bg-brand-700 text-white`;
 const btnGhost = `${btn} bg-white border-2 border-slate-200 text-slate-600 hover:border-brand-500 hover:text-brand-700`;
@@ -482,7 +485,7 @@ function ClienteForm({ cliente, onSaved, onCancel, onError }) {
       </div>
       <div className="col-span-6 sm:col-span-3">
         <label className={label}>E-mail</label>
-        <input className={input} value={f.email || ''} onChange={set('email')} type="email" placeholder="opcional" />
+        <input className={inputEmail} value={f.email || ''} onChange={set('email')} type="email" placeholder="opcional" />
       </div>
       <div className="col-span-6 flex justify-between items-center gap-2 mt-2">
         <span className="text-[11px] text-slate-400">Enter passa para o próximo campo.</span>
