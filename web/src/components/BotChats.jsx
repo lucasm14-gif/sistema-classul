@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { usePolling } from '../usePolling';
 import { createPortal } from 'react-dom';
 import { Bot, RefreshCw, RotateCcw, X, User, CheckCircle2, MessageCircle, Clock, Power, LoaderCircle } from 'lucide-react';
 import { api } from '../api';
@@ -145,11 +146,7 @@ export default function BotChats({ onAuthError }) {
     [onAuthError, toast]
   );
 
-  useEffect(() => {
-    load();
-    const id = setInterval(() => load({ silent: true }), 30000);
-    return () => clearInterval(id);
-  }, [load]);
+  usePolling(load);
 
   const toggleBot = async () => {
     const turningOn = !status?.enabled;

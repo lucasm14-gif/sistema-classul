@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { usePolling } from '../usePolling';
 import { MousePointerClick, CalendarDays, CalendarRange, Sigma, MessageCircle, Radio } from 'lucide-react';
 import { api } from '../api';
 import { useToast } from './Toast';
@@ -107,11 +108,7 @@ export default function Leads({ onAuthError }) {
     [onAuthError, toast]
   );
 
-  useEffect(() => {
-    load();
-    const id = setInterval(() => load({ silent: true }), 30000);
-    return () => clearInterval(id);
-  }, [load]);
+  usePolling(load);
 
   if (!data) return <p className="p-6 text-sm font-medium text-slate-400">Carregando…</p>;
 

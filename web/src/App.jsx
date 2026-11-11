@@ -1,20 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Award, Layers, KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon, ReceiptText, Clock3 } from 'lucide-react';
-import Faturamento from './components/Faturamento';
 import Board from './components/Board';
-import Settings from './components/Settings';
 import Login from './components/Login';
-import Archived from './components/Archived';
-import Clients from './components/Clients';
-import BotChats from './components/BotChats';
-import Leads from './components/Leads';
-import Extension from './components/Extension';
-import Inbox from './components/Inbox';
-import Arts from './components/Arts';
-import SitePlates from './components/SitePlates';
-import Finance from './components/Finance';
-import Notas from './components/Notas';
-import Lucas, { BatSigil } from './components/Lucas';
+import { BatSigil } from './components/BatSigil';
 import UserPicker from './components/UserPicker';
 import { ToastProvider } from './components/Toast';
 import { getToken, clearToken, AuthError } from './api';
@@ -36,6 +24,30 @@ const TABS = [
   { id: 'settings', label: 'Configurações', icon: SettingsIcon }
 ];
 
+// Só o quadro de pedidos (a tela inicial) vem no pacote principal. As outras abas
+// são baixadas à parte: quem abre o sistema não espera por Notas, Finanças etc.
+const LOADERS = {
+  clients: () => import('./components/Clients'),
+  dashboard: () => import('./components/Faturamento'),
+  notas: () => import('./components/Notas'),
+  leads: () => import('./components/Leads'),
+  bot: () => import('./components/BotChats'),
+  inbox: () => import('./components/Inbox'),
+  arts: () => import('./components/Arts'),
+  'site-plates': () => import('./components/SitePlates'),
+  extension: () => import('./components/Extension'),
+  finance: () => import('./components/Finance'),
+  archived: () => import('./components/Archived'),
+  settings: () => import('./components/Settings'),
+  lucas: () => import('./components/Lucas')
+};
+const PAGES = Object.fromEntries(Object.entries(LOADERS).map(([id, load]) => [id, lazy(load)]));
+const Lucas = PAGES.lucas;
+
+// Adianta o download de uma aba (ao passar o mouse no menu, ou com o navegador ocioso).
+// Falha de rede aqui não importa: a aba tenta de novo quando for aberta.
+const preload = (id) => LOADERS[id]?.().catch(() => {});
+
 // Pílula do topo: círculo preto com relógio + hora e data de hoje.
 function Clock() {
   const [now, setNow] = useState(() => new Date());
@@ -56,6 +68,15 @@ function Clock() {
   );
 }
 
+// Aparece só se a aba demorar a chegar (rede lenta); em geral ela já está em cache.
+function PageLoading() {
+  return (
+    <div className="h-full flex items-center justify-center text-xs font-medium text-slate-400" role="status">
+      Carregando…
+    </div>
+  );
+}
+
 export default function App() {
   const [authed, setAuthed] = useState(() => Boolean(getToken()));
   const [tab, setTab] = useState('board');
@@ -72,6 +93,23 @@ export default function App() {
     return false;
   }, []);
 
+  // Com a tela inicial pronta e o navegador parado, busca as outras abas uma a uma:
+  // a troca de aba fica instantânea sem atrasar a abertura.
+  useEffect(() => {
+    if (!authed) return undefined;
+    let cancelled = false;
+    const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1200));
+    const fila = Object.keys(LOADERS).filter((id) => id !== 'lucas');
+    const proxima = () => {
+      if (cancelled || !fila.length) return;
+      Promise.resolve(preload(fila.shift())).then(() => idle(proxima));
+    };
+    idle(proxima);
+    return () => {
+      cancelled = true;
+    };
+  }, [authed]);
+
   useEffect(() => {
     if (!authed) {
       setTab('board');
@@ -84,6 +122,7 @@ export default function App() {
   }
 
   const current = Math.max(0, TABS.findIndex((t) => t.id === tab));
+  const Page = PAGES[tab];
 
   return (
     <ToastProvider>
@@ -108,6 +147,8 @@ export default function App() {
                 <button
                   key={id}
                   onClick={() => setTab(id)}
+                  onMouseEnter={() => preload(id)}
+                  onFocus={() => preload(id)}
                   title={label}
                   aria-label={label}
                   aria-current={tab === id ? 'page' : undefined}
@@ -135,6 +176,7 @@ export default function App() {
                 {/* Entrada discreta para a área pessoal. */}
                 <button
                   onClick={() => setLucasOpen(true)}
+                  onMouseEnter={() => preload('lucas')}
                   aria-label="Área pessoal"
                   className="group p-1.5 text-slate-400 hover:text-brand-900 transition-colors"
                 >
@@ -172,25 +214,23 @@ export default function App() {
             </header>
 
             <main key={tab} className="flex-1 min-h-0 overflow-y-auto rounded-[1.5rem]">
-          {tab === 'board' && <Board onAuthError={handleAuthError} />}
-          {tab === 'clients' && <Clients onAuthError={handleAuthError} />}
-          {tab === 'dashboard' && <Faturamento onAuthError={handleAuthError} />}
-          {tab === 'notas' && <Notas onAuthError={handleAuthError} />}
-          {tab === 'leads' && <Leads onAuthError={handleAuthError} />}
-          {tab === 'bot' && <BotChats onAuthError={handleAuthError} />}
-          {tab === 'inbox' && <Inbox onAuthError={handleAuthError} />}
-          {tab === 'arts' && <Arts onAuthError={handleAuthError} />}
-          {tab === 'site-plates' && <SitePlates onAuthError={handleAuthError} />}
-          {tab === 'extension' && <Extension onAuthError={handleAuthError} />}
-          {tab === 'finance' && <Finance onAuthError={handleAuthError} />}
-          {tab === 'archived' && <Archived onAuthError={handleAuthError} />}
-          {tab === 'settings' && <Settings onAuthError={handleAuthError} />}
+              {tab === 'board' ? (
+                <Board onAuthError={handleAuthError} />
+              ) : (
+                <Suspense fallback={<PageLoading />}>
+                  <Page onAuthError={handleAuthError} />
+                </Suspense>
+              )}
             </main>
           </div>
         </div>
       </div>
 
-      {lucasOpen && <Lucas onAuthError={handleAuthError} onExit={() => setLucasOpen(false)} />}
+      {lucasOpen && (
+        <Suspense fallback={null}>
+          <Lucas onAuthError={handleAuthError} onExit={() => setLucasOpen(false)} />
+        </Suspense>
+      )}
     </ToastProvider>
   );
 }

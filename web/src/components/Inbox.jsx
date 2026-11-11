@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { usePolling } from '../usePolling';
 import {
   Inbox as InboxIcon,
   Eye,
@@ -281,11 +282,7 @@ export default function Inbox({ onAuthError }) {
     [onAuthError, toast]
   );
 
-  useEffect(() => {
-    load();
-    const id = setInterval(() => load({ silent: true }), 30000);
-    return () => clearInterval(id);
-  }, [load]);
+  usePolling(load);
 
   const attach = async (file, orderId) => {
     try {
