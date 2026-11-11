@@ -408,7 +408,7 @@ function ClienteForm({ cliente, onSaved, onCancel, onError }) {
         <>
           <div className="col-span-6 sm:col-span-3">
             <label className={label}>Situação no ICMS</label>
-            <select className={input} value={f.contribuinte} onChange={(e) => setF((p) => ({ ...p, contribuinte: Number(e.target.value), ie: Number(e.target.value) === 2 ? '' : p.ie }))}>
+            <select className={input} value={f.contribuinte} onChange={(e) => setF((p) => ({ ...p, contribuinte: Number(e.target.value), ie: Number(e.target.value) === 1 ? p.ie : '' }))}>
               {SITUACAO_IE.map(([v, t]) => (
                 <option key={v} value={v}>{t}</option>
               ))}

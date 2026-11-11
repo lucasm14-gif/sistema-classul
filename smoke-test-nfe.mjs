@@ -285,7 +285,23 @@ try {
   r = await call('POST', '/nfe/clientes', { ...clienteRS, documento: '529.982.247-25', nome: 'Pessoa Fisica', contribuinte: 1, ie: '123' });
   check('CPF nunca é contribuinte', r.status === 200 && r.body.contribuinte === 0 && r.body.ie === '');
   r = await call('POST', '/nfe/clientes', { ...clienteRS, documento: '529.982.247-25', email: 'sem-arroba' });
-  check('e-mail inválido recusado', r.status === 400 && /mail/i.test(r.body.error));
+  check('e-mail que não dá para aproveitar fica vazio (não trava o cadastro)', r.status === 200 && r.body.email === '');
+  r = await call('POST', '/nfe/clientes', { ...clienteRS, documento: '529.982.247-25', email: 'classulrs@gmailcom' });
+  check('e-mail sem ponto é corrigido', r.body.email === 'classulrs@gmail.com');
+  r = await call('PUT', `/nfe/clientes/${cli.id}`, { ...clienteRS, ie: '0', contribuinte: 1 });
+  check('IE "0" do C&K não conta como inscrição', r.status === 400 || (r.body.ie === '' && r.body.contribuinte === 0));
+  r = await call('PUT', `/nfe/clientes/${cli.id}`, { ...clienteRS, ie: '9', contribuinte: 0 });
+  check('IE "9" vira não contribuinte sem IE', r.body.ie === '' && r.body.contribuinte === 0);
+  r = await call('PUT', `/nfe/clientes/${cli.id}`, { ...clienteRS, ie: '2130007915', contribuinte: 0 });
+  check('CNPJ com IE de verdade vira contribuinte', r.body.ie === '2130007915' && r.body.contribuinte === 1);
+  // Emissão confere a IE na SEFAZ e corrige o cadastro sozinha.
+  await call('PUT', `/nfe/clientes/${cli.id}`, { ...clienteRS, ie: '', contribuinte: 0, email: 'classulrs@gmailcom' });
+  r = await call('POST', '/nfe/emitir', { cliente_id: cli.id, itens });
+  const xmlConferido = enviados.at(-1).body;
+  check('emissão busca a IE na SEFAZ e manda como contribuinte', xmlConferido.includes('<indIEDest>1</indIEDest><IE>2130007915</IE>'));
+  check('e-mail sai corrigido na nota', xmlConferido.includes('<email>classulrs@gmail.com</email>'));
+  r = await call('GET', '/nfe/clientes?q=stahl');
+  check('cadastro do cliente foi atualizado com a IE da SEFAZ', r.body.some((c) => c.id === cli.id && c.ie === '2130007915' && c.contribuinte === 1), JSON.stringify(r.body.map((c) => [c.id, c.nome, c.ie, c.contribuinte])));
   await call('PUT', `/nfe/clientes/${cli.id}`, clienteRS);
 
   // ---- Logo do DANFE
