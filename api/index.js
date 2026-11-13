@@ -63,6 +63,7 @@ import { notifyHermes, logHermes } from '../lib/hermes-events.js';
 import { handleIncoming } from '../lib/bot.js';
 import { handleWatchedMessage } from '../lib/watcher.js';
 import { analyzeChat, STAGES } from '../lib/analyst.js';
+import { handleConversationMessage, saveMessageMedia, listConversations, listMessages, getMessage, serializeMessage } from '../lib/conversations.js';
 import { extractArtData } from '../lib/arts.js';
 import { PLATE_TOKEN, PlateError, savePlate, getPlateByToken, getPlateById, listPlates, savePlatePhoto, handlePlateMessage, platePage } from '../lib/plates.js';
 import { CASE_COLORS, PLATE_SIZES, PRODUCT_TYPES } from '../lib/default-content.js';
@@ -158,15 +159,18 @@ app.all('/api/bot/webhook', async (req, res) => {
 
     // Observador e atendimento são independentes: um só escuta, o outro responde.
     // Um erro em qualquer um deles não pode derrubar o webhook.
-    const [watched, bot, plate] = await Promise.allSettled([
+    // O arquivo de conversas (aba Conversas) guarda toda mensagem, de qualquer contato.
+    const [watched, bot, plate, archive] = await Promise.allSettled([
       handleWatchedMessage(req.body),
       atendimento,
-      handlePlateMessage(req.body, baseUrl(req))
+      handlePlateMessage(req.body, baseUrl(req)),
+      handleConversationMessage(req.body)
     ]);
     res.status(200).json({
       watcher: watched.status === 'fulfilled' ? watched.value : { error: watched.reason?.message },
       bot: bot.status === 'fulfilled' ? bot.value : { error: bot.reason?.message },
-      plate: plate.status === 'fulfilled' ? plate.value : { error: plate.reason?.message }
+      plate: plate.status === 'fulfilled' ? plate.value : { error: plate.reason?.message },
+      archive: archive.status === 'fulfilled' ? archive.value : { error: archive.reason?.message }
     });
   } catch (err) {
     console.error('bot webhook:', err);
@@ -1994,6 +1998,49 @@ app.post('/api/evolution/test', h(async (req, res) => {
   } catch (err) {
     res.status(502).json({ error: err.message });
   }
+}));
+
+// ---------- Conversas (arquivo do WhatsApp) ----------
+
+app.get('/api/conversations', h(async (req, res) => {
+  res.json(await listConversations(req.query.q));
+}));
+
+app.get('/api/conversations/:phone/messages', h(async (req, res) => {
+  const phone = chatKey(req.params.phone);
+  const num = (v) => (v && /^\d+$/.test(String(v)) ? Number(v) : undefined);
+  const data = await listMessages(phone, {
+    before: num(req.query.before),
+    after: num(req.query.after),
+    around: num(req.query.around),
+    limit: num(req.query.limit)
+  });
+  if (!data) return res.status(404).json({ error: 'Conversa não encontrada.' });
+  res.json(data);
+}));
+
+// Arquivo de uma mensagem, vindo do Drive. A Vercel não devolve respostas grandes:
+// acima de 4 MB a tela abre o arquivo direto no Drive.
+const MEDIA_INLINE_LIMIT = 4 * 1024 * 1024;
+app.get('/api/conversations/media/:id', h(async (req, res) => {
+  const msg = await getMessage(req.params.id);
+  if (!msg || !msg.drive_file_id) return res.status(404).json({ error: 'Arquivo não encontrado.' });
+  if (Number(msg.size) > MEDIA_INLINE_LIMIT) {
+    return res.status(413).json({ error: 'Arquivo grande demais para abrir aqui — abra no Drive.', web_view_link: msg.web_view_link });
+  }
+  const buffer = await downloadFile(msg.drive_file_id);
+  res.setHeader('Content-Type', msg.mime_type || 'application/octet-stream');
+  res.setHeader('Cache-Control', 'private, max-age=86400');
+  res.send(buffer);
+}));
+
+// Tenta de novo guardar no Drive um arquivo que falhou (só funciona enquanto o
+// WhatsApp ainda tiver o arquivo).
+app.post('/api/conversations/media/:id/retry', h(async (req, res) => {
+  const msg = await getMessage(req.params.id);
+  if (!msg) return res.status(404).json({ error: 'Mensagem não encontrada.' });
+  const result = await saveMessageMedia(msg.id);
+  res.json({ result, message: serializeMessage(await getMessage(msg.id)) });
 }));
 
 export default app;

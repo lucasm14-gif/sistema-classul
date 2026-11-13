@@ -233,6 +233,18 @@ export const api = {
   deleteComment: (id) => request(`/api/comments/${id}`, { method: 'DELETE' }),
   botStatus: () => request('/api/bot/status'),
   botSetupWebhook: () => request('/api/bot/setup-webhook', { method: 'POST' }),
+  conversations: (q = '') => request(`/api/conversations${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  conversationMessages: (phone, params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null)).toString();
+    return request(`/api/conversations/${phone}/messages${qs ? `?${qs}` : ''}`);
+  },
+  conversationMedia: async (id) => {
+    const res = await fetch(`/api/conversations/media/${id}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+    if (res.status === 401) throw new AuthError('Sessão inválida');
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Não foi possível abrir o arquivo.');
+    return res.blob();
+  },
+  retryConversationMedia: (id) => request(`/api/conversations/media/${id}/retry`, { method: 'POST' }),
   botConversations: () => request('/api/bot/conversations'),
   botConversation: (phone) => request(`/api/bot/conversations/${phone}`),
   botReactivate: (phone) => request(`/api/bot/conversations/${phone}/reactivate`, { method: 'POST' }),

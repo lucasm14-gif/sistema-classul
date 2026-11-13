@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { Award, Layers, KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon, ReceiptText, Clock3 } from 'lucide-react';
+import { Award, Layers, KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon, ReceiptText, Clock3, MessagesSquare } from 'lucide-react';
 import Board from './components/Board';
 import Login from './components/Login';
 import { BatSigil } from './components/BatSigil';
@@ -11,6 +11,7 @@ import { isDark, toggleTheme } from './theme';
 const TABS = [
   { id: 'board', label: 'Pedidos', icon: KanbanSquare },
   { id: 'clients', label: 'Clientes', icon: Users },
+  { id: 'conversas', label: 'Conversas', icon: MessagesSquare },
   { id: 'dashboard', label: 'Faturamento', icon: ChartColumn },
   { id: 'notas', label: 'Notas fiscais', icon: ReceiptText },
   { id: 'leads', label: 'Leads', icon: MousePointerClick },
@@ -28,6 +29,7 @@ const TABS = [
 // são baixadas à parte: quem abre o sistema não espera por Notas, Finanças etc.
 const LOADERS = {
   clients: () => import('./components/Clients'),
+  conversas: () => import('./components/Conversas'),
   dashboard: () => import('./components/Faturamento'),
   notas: () => import('./components/Notas'),
   leads: () => import('./components/Leads'),
