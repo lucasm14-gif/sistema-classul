@@ -63,7 +63,7 @@ import { notifyHermes, logHermes } from '../lib/hermes-events.js';
 import { handleIncoming } from '../lib/bot.js';
 import { handleWatchedMessage } from '../lib/watcher.js';
 import { analyzeChat, STAGES } from '../lib/analyst.js';
-import { handleConversationMessage, saveMessageMedia, listConversations, listMessages, getMessage, serializeMessage } from '../lib/conversations.js';
+import { handleConversationMessage, saveMessageMedia, listConversations, listMessages, getMessage, serializeMessage, importHistoryPage, importPendingMedia, conversationsStatus } from '../lib/conversations.js';
 import { extractArtData } from '../lib/arts.js';
 import { PLATE_TOKEN, PlateError, savePlate, getPlateByToken, getPlateById, listPlates, savePlatePhoto, handlePlateMessage, platePage } from '../lib/plates.js';
 import { CASE_COLORS, PLATE_SIZES, PRODUCT_TYPES } from '../lib/default-content.js';
@@ -2004,6 +2004,20 @@ app.post('/api/evolution/test', h(async (req, res) => {
 
 app.get('/api/conversations', h(async (req, res) => {
   res.json(await listConversations(req.query.q));
+}));
+
+app.get('/api/conversations/status', h(async (req, res) => {
+  res.json(await conversationsStatus());
+}));
+
+// Histórico antigo: a tela chama uma página por vez até acabar.
+app.post('/api/conversations/import', h(async (req, res) => {
+  const page = Math.max(1, parseInt(req.body?.page, 10) || 1);
+  res.json(await importHistoryPage(page));
+}));
+
+app.post('/api/conversations/import-media', h(async (req, res) => {
+  res.json(await importPendingMedia());
 }));
 
 app.get('/api/conversations/:phone/messages', h(async (req, res) => {

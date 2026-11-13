@@ -244,6 +244,9 @@ export const api = {
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Não foi possível abrir o arquivo.');
     return res.blob();
   },
+  conversationsStatus: () => request('/api/conversations/status'),
+  importConversations: (page) => request('/api/conversations/import', { method: 'POST', body: JSON.stringify({ page }) }),
+  importConversationMedia: () => request('/api/conversations/import-media', { method: 'POST' }),
   retryConversationMedia: (id) => request(`/api/conversations/media/${id}/retry`, { method: 'POST' }),
   botConversations: () => request('/api/bot/conversations'),
   botConversation: (phone) => request(`/api/bot/conversations/${phone}`),

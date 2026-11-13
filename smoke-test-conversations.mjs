@@ -13,6 +13,8 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 const realFetch = globalThis.fetch;
 const drive = { folders: [], uploads: [] };
 let mediaFails = false;
+let history = [];
+let hookConfig = null;
 globalThis.fetch = async (url, opts = {}) => {
   const u = String(url);
   if (u.includes('/chat/getBase64FromMediaMessage/')) {
@@ -32,6 +34,12 @@ globalThis.fetch = async (url, opts = {}) => {
     drive.folders.push(body.name);
     return { ok: true, json: async () => ({ id, name: body.name }) };
   }
+  if (u.includes('/chat/findMessages/')) {
+    const { page, offset } = JSON.parse(opts.body);
+    const records = history.slice((page - 1) * offset, page * offset);
+    return { ok: true, json: async () => ({ messages: { total: history.length, pages: Math.ceil(history.length / offset), currentPage: page, records } }) };
+  }
+  if (u.includes('/webhook/find/')) return { ok: true, json: async () => hookConfig };
   if (u.includes('openai.com')) return { ok: true, json: async () => ({ choices: [{ message: { content: 'oi' } }] }) };
   if (u.includes('evolution.exemplo.com')) return { ok: true, json: async () => ({ key: { id: 'X' } }) };
   return realFetch(url, opts);
@@ -62,7 +70,7 @@ await q("INSERT INTO clients (name, phone) VALUES ('Maria da Silva', '(51) 99888
 let n = 0;
 const hook = async (data) =>
   (await (await realFetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event: 'messages.upsert', data }) })).json()).archive;
-const msg = (jid, message, { fromMe = false, id = 'M' + ++n, ts = 1760000000 + n * 60, pushName = 'Mari' } = {}) => ({
+const msg = (jid, message, { fromMe = false, id = 'M' + ++n, ts = Math.floor(Date.now() / 1000) - 7200 + n * 60, pushName = 'Mari' } = {}) => ({
   key: { remoteJid: jid, fromMe, id },
   pushName,
   messageTimestamp: ts,
@@ -155,6 +163,51 @@ const after = (await get(`/conversations/5511977776666/messages?after=${around.m
 check('rolar para baixo continua até a mais recente', after.has_newer === false && after.messages.at(-1).body === 'Preciso de 10 medalhas');
 check('conversa inexistente dá 404', (await get('/conversations/5500000000000/messages')).status === 404);
 check('"%" na busca não vira curinga', (await get('/conversations?q=%25%25')).body.messages.length === 0);
+
+// ---------- Histórico antigo guardado na Evolution ----------
+const post = async (path, body) => (await realFetch(`${B}${path}`, { method: 'POST', headers: H, body: JSON.stringify(body || {}) })).json();
+const nowS = Math.floor(Date.now() / 1000);
+const ANA = '5551955554444@s.whatsapp.net';
+const rec = (i, message, extra = {}) => ({
+  key: { id: 'H' + i, fromMe: i % 4 === 0, remoteJid: ANA },
+  pushName: i % 4 === 0 ? 'Classul' : 'Ana Souza',
+  messageTimestamp: nowS - i * 3600,
+  message,
+  ...extra
+});
+// Da mais recente para a mais antiga, como a Evolution devolve; 450 = 3 páginas de 200.
+history = Array.from({ length: 450 }, (_, i) => rec(i, { conversation: 'histórico ' + i }));
+history[1] = rec(1, { imageMessage: { mimetype: 'image/jpeg' } }); // 1 h atrás: ainda dá para baixar
+history[2] = rec(2, { documentMessage: { fileName: 'recente.pdf', mimetype: 'application/pdf' } });
+history[440] = { ...rec(440, { imageMessage: { mimetype: 'image/jpeg', caption: 'foto de janeiro' } }), messageTimestamp: nowS - 200 * 86400 };
+history[10] = { ...rec(10, { conversation: 'no grupo' }), key: { id: 'H10', fromMe: false, remoteJid: '1203@g.us' } };
+history[11] = rec(11, { reactionMessage: { text: '👍' } });
+history[12] = { ...rec(12, { conversation: 'já estava guardada' }), key: { id: 'M1', fromMe: false, remoteJid: MARIA } };
+
+let st = (await get('/conversations/status')).body;
+check('situação: captura desligada e total da Evolution', st.capture.on === false && st.evolution.total === 450 && st.stored.messages > 0, JSON.stringify(st));
+hookConfig = { enabled: true, url: 'https://sistema/api/bot/webhook?secret=x' };
+check('situação: reconhece a captura ligada', (await get('/conversations/status')).body.capture.on === true);
+
+const uploadsBefore = drive.uploads.length;
+let imp = await post('/conversations/import', { page: 1 });
+check('importa a 1ª página sem baixar arquivo', imp.stored === 197 && imp.pages === 3 && imp.done === false && drive.uploads.length === uploadsBefore, JSON.stringify(imp));
+imp = await post('/conversations/import', { page: 2 });
+imp = await post('/conversations/import', { page: 3 });
+check('última página avisa que acabou', imp.done === true && imp.stored === 50, JSON.stringify(imp));
+imp = await post('/conversations/import', { page: 1 });
+check('importar de novo não duplica', imp.stored === 0);
+
+const ana = (await get('/conversations/5551955554444/messages?limit=200')).body;
+check('conversa importada tem nome e está em ordem', ana.chat.name === 'Ana Souza' && ana.messages.at(-1).body === 'histórico 0' && ana.has_older === true, ana.chat.name);
+const { rows: oldPhoto } = await q("SELECT media_status FROM wa_messages WHERE wa_message_id = 'H440'");
+check('foto antiga nasce marcada como expirada', oldPhoto[0].media_status === 'expirada');
+st = (await get('/conversations/status')).body;
+check('ficam 2 arquivos recentes a guardar', st.stored.pending_media === 2, String(st.stored.pending_media));
+const med = await post('/conversations/import-media');
+check('guarda os arquivos recentes no Drive', med.saved === 2 && med.remaining === 0 && drive.uploads.length === uploadsBefore + 2, JSON.stringify(med));
+check('pasta do contato importado criada', drive.folders.includes('Ana Souza - 5551955554444'), drive.folders.join(' | '));
+check('lista continua pela mensagem mais recente', (await get('/conversations')).body.chats[0].phone === '5551955554444');
 
 const { rows: watched } = await q('SELECT COUNT(*)::int AS n FROM chat_messages');
 check('Observador continua separado (nada em chat_messages)', watched[0].n === 0);

@@ -5,6 +5,7 @@ import {
   ExternalLink,
   FileText,
   Film,
+  History,
   Image as ImageIcon,
   LoaderCircle,
   MessageCircle,
@@ -129,7 +130,9 @@ function Media({ msg, mine, onRetried, onAuthError }) {
       <div className={`flex items-center gap-2 text-xs font-semibold rounded-xl px-2.5 py-2 ${soft}`}>
         <Icon size={15} className="shrink-0" />
         <span className="flex-1 min-w-0">
-          {label} {msg.media_status === 'pendente' ? 'ainda não guardado' : 'não foi guardado'}
+          {msg.media_status === 'expirada'
+            ? `${label} antigo — o WhatsApp não guarda mais`
+            : `${label} ${msg.media_status === 'pendente' ? 'ainda não guardado' : 'não foi guardado'}`}
         </span>
         <button onClick={retry} disabled={busy} className="flex items-center gap-1 underline underline-offset-2 disabled:opacity-60">
           {busy ? <LoaderCircle size={13} className="animate-spin" /> : <RotateCcw size={13} />} Tentar de novo
@@ -386,6 +389,168 @@ function Chat({ phone, focusId, onBack, onAuthError }) {
   );
 }
 
+const num = (n) => Number(n || 0).toLocaleString('pt-BR');
+
+// A Evolution conta também grupos e reações, que não entram aqui; por isso não dá
+// para saber pelo número se "já importou tudo". Este navegador lembra que terminou.
+const IMPORT_DONE_KEY = 'classul_conversas_importado';
+function importedBefore() {
+  try {
+    return localStorage.getItem(IMPORT_DONE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+// Rodapé da lista: liga a captura das mensagens novas e traz o histórico antigo
+// que a Evolution já tem guardado. A importação roda aqui na tela, página por página;
+// se a aba for fechada no meio, é só clicar de novo (o que já entrou não repete).
+function HistoryPanel({ onAuthError, onChanged }) {
+  const [status, setStatus] = useState(null);
+  const [connecting, setConnecting] = useState(false);
+  const [job, setJob] = useState(null); // { phase: 'textos' | 'arquivos', text }
+  const stop = useRef(false);
+  const toast = useToast();
+
+  const refresh = useCallback(async () => {
+    try {
+      setStatus(await api.conversationsStatus());
+    } catch (err) {
+      onAuthError(err);
+    }
+  }, [onAuthError]);
+
+  useEffect(() => {
+    refresh();
+    return () => {
+      stop.current = true;
+    };
+  }, [refresh]);
+
+  const connect = async () => {
+    setConnecting(true);
+    try {
+      await api.botSetupWebhook();
+      toast('Captura ligada: as mensagens novas já ficam guardadas.', 'success');
+      await refresh();
+    } catch (err) {
+      if (!onAuthError(err)) toast(err.message, 'error');
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const saveFiles = async () => {
+    let saved = 0;
+    for (;;) {
+      if (stop.current) return saved;
+      const r = await api.importConversationMedia();
+      saved += r.saved;
+      setJob({ phase: 'arquivos', text: `Guardando arquivos no Drive… faltam ${num(r.remaining)}` });
+      if (!r.processed || !r.remaining) return saved;
+    }
+  };
+
+  const run = async (onlyFiles) => {
+    stop.current = false;
+    try {
+      let added = 0;
+      if (!onlyFiles) {
+        setJob({ phase: 'textos', text: 'Lendo o histórico…' });
+        for (let page = 1; ; page++) {
+          if (stop.current) break;
+          const r = await api.importConversations(page);
+          added += r.stored;
+          setJob({ phase: 'textos', text: `Importando mensagens… ${num(Math.min(page * 200, r.total))} de ${num(r.total)}` });
+          if (page % 5 === 0) onChanged();
+          if (r.done) break;
+        }
+        onChanged();
+      }
+      const files = stop.current ? 0 : await saveFiles();
+      if (!stop.current) {
+        try {
+          localStorage.setItem(IMPORT_DONE_KEY, '1');
+        } catch {
+          // sem armazenamento local: o botão só continua com o nome antigo
+        }
+        toast(
+          onlyFiles
+            ? `${num(files)} arquivos guardados no Drive.`
+            : `Histórico importado: ${num(added)} mensagens novas e ${num(files)} arquivos.`,
+          'success'
+        );
+      }
+    } catch (err) {
+      if (!onAuthError(err)) toast(`A importação parou: ${err.message}. Clique de novo para continuar.`, 'error');
+    } finally {
+      setJob(null);
+      onChanged();
+      refresh();
+    }
+  };
+
+  if (!status) return null;
+  const { stored, capture, evolution } = status;
+  const missing = evolution.total != null ? Math.max(0, evolution.total - stored.messages) : null;
+
+  return (
+    <div className="shrink-0 border-t border-black/5 px-4 py-3 space-y-2 bg-black/[0.015]">
+      {!capture.on && (
+        <div className="flex items-center gap-2">
+          <p className="flex-1 text-[11px] font-semibold text-flame-600 leading-snug">
+            {capture.error || 'A captura está desligada: as mensagens novas não estão sendo guardadas.'}
+          </p>
+          {!capture.error && (
+            <button
+              onClick={connect}
+              disabled={connecting}
+              className="shrink-0 flex items-center gap-1.5 text-[11px] font-extrabold bg-brand-600 text-white rounded-full px-3 py-1.5 disabled:opacity-60"
+            >
+              {connecting && <LoaderCircle size={12} className="animate-spin" />} Ligar captura
+            </button>
+          )}
+        </div>
+      )}
+      {job ? (
+        <div className="flex items-center gap-2">
+          <LoaderCircle size={13} className="animate-spin text-brand-600 shrink-0" />
+          <p className="flex-1 text-[11px] font-semibold text-slate-500 leading-snug">
+            {job.text}
+            <span className="block font-medium text-slate-400">Deixe esta aba aberta até terminar.</span>
+          </p>
+          <button onClick={() => (stop.current = true)} className="shrink-0 text-[11px] font-bold text-slate-400 hover:text-flame-600 underline underline-offset-2">
+            Parar
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <p className="flex-1 text-[11px] font-medium text-slate-400 leading-snug">
+            {num(stored.messages)} mensagens guardadas
+            {capture.on ? ' · captura ligada' : ''}
+            {stored.pending_media ? ` · ${num(stored.pending_media)} arquivos a guardar` : ''}
+          </p>
+          {missing > 0 || (evolution.total != null && !stored.messages) ? (
+            <button
+              onClick={() => run(false)}
+              className="shrink-0 flex items-center gap-1.5 text-[11px] font-extrabold text-brand-700 border border-brand-600/30 hover:bg-brand-50 rounded-full px-3 py-1.5"
+            >
+              <History size={12} /> {importedBefore() && stored.messages ? 'Reimportar' : 'Importar histórico'}
+            </button>
+          ) : stored.pending_media ? (
+            <button
+              onClick={() => run(true)}
+              className="shrink-0 flex items-center gap-1.5 text-[11px] font-extrabold text-brand-700 border border-brand-600/30 hover:bg-brand-50 rounded-full px-3 py-1.5"
+            >
+              <History size={12} /> Guardar arquivos
+            </button>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Conversas({ onAuthError }) {
   const [data, setData] = useState({ chats: [], total: 0, messages: [] });
   const [loading, setLoading] = useState(true);
@@ -513,6 +678,7 @@ export default function Conversas({ onAuthError }) {
               </>
             )}
           </div>
+          <HistoryPanel onAuthError={onAuthError} onChanged={() => load({ silent: true })} />
         </div>
 
         <div className={`${selected ? 'flex' : 'hidden md:flex'} flex-1 min-w-0 flex-col`}>
