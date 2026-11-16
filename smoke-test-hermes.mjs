@@ -208,6 +208,17 @@ const encaminhado = (await r.json()).bot;
 check('com o Hermes no comando, a mensagem é encaminhada', encaminhado.encaminhado === true && encaminhado.texto === 'oi, quero uma placa');
 check('a VPS recebeu a mensagem do cliente', recebidos.some((e) => e.body.event === 'mensagem.recebida' && e.body.data.telefone === '5551977776666'));
 
+check('mensagem de cliente vai marcada para atender', recebidos.some((e) => e.body.event === 'mensagem.recebida' && e.body.data.atender === true));
+{
+  await fetch(`${B}/settings`, { method: 'PUT', headers: ADMIN, body: JSON.stringify({ bot_ignore_numbers: '5551933332222' }) });
+  const pessoal = upsert('oi pai, tudo bem?');
+  pessoal.data.key.remoteJid = '5551933332222@s.whatsapp.net';
+  await fetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: ADMIN, body: JSON.stringify(pessoal) });
+  check('número da lista vai marcado para não atender', recebidos.some((e) => e.body.event === 'mensagem.recebida' && e.body.data.telefone === '5551933332222' && e.body.data.atender === false));
+  const rot = await call('roteiro_atendimento', {});
+  check('Hermes consegue ler o roteiro e as fotos', rot.body.ok === true && rot.body.result.roteiro.includes('R$ 335,00') && rot.body.result.roteiro.includes('[[SILENCIO]]') && rot.body.result.fotos.tabela_homenagem.urls[0].endsWith('/bot-fotos/tabela-homenagem.jpg'));
+}
+
 res = await call('historico_conversa', { telefone: '5551977776666' });
 check('a conversa fica guardada no sistema mesmo com o Hermes respondendo', res.body.result.mensagens.length === 1);
 

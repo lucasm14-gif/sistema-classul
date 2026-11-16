@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
-import { q, STATUSES, getSettings, setSettings, ensureSchema } from '../lib/db.js';
+import { q, STATUSES, getSettings, setSettings, ensureSchema, DEFAULT_BOT_PROMPT } from '../lib/db.js';
 import {
   pluggyAuth,
   createConnectToken,
@@ -60,7 +60,7 @@ import {
   checkLucasRoutine
 } from '../lib/lucas.js';
 import { notifyHermes, logHermes } from '../lib/hermes-events.js';
-import { handleIncoming } from '../lib/bot.js';
+import { handleIncoming, gerarResposta, fotosDaResposta } from '../lib/bot.js';
 import { handleWatchedMessage } from '../lib/watcher.js';
 import { analyzeChat, STAGES } from '../lib/analyst.js';
 import { extractArtData } from '../lib/arts.js';
@@ -956,6 +956,32 @@ app.get('/api/bot/status', h(async (req, res) => {
     test_number: s.bot_test_number || '',
     webhook_url: `${baseUrl(req)}/api/bot/webhook?secret=${s.bot_webhook_secret}`
   });
+}));
+
+// Roteiro padrão de atendimento (para o botão "Usar o roteiro padrão" das Configurações).
+app.get('/api/bot/default-prompt', h(async (req, res) => res.json({ prompt: DEFAULT_BOT_PROMPT })));
+
+// Chat de teste (aba "Testar bot"): mesma inteligência do WhatsApp, mas nada é enviado nem
+// guardado. A conversa vem inteira do navegador — limpar a memória é só apagar lá.
+app.post('/api/bot/test-chat', h(async (req, res) => {
+  const settings = await getSettings();
+  if (!settings.openai_api_key) {
+    return res.status(400).json({ error: 'Preencha a chave da OpenAI em Configurações → Bot para testar.' });
+  }
+  const messages = (Array.isArray(req.body?.messages) ? req.body.messages : [])
+    .filter((m) => (m?.role === 'user' || m?.role === 'assistant') && String(m.content || '').trim())
+    .slice(-24)
+    .map((m) => ({ role: m.role, content: String(m.content).slice(0, 2000) }));
+  if (!messages.length || messages.at(-1).role !== 'user') {
+    return res.status(400).json({ error: 'Envie uma mensagem para o bot responder.' });
+  }
+  const usados = req.body?.roteiro === 'padrao' ? { ...settings, bot_system_prompt: DEFAULT_BOT_PROMPT } : settings;
+  try {
+    const r = await gerarResposta(usados, messages);
+    res.json({ texto: r.texto, fotos: fotosDaResposta(r.fotos, baseUrl(req)), silencio: r.silencio, done: r.done });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
 }));
 
 // Configura o webhook na Evolution API apontando para o nosso endpoint do bot.

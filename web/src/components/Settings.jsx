@@ -305,6 +305,19 @@ export default function Settings({ onAuthError }) {
             </p>
           </div>
           <div className="sm:col-span-2">
+            <label className={label}>Não responder estes números (família, fornecedores)</label>
+            <textarea
+              className={`${input} h-24 resize-none font-mono text-xs`}
+              value={form.bot_ignore_numbers || ''}
+              onChange={set('bot_ignore_numbers')}
+              placeholder={'5551999999999\n5551888888888'}
+            />
+            <p className="text-[11px] font-medium text-slate-400 mt-1.5">
+              Um número por linha, com DDI e DDD. O bot só responde clientes: nunca fala com estes números e só
+              entra numa conversa nova quando a pessoa fala de placa, orçamento ou outro produto.
+            </p>
+          </div>
+          <div className="sm:col-span-2">
             <label className={label}>Produtos que produzimos</label>
             <textarea
               className={`${input} h-32 resize-none font-mono text-xs`}
@@ -316,7 +329,23 @@ export default function Settings({ onAuthError }) {
             </p>
           </div>
           <div className="sm:col-span-2">
-            <label className={label}>Instruções do bot (personalidade e regras)</label>
+            <div className="flex items-center justify-between gap-3">
+              <label className={label}>Instruções do bot (personalidade e regras)</label>
+              <button
+                type="button"
+                className="text-[11px] font-bold text-brand-700 hover:underline mb-1.5"
+                onClick={async () => {
+                  try {
+                    const { prompt } = await api.botDefaultPrompt();
+                    setForm((f) => ({ ...f, bot_system_prompt: prompt }));
+                  } catch (err) {
+                    alert(err.message);
+                  }
+                }}
+              >
+                Usar o roteiro padrão
+              </button>
+            </div>
             <textarea
               className={`${input} h-44 resize-none text-xs`}
               value={form.bot_system_prompt || ''}

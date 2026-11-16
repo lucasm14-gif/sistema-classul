@@ -132,5 +132,99 @@ openaiReply = 'Beleza! [[FOTO:inexistente]]';
 r = await fetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: H, body: JSON.stringify(upsert(TEST_JID, 'e ai')) });
 check('token de foto inválido não envia imagem', sentImages.length === 0);
 
+// ---------- O bot avalia cada conversa (sem número de teste: liberado para todos) ----------
+await setSettings({ bot_test_number: '', bot_ignore_numbers: '5551900000001\n(51) 90000-0002' });
+const post = async (body) => (await (await fetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: H, body: JSON.stringify(body) })).json()).bot;
+let lastSystem = '';
+let openaiCalls = 0;
+{
+  const mocked = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    if (String(url).includes('openai.com')) {
+      openaiCalls++;
+      lastSystem = JSON.parse(opts.body).messages[0].content;
+    }
+    return mocked(url, opts);
+  };
+}
+
+// 12. conversa pessoal: o modelo lê, devolve [[SILENCIO]] e nada é enviado nem guardado
+let antes = sentMessages.length;
+openaiReply = '[[SILENCIO]]';
+res = await post(upsert('5551911110002@s.whatsapp.net', 'Oi pai, vai almoçar em casa hoje?'));
+check('conversa pessoal: bot lê e fica calado', res.ignored === 'bot preferiu não responder' && sentMessages.length === antes);
+let guardadas = (await q("SELECT count(*)::int AS n FROM bot_messages WHERE phone = '5551911110002'")).rows[0].n;
+check('conversa pessoal não vira histórico do bot', guardadas === 0);
+
+// 13. vinte mensagens pessoais seguidas nunca disparam a mensagem de "limite"
+for (let i = 0; i < 20; i++) await post(upsert('5551911110002@s.whatsapp.net', `mensagem pessoal ${i}`));
+check('conversa pessoal longa não recebe mensagem automática', sentMessages.length === antes);
+
+// 14. o roteiro vai com a hora de Porto Alegre para a saudação
+check('modelo recebe o horário e a saudação certa', /AGORA: .*horário de Porto Alegre.*Saudação certa neste horário: "(Bom dia|Boa tarde|Boa noite),"/.test(lastSystem), lastSystem.split('\n').at(-1));
+
+// 15. mensagem pronta do site → responde e manda a tabela
+sentImages.length = 0;
+openaiReply = 'Boa tarde,\n[[FOTO:tabela_homenagem]]\nJá tens o que vai na placa?';
+res = await post(upsert('5551911110003@s.whatsapp.net', 'Olá! Gostaria de solicitar um orçamento para placas de homenagem personalizadas.'));
+check('lead do site é respondido', res.replied === true, sentMessages.at(-1));
+check('manda a tabela de preços', sentImages.some((u) => u.endsWith('/bot-fotos/tabela-homenagem.jpg')), sentImages.join(', '));
+
+// 16. o bot passa para o atendente e para
+openaiReply = 'Ok, já te retorno,\n[[ATENDIDO]]';
+res = await post(upsert('5551911110003@s.whatsapp.net', 'segue o texto da placa: Homenagem ao Sr. João'));
+check('passa para o atendente e encerra', res.replied === true && res.done === true && !sentMessages.at(-1).includes('ATENDIDO'));
+
+// 17. humano responde → bot para (mesmo sem o bot ter falado antes)
+res = await post(upsert('5551911110006@s.whatsapp.net', 'Bom dia, em que posso ajudar?', true, 'HUMANO1'));
+check('resposta de humano é detectada', res.handoff === true);
+antes = sentMessages.length;
+openaiReply = 'Bom dia,';
+res = await post(upsert('5551911110006@s.whatsapp.net', 'quero uma placa de homenagem'));
+check('bot não fala depois que o humano respondeu', res.ignored === 'conversa já atendida' && sentMessages.length === antes);
+
+// 18. número na lista de não responder nem chega ao modelo
+const chamadas = openaiCalls;
+res = await post(upsert('5551900000001@s.whatsapp.net', 'quero uma placa de homenagem'));
+check('lista de não responder vale mesmo com assunto de cliente', res.ignored === 'não é cliente' && sentMessages.length === antes, res.motivo);
+res = await post(upsert('5551900000002@s.whatsapp.net', 'me passa o orçamento da placa'));
+check('lista aceita número com máscara e não gasta IA', res.ignored === 'não é cliente' && openaiCalls === chamadas);
+
+// 19. conversa no endereço novo do WhatsApp (@lid) usa o número de remoteJidAlt
+openaiReply = 'Boa tarde, no momento não estamos fazendo troféus e medalhas,';
+const lid = upsert('132607148822545@lid', 'boa tarde, vocês fazem troféu?');
+lid.data.key.remoteJidAlt = '5551911110004@s.whatsapp.net';
+res = await post(lid);
+check('conversa @lid é atendida pelo número real', res.replied === true && res.phone === '5551911110004');
+
+// 20. roteiro padrão: os cinco pontos pedidos
+r = await fetch(`${B}/bot/default-prompt`, { headers: H });
+const dp = (await r.json()).prompt || '';
+check('roteiro traz tabela, endereço, troféus/medalhas e marcadores',
+  dp.includes('R$ 238,00') && dp.includes('Carlos Von Koseritz, 63') && dp.includes('não estamos fazendo troféus e medalhas') &&
+  dp.includes('[[SILENCIO]]') && dp.includes('[[ATENDIDO]]') && dp.includes('{PRODUTOS}'));
+
+// ---------- Chat de teste (aba "Testar bot") ----------
+const chat = async (messages, roteiro) => {
+  const rr = await fetch(`${B}/bot/test-chat`, { method: 'POST', headers: H, body: JSON.stringify({ messages, roteiro }) });
+  return { status: rr.status, body: await rr.json() };
+};
+antes = sentMessages.length;
+const nBanco = (await q('SELECT count(*)::int AS n FROM bot_messages')).rows[0].n;
+openaiReply = 'Boa tarde,\n[[FOTO:tabela_homenagem]]\nJá tens o que vai na placa?';
+let c = await chat([{ role: 'user', content: 'quanto custa a placa de homenagem?' }], 'padrao');
+check('chat de teste responde com texto e fotos', c.status === 200 && c.body.texto.includes('Já tens') && c.body.fotos.length === 2 && c.body.fotos[0].url.endsWith('/bot-fotos/tabela-homenagem.jpg'));
+check('chat de teste não deixa marcador no texto', !/\[\[/.test(c.body.texto));
+check('chat de teste com roteiro padrão usa o roteiro novo', lastSystem.includes('não estamos fazendo troféus e medalhas'));
+openaiReply = '[[SILENCIO]]';
+c = await chat([{ role: 'user', content: 'oi pai' }]);
+check('chat de teste mostra quando o bot fica calado', c.body.silencio === true && c.body.texto === '');
+openaiReply = 'Ok, já te retorno,\n[[ATENDIDO]]';
+c = await chat([{ role: 'user', content: 'oi' }, { role: 'assistant', content: 'Boa tarde,' }, { role: 'user', content: 'segue o texto' }]);
+check('chat de teste mostra quando o bot passa para o atendente', c.body.done === true && c.body.texto === 'Ok, já te retorno,');
+check('chat de teste não envia WhatsApp nem grava no banco', sentMessages.length === antes && (await q('SELECT count(*)::int AS n FROM bot_messages')).rows[0].n === nBanco);
+c = await chat([]);
+check('chat de teste sem mensagem dá erro claro', c.status === 400);
+
 server.close();
 console.log('\nFim dos testes do bot.');

@@ -204,7 +204,7 @@ if (esperado !== req.headers['x-classul-signature']) return res.sendStatus(401);
 | `pedido.atualizado` | campos mudaram | `{ pedido, por }` |
 | `pedido.status` | mudou de etapa no Kanban | `{ pedido, de, para, por, aviso_enviado }` |
 | `lead.novo` | alguém clicou no WhatsApp do site | `{ pagina, botao, origem, campanha }` |
-| `mensagem.recebida` | cliente mandou mensagem (só com o Hermes no comando) | `{ telefone, de_mim, nome, texto, tipo, wa_message_id }` |
+| `mensagem.recebida` | cliente mandou mensagem (só com o Hermes no comando) | `{ telefone, de_mim, nome, texto, tipo, wa_message_id, atender, motivo }` |
 | `teste` | botão Testar do painel | `{ mensagem }` |
 
 O sistema espera até 6s pela resposta da VPS. Se o Hermes estiver fora do ar, **nada
@@ -221,6 +221,24 @@ No painel, em **Quem faz o pré-atendimento no WhatsApp**:
 - **Hermes (VPS)** — o webhook da Evolution passa a mandar as mensagens dos clientes para o
   Hermes, via evento `mensagem.recebida`. O bot interno não responde nada.
 - **Ninguém** — só atendimento humano.
+
+### Só clientes
+
+O Hermes lê todas as conversas e avalia se é para responder, como o roteiro manda: responde
+cliente; conversa pessoal, fornecedor e propaganda ficam sem resposta. A única trava fixa do
+sistema é a lista de Configurações → "Não responder estes números": mensagem desses números
+chega com `atender: false` (e `motivo`) e não entra no histórico da aba Bot. Nas demais vem
+`atender: true`.
+
+O atendimento é enxuto: saudação conforme o horário, orçamento da placa de homenagem (tabela),
+endereço de retirada, avisar que não estamos fazendo troféus e medalhas, e parar quando um
+humano responder (a mensagem chega com `de_mim: true`). O resto passa para o atendente com
+`encerrar_conversa`.
+
+Antes de responder, chame a ferramenta **`roteiro_atendimento`**: ela devolve o roteiro
+completo (etapas, tom, regras), as respostas padrão, a tabela de preços da placa de homenagem
+e as fotos com URL pronta para `enviar_foto`. O texto mora em `lib/atendimento.js`, o mesmo
+que o bot interno usa.
 
 Com o Hermes no comando, ele responde chamando a ferramenta `enviar_mensagem` e encerra a
 conversa com `encerrar_conversa`. As mensagens continuam sendo gravadas aqui, então a aba

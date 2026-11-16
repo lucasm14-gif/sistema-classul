@@ -232,6 +232,9 @@ export const api = {
     request(`/api/orders/${orderId}/comments`, { method: 'POST', body: JSON.stringify({ body }) }),
   deleteComment: (id) => request(`/api/comments/${id}`, { method: 'DELETE' }),
   botStatus: () => request('/api/bot/status'),
+  botDefaultPrompt: () => request('/api/bot/default-prompt'),
+  botTestChat: (messages, roteiro) =>
+    request('/api/bot/test-chat', { method: 'POST', body: JSON.stringify({ messages, roteiro }) }),
   botSetupWebhook: () => request('/api/bot/setup-webhook', { method: 'POST' }),
   botConversations: () => request('/api/bot/conversations'),
   botConversation: (phone) => request(`/api/bot/conversations/${phone}`),
