@@ -24,7 +24,9 @@ export function plateMm(size) {
   return { w: w * 10, h: h * 10 };
 }
 
-// Letra mínima de leitura na placa, em pontos reais como no CorelDRAW.
+// Letra das placas em pontos reais, como no CorelDRAW: o padrão é 12,5 pt; só quando o
+// texto não cabe a letra desce, e nunca abaixo do mínimo absoluto de 11,5 pt.
+export const STD_FONT_PT = 12.5;
 export const MIN_FONT_PT = 11.5;
 const MM_PER_PT = 0.352778;
 export const ptFromUnits = (units, size) => (units * plateMm(size).w) / W / MM_PER_PT;
@@ -281,9 +283,17 @@ export const TEMPLATES = [
 export function buildScene(templateId, fields, size, measure) {
   const tpl = TEMPLATES.find((t) => t.id === templateId) || TEMPLATES[0];
   const H = plateHeight(size);
-  minUnits = (MIN_FONT_PT * MM_PER_PT * W) / plateMm(size).w;
-  const result = tpl.build(fields, H, measure);
-  return { H, size, ops: result.ops, fit: result.fit, overflow: result.overflow, template: tpl };
+  const units = (pt) => (pt * MM_PER_PT * W) / plateMm(size).w;
+  minUnits = units(STD_FONT_PT);
+  let result = tpl.build(fields, H, measure);
+  let reduced = false;
+  if (result.overflow) {
+    // não coube com o padrão: tenta de novo podendo descer até o mínimo absoluto
+    minUnits = units(MIN_FONT_PT);
+    result = tpl.build(fields, H, measure);
+    reduced = true;
+  }
+  return { H, size, ops: result.ops, fit: result.fit, overflow: result.overflow, reduced, template: tpl };
 }
 
 // ---- Saídas ----
@@ -380,6 +390,7 @@ export function checkFields(fields, scene) {
   if (/\b(a definir|xxx+|nome aqui)\b/i.test(text)) issues.push({ level: 'erro', msg: 'Ainda há texto provisório na arte.' });
   if (scene) {
     if (scene.overflow) issues.push({ level: 'erro', msg: `O texto não coube neste modelo e tamanho com a letra mínima de ${String(MIN_FONT_PT).replace('.', ',')} pt.` });
+    else if (scene.reduced) issues.push({ level: 'aviso', msg: `Para caber, parte do texto ficou abaixo de ${String(STD_FONT_PT).replace('.', ',')} pt (o padrão). Se der, encurte o texto ou use uma placa maior.` });
     else if (scene.fit < 0.55) issues.push({ level: 'aviso', msg: 'A letra ficou pequena: considere um tamanho maior ou menos texto.' });
     if (scene.template.needsPhoto && !fields.photo) issues.push({ level: 'erro', msg: 'Este modelo precisa da foto para o retrato.' });
   }

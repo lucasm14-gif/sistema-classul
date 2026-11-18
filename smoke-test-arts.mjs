@@ -9,7 +9,7 @@ const mem = newDb();
 _setPoolForTests(new (mem.adapters.createPg()).Pool());
 const { default: app } = await import(`file://${ROOT}/api/index.js`);
 const { ART_TEMPLATES } = await import(`file://${ROOT}/lib/arts.js`);
-const { TEMPLATES, SIZES, FONT_FAMILIES, buildScene, checkFields, missingFonts, toSvg, MIN_FONT_PT, ptFromUnits } = await import(`file://${ROOT}/web/src/plates/engine.js`);
+const { TEMPLATES, SIZES, FONT_FAMILIES, buildScene, checkFields, missingFonts, toSvg, MIN_FONT_PT, STD_FONT_PT, ptFromUnits } = await import(`file://${ROOT}/web/src/plates/engine.js`);
 
 const check = (name, cond, extra = '') => {
   console.log(`${cond ? '✅' : '❌'} ${name}${extra ? ' — ' + extra : ''}`);
@@ -129,6 +129,19 @@ for (const t of TEMPLATES) for (const size of SIZES) {
 }
 check('nenhuma letra fica abaixo de 11,5 pt, mesmo com muito texto', minOk);
 
+let stdOk = true;
+for (const t of TEMPLATES) for (const size of SIZES) {
+  const sc = buildScene(t.id, F, size, measure);
+  if (sc.overflow || sc.reduced) continue;
+  const small = sc.ops.filter((o) => o.type === 'text').find((o) => ptFromUnits(o.size, size) < STD_FONT_PT - 0.01);
+  if (small) { stdOk = false; console.log('   abaixo do padrão', t.id, size, ptFromUnits(small.size, size)); }
+}
+check('texto que cabe fica no padrão de 12,5 pt ou maior', stdOk);
+const apertado = Array.from({ length: 60 }, (_, i) => i).find((n) => buildScene('classica', { ...F, body: 'palavra '.repeat(n * 4) }, '9x14', measure).reduced);
+const scAp = buildScene('classica', { ...F, body: 'palavra '.repeat((apertado || 1) * 4) }, '9x14', measure);
+check('quando não cabe em 12,5 pt, desce até 11,5 pt e avisa', apertado !== undefined && (scAp.overflow || has0(checkFields({ ...F, body: 'palavra '.repeat(apertado * 4) }, scAp), /padrão/)));
+
+function has0(issues, re) { return issues.some((i) => re.test(i.msg)); }
 const long = buildScene('classica', { ...F, body: 'palavra '.repeat(400) }, '9x14', measure);
 const has = (issues, re) => issues.some((i) => re.test(i.msg));
 check('texto grande demais é apontado', has(checkFields({ ...F, body: 'palavra '.repeat(400) }, long), /não coube|pequena/));
