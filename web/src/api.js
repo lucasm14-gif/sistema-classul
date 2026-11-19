@@ -316,7 +316,11 @@ export const api = {
   lucasDeleteRoutine: (id) => lucasRequest(`/api/lucas/routines/${id}`, { method: 'DELETE' }),
   lucasCheckRoutine: (id, day, done) =>
     lucasRequest(`/api/lucas/routines/${id}/check`, { method: 'POST', body: JSON.stringify({ day, done }) }),
-  artExtract: (conversation) => request('/api/arts/extract', { method: 'POST', body: JSON.stringify({ conversation }) }),
+  quoteProdutos: () => request('/api/quotes/produtos'),
+  quoteDefaults: () => request('/api/quotes/defaults'),
+  quoteAnalyze: (messages, contact) => request('/api/quotes/analyze', { method: 'POST', body: JSON.stringify({ messages, contact }) }),
+  quoteTask: (id) => request(`/api/quotes/task/${encodeURIComponent(id)}`),
+  quotePdf: (quote) => request('/api/quotes/pdf', { method: 'POST', body: JSON.stringify({ quote }) }),
   lucasYear: () => lucasRequest('/api/lucas/year'),
   lucasUpdateYear: (data) => lucasRequest('/api/lucas/year', { method: 'PUT', body: JSON.stringify(data) }),
   lucasCreateGoal: (data) => lucasRequest('/api/lucas/goals', { method: 'POST', body: JSON.stringify(data) }),

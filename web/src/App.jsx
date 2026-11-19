@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { Award, Layers, KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, MessagesSquare, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon, ReceiptText, Clock3 } from 'lucide-react';
+import { FileText, Layers, KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, MessagesSquare, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon, ReceiptText, Clock3 } from 'lucide-react';
 import Board from './components/Board';
 import Login from './components/Login';
 import { BatSigil } from './components/BatSigil';
@@ -12,12 +12,12 @@ const TABS = [
   { id: 'board', label: 'Pedidos', icon: KanbanSquare },
   { id: 'clients', label: 'Clientes', icon: Users },
   { id: 'dashboard', label: 'Faturamento', icon: ChartColumn },
+  { id: 'quotes', label: 'Orçamento', icon: FileText },
   { id: 'notas', label: 'Notas fiscais', icon: ReceiptText },
   { id: 'leads', label: 'Leads', icon: MousePointerClick },
   { id: 'bot', label: 'Bot', icon: Bot },
   { id: 'bot-test', label: 'Testar bot', icon: MessagesSquare },
   { id: 'inbox', label: 'Recebidos', icon: InboxIcon },
-  { id: 'arts', label: 'Artes', icon: Award },
   { id: 'site-plates', label: 'Placas do site', icon: Layers },
   { id: 'extension', label: 'Extensão', icon: Puzzle },
   { id: 'finance', label: 'Finanças', icon: Wallet },
@@ -30,12 +30,12 @@ const TABS = [
 const LOADERS = {
   clients: () => import('./components/Clients'),
   dashboard: () => import('./components/Faturamento'),
+  quotes: () => import('./components/Quotes'),
   notas: () => import('./components/Notas'),
   leads: () => import('./components/Leads'),
   bot: () => import('./components/BotChats'),
   'bot-test': () => import('./components/BotTest'),
   inbox: () => import('./components/Inbox'),
-  arts: () => import('./components/Arts'),
   'site-plates': () => import('./components/SitePlates'),
   extension: () => import('./components/Extension'),
   finance: () => import('./components/Finance'),

@@ -63,10 +63,10 @@ import { notifyHermes, logHermes } from '../lib/hermes-events.js';
 import { handleIncoming, gerarResposta, fotosDaResposta } from '../lib/bot.js';
 import { handleWatchedMessage } from '../lib/watcher.js';
 import { analyzeChat, STAGES } from '../lib/analyst.js';
-import { extractArtData } from '../lib/arts.js';
 import { PLATE_TOKEN, PlateError, savePlate, getPlateByToken, getPlateById, listPlates, savePlatePhoto, handlePlateMessage, platePage } from '../lib/plates.js';
 import { CASE_COLORS, PLATE_SIZES, PRODUCT_TYPES } from '../lib/default-content.js';
 import { registerNfeRoutes } from '../lib/nfe/routes.js';
+import { ensureNfeSchema, listarProdutos } from '../lib/nfe/service.js';
 import { analyzeConversation, checkTask, renderQuotePdf, normalizeQuote, quoteFileName, QuoteError, QUOTE_DEFAULTS } from '../lib/quotes.js';
 
 const app = express();
@@ -1078,6 +1078,14 @@ app.get('/api/quotes/task/:id', hq(async (req, res) => res.json(await checkTask(
 
 app.get('/api/quotes/defaults', h(async (req, res) => res.json(QUOTE_DEFAULTS)));
 
+// Catálogo para montar orçamento na aba Orçamento: os produtos da aba Notas, só o
+// que interessa aqui (nome e preço) e sem o PIN das notas — ler preço não emite nada.
+app.get('/api/quotes/produtos', h(async (req, res) => {
+  await ensureNfeSchema();
+  const lista = await listarProdutos();
+  res.json(lista.filter((p) => Number(p.ativo) === 1).map((p) => ({ id: p.id, codigo: p.codigo, descricao: p.descricao, valor: Number(p.valor) || 0, uso: Number(p.uso) || 0 })));
+}));
+
 app.post('/api/quotes/pdf', hq(async (req, res) => {
   const quote = req.body?.quote || {};
   const pdf = await renderQuotePdf(quote);
@@ -1745,15 +1753,6 @@ app.get('/api/plates/:id/file/:kind', h(async (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="placa-${String(plate.id).padStart(4, '0')}${req.params.kind === 'logo' ? '-logo1' : req.params.kind === 'logo2' ? '-logo2' : req.params.kind === 'foto' ? '-foto' : req.params.kind === 'arte' ? '-arte' : ''}.${file[2]}"`);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.send(buffer);
-}));
-
-app.post('/api/arts/extract', h(async (req, res) => {
-  try {
-    res.json(await extractArtData(req.body?.conversation));
-  } catch (err) {
-    if (err.status) return res.status(err.status).json({ error: err.message });
-    throw err;
-  }
 }));
 
 // Roda o analista na hora (o botão "Analisar agora").

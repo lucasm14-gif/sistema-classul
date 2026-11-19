@@ -137,6 +137,19 @@ const muitos = Array.from({ length: 18 }, (_, i) => ({ descricao: `Medalha model
 r = await post('/quotes/pdf', { quote: { destinatario: 'Escola', itens: muitos } });
 check('orçamento comprido também sai', r.status === 200 && Buffer.from(r.body.base64, 'base64').toString('latin1').match(/\/Type \/Page\b/g)?.length >= 2);
 
+// ---------------------------------------------------------------- 5b. catálogo da aba Orçamento
+{
+  const { ensureNfeSchema, salvarProduto } = await import(`file://${ROOT}/lib/nfe/service.js`);
+  await ensureNfeSchema();
+  const base = { ncm: '83100000', cfop_dentro: '5101', cfop_fora: '6101', unidade: 'UND', origem: '0', csosn: '102' };
+  await salvarProduto(null, { ...base, descricao: 'Placa homenagem 20x30 com estojo', valor: 290, ativo: 1 });
+  await salvarProduto(null, { ...base, descricao: 'Produto antigo', valor: 10, ativo: 0 });
+  const lista = await (await fetch(B + '/quotes/produtos', { headers: ADMIN })).json();
+  check('catálogo do orçamento traz só ativos, com preço e sem dados fiscais', lista.length === 1 && lista[0].valor === 290 && !('ncm' in lista[0]), JSON.stringify(lista));
+  const sem = await fetch(B + '/quotes/produtos');
+  check('catálogo do orçamento exige o login', sem.status === 401);
+}
+
 // ---------------------------------------------------------------- 6. config do Hermes
 r = { body: await (await fetch(B + '/hermes/config', { headers: ADMIN })).json() };
 check('tela do Hermes mostra a rota e que a chave existe (sem mostrar a chave)', r.body.ai_url === 'http://localhost:3147/claude' && r.body.ai_key_set === true && !JSON.stringify(r.body).includes(CHAVE));
