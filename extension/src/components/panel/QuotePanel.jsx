@@ -24,6 +24,11 @@ const readDock = () => {
     }
 };
 
+// Prazos mais usados (o mesmo da aba Orçamento do sistema). Vazio = padrão do papel timbrado.
+const PRAZOS = ['3 dias úteis', '4 dias úteis', '5 dias úteis', '3 a 5 dias úteis', '10 a 15 dias úteis'];
+const APOS = ', após confirmar pedido de compra';
+const prazoBase = (t) => String(t || '').replace(/,?\s*após confirmar pedido de compra\s*$/i, '').replace(/uteis/i, 'úteis').trim();
+
 const emptyItem = () => ({ descricao: '', quantidade: 1, valor: '' });
 const toMoneyText = (n) => (n ? Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
 const parseMoney = (v) => {
@@ -342,16 +347,34 @@ export default function QuotePanel({ start, onClose }) {
                     </div>
                 ))}
 
+                <div className="clp-section-title">Prazo de produção</div>
+                <div className="clp-card">
+                    <div className="clp-chips">
+                        {PRAZOS.map((p) => (
+                            <button
+                                key={p}
+                                className={'clp-chip' + (prazoBase(form.prazo_producao || '10 a 15 dias úteis') === p ? ' on' : '')}
+                                onClick={() => set({ prazo_producao: p + APOS })}
+                            >
+                                {p}
+                            </button>
+                        ))}
+                    </div>
+                    <input
+                        className="clp-input"
+                        style={{ marginTop: 8 }}
+                        value={form.prazo_producao}
+                        onChange={(e) => set({ prazo_producao: e.target.value })}
+                        placeholder="10 a 15 dias uteis, após confirmar pedido de compra"
+                    />
+                </div>
+
                 <button className="clp-section-title clq-toggle" onClick={() => setShowConditions((v) => !v)}>
-                    Condições e observação
+                    Entrega, validade e observação
                     {showConditions ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 </button>
                 {showConditions && (
                     <div className="clp-card clp-grid">
-                        <label className="clp-field span">
-                            <span className="clp-label">Prazo de produção</span>
-                            <input className="clp-input" value={form.prazo_producao} onChange={(e) => set({ prazo_producao: e.target.value })} placeholder="10 a 15 dias uteis, após confirmar pedido de compra" />
-                        </label>
                         <label className="clp-field span">
                             <span className="clp-label">Entrega</span>
                             <input className="clp-input" value={form.entrega} onChange={(e) => set({ entrega: e.target.value })} placeholder="RETIRADA POR CONTA DO CLIENTE" />
