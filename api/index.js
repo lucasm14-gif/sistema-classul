@@ -42,23 +42,7 @@ import {
 } from '../lib/orders.js';
 import { TOOLS, toolsFor, runTool, isPrivateTool, forwardIncomingToHermes } from '../lib/hermes.js';
 import { resolverArquivo } from '../lib/hermes-acesso.js';
-import {
-  lucasOverview,
-  lucasYearOverview,
-  updateLucasYear,
-  createLucasGoal,
-  updateLucasGoal,
-  deleteLucasGoal,
-  saveLucasJournal,
-  getLucasJournal,
-  createLucasTask,
-  updateLucasTask,
-  deleteLucasTask,
-  createLucasRoutine,
-  updateLucasRoutine,
-  deleteLucasRoutine,
-  checkLucasRoutine
-} from '../lib/lucas.js';
+import { saveSnapshot, readSnapshot, checkSyncKey, newSyncKey, IdealError } from '../lib/ideal.js';
 import { notifyHermes, logHermes } from '../lib/hermes-events.js';
 import { handleIncoming, gerarResposta, fotosDaResposta } from '../lib/bot.js';
 import { handleWatchedMessage } from '../lib/watcher.js';
@@ -86,6 +70,7 @@ app.post('/api/plates', express.json({ limit: '4500kb' }), async (req, res) => {
 app.use((req, res, next) => (req.method === 'POST' && /^\/api\/plates\/\d+\/foto$/.test(req.path) ? express.json({ limit: '3mb' })(req, res, next) : next()));
 // Aba Notas: o certificado (.pfx) e os lotes de importação do C&K passam do limite geral.
 app.use((req, res, next) => (req.method === 'POST' && /^\/api\/nfe\/(certificado|importar|logo)$/.test(req.path) ? express.json({ limit: '4mb' })(req, res, next) : next()));
+app.use((req, res, next) => (req.method === 'PUT' && req.path === '/api/ideal/snapshot' ? express.json({ limit: '4mb' })(req, res, next) : next()));
 app.use(express.json());
 // navigator.sendBeacon do site envia os leads como application/x-www-form-urlencoded.
 app.use(express.urlencoded({ extended: false }));
@@ -224,7 +209,7 @@ app.post('/api/hermes/call', async (req, res) => {
     if (!(await requireHermes(req, res))) return;
     const { tool, args } = req.body || {};
     if (!tool) return res.status(400).json({ ok: false, error: 'Informe o nome da ferramenta em "tool".' });
-    // Ferramentas das áreas com PIN (Lucas, finanças, notas) ficam no registro sem o
+    // Ferramentas das áreas com PIN (finanças, notas) ficam no registro sem o
     // conteúdo: o registro aparece na aba Hermes, que não pede PIN.
     const privado = isPrivateTool(String(tool));
     try {
@@ -355,6 +340,19 @@ app.get('/api/photos/:id', async (req, res) => {
   } catch (err) {
     console.error('foto:', err);
     res.status(502).json({ error: err.message });
+  }
+});
+
+// O iPhone (app Ideal) envia o snapshot com a chave própria, sem o login do sistema.
+app.put('/api/ideal/snapshot', async (req, res) => {
+  try {
+    const key = String(req.headers['x-ideal-key'] || '');
+    if (!(await checkSyncKey(key))) return res.status(401).json({ error: 'Chave do Ideal inválida.' });
+    res.json(await saveSnapshot(req.body));
+  } catch (err) {
+    if (err instanceof IdealError) return res.status(err.status).json({ error: err.message });
+    console.error('ideal:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -1271,124 +1269,64 @@ app.get('/api/finance/summary', requireFinance, h(async (req, res) => {
   res.json(summary);
 }));
 
-// ---------- Área pessoal do Lucas (missões e rotinas) ----------
+// ---------- Ideal (app pessoal do iPhone) ----------
 //
-// Aba com vida própria dentro do sistema: mesma trava em duas camadas das
-// finanças (login Bearer + PIN próprio). Quem sabe o PIN recebe um "lucas token"
-// derivado do hash do PIN; sem ele nada de tarefas/rotinas é devolvido.
+// Área secreta: não aparece no menu, abre por um sinal discreto no rodapé e pede
+// senha (login Bearer + PIN próprio, igual às Finanças). A senha é a mesma da
+// antiga área pessoal, por isso o hash continua na chave lucas_pin_hash.
+// Os dados vêm do iPhone (PUT /api/ideal/snapshot, rota pública com chave própria).
 
-const lucasHashPin = (pin) => sha256(`${APP_SECRET()}:lucaspin:${pin}`);
-const lucasTokenFor = (pinHash) => sha256(`${APP_SECRET()}:lucas:${pinHash}`);
+const idealHashPin = (pin) => sha256(`${APP_SECRET()}:lucaspin:${pin}`);
+const idealTokenFor = (pinHash) => sha256(`${APP_SECRET()}:lucas:${pinHash}`);
 
-async function getLucasPinHash() {
+async function getIdealPinHash() {
   const { rows } = await q("SELECT value FROM settings WHERE key = 'lucas_pin_hash'");
   return rows[0]?.value || '';
 }
 
-// Igual ao requireFinance: 403 com lucas_locked para o front pedir o PIN de novo
-// (e não confundir com sessão expirada, que é 401).
-async function requireLucas(req, res, next) {
+async function requireIdeal(req, res, next) {
   try {
-    const pinHash = await getLucasPinHash();
-    if (!pinHash) return res.status(403).json({ error: 'Defina um PIN para esta área.', lucas_locked: true });
-    const token = req.headers['x-lucas-token'] || '';
-    if (token !== lucasTokenFor(pinHash)) {
-      return res.status(403).json({ error: 'Área bloqueada.', lucas_locked: true });
+    const pinHash = await getIdealPinHash();
+    if (!pinHash) return res.status(403).json({ error: 'Defina uma senha para esta área.', ideal_locked: true });
+    if ((req.headers['x-ideal-token'] || '') !== idealTokenFor(pinHash)) {
+      return res.status(403).json({ error: 'Área bloqueada.', ideal_locked: true });
     }
     next();
   } catch (err) {
-    if (!res.headersSent) res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message });
   }
 }
 
-app.get('/api/lucas/status', h(async (req, res) => {
-  res.json({ has_pin: Boolean(await getLucasPinHash()) });
+app.get('/api/ideal/status', h(async (req, res) => {
+  res.json({ has_pin: Boolean(await getIdealPinHash()) });
 }));
 
-app.post('/api/lucas/pin', h(async (req, res) => {
-  const pin = String(req.body?.pin || '').trim();
-  if (pin.length < 4) return res.status(400).json({ error: 'O PIN precisa ter pelo menos 4 dígitos.' });
-  const current = await getLucasPinHash();
-  if (current) {
-    const currentPin = String(req.body?.current_pin || '').trim();
-    if (lucasHashPin(currentPin) !== current) return res.status(403).json({ error: 'PIN atual incorreto.' });
+app.post('/api/ideal/pin', h(async (req, res) => {
+  const pin = String(req.body?.pin || '');
+  if (!/^\d{4,8}$/.test(pin)) return res.status(400).json({ error: 'A senha precisa ter de 4 a 8 números.' });
+  const current = await getIdealPinHash();
+  if (current && idealHashPin(String(req.body?.current_pin || '')) !== current) {
+    return res.status(403).json({ error: 'Senha atual incorreta.' });
   }
-  const newHash = lucasHashPin(pin);
+  const newHash = idealHashPin(pin);
   await saveSetting('lucas_pin_hash', newHash);
-  res.json({ ok: true, token: lucasTokenFor(newHash) });
+  res.json({ ok: true, token: idealTokenFor(newHash) });
 }));
 
-app.post('/api/lucas/unlock', h(async (req, res) => {
-  const pinHash = await getLucasPinHash();
-  if (!pinHash) return res.status(400).json({ error: 'Nenhum PIN configurado ainda.', no_pin: true });
-  const pin = String(req.body?.pin || '').trim();
-  if (lucasHashPin(pin) !== pinHash) return res.status(403).json({ error: 'PIN incorreto.' });
-  res.json({ ok: true, token: lucasTokenFor(pinHash) });
+app.post('/api/ideal/unlock', h(async (req, res) => {
+  const pinHash = await getIdealPinHash();
+  if (!pinHash) return res.status(400).json({ error: 'Defina uma senha primeiro.' });
+  if (idealHashPin(String(req.body?.pin || '')) !== pinHash) return res.status(403).json({ error: 'Senha incorreta.' });
+  res.json({ ok: true, token: idealTokenFor(pinHash) });
 }));
 
-app.get('/api/lucas/overview', requireLucas, h(async (req, res) => {
-  res.json(await lucasOverview());
+app.get('/api/ideal/snapshot', requireIdeal, h(async (req, res) => {
+  res.json(await readSnapshot());
 }));
 
-app.post('/api/lucas/tasks', requireLucas, h(async (req, res) => {
-  res.status(201).json(await createLucasTask(req.body));
-}));
-
-app.put('/api/lucas/tasks/:id', requireLucas, h(async (req, res) => {
-  res.json(await updateLucasTask(req.params.id, req.body || {}));
-}));
-
-app.delete('/api/lucas/tasks/:id', requireLucas, h(async (req, res) => {
-  await deleteLucasTask(req.params.id);
-  res.json({ ok: true });
-}));
-
-app.post('/api/lucas/routines', requireLucas, h(async (req, res) => {
-  res.status(201).json(await createLucasRoutine(req.body));
-}));
-
-app.put('/api/lucas/routines/:id', requireLucas, h(async (req, res) => {
-  res.json(await updateLucasRoutine(req.params.id, req.body || {}));
-}));
-
-app.delete('/api/lucas/routines/:id', requireLucas, h(async (req, res) => {
-  await deleteLucasRoutine(req.params.id);
-  res.json({ ok: true });
-}));
-
-// Marca/desmarca a rotina num dia (padrão: hoje).
-app.post('/api/lucas/routines/:id/check', requireLucas, h(async (req, res) => {
-  res.json(await checkLucasRoutine(req.params.id, req.body || {}));
-}));
-
-// Ano Um: contagem do ano de foco, metas, diário, juramento e carta lacrada.
-app.get('/api/lucas/year', requireLucas, h(async (req, res) => {
-  res.json(await lucasYearOverview());
-}));
-
-app.put('/api/lucas/year', requireLucas, h(async (req, res) => {
-  res.json(await updateLucasYear(req.body || {}));
-}));
-
-app.post('/api/lucas/goals', requireLucas, h(async (req, res) => {
-  res.status(201).json(await createLucasGoal(req.body));
-}));
-
-app.put('/api/lucas/goals/:id', requireLucas, h(async (req, res) => {
-  res.json(await updateLucasGoal(req.params.id, req.body || {}));
-}));
-
-app.delete('/api/lucas/goals/:id', requireLucas, h(async (req, res) => {
-  await deleteLucasGoal(req.params.id);
-  res.json({ ok: true });
-}));
-
-app.get('/api/lucas/journal/:day', requireLucas, h(async (req, res) => {
-  res.json(await getLucasJournal(req.params.day));
-}));
-
-app.put('/api/lucas/journal', requireLucas, h(async (req, res) => {
-  res.json(await saveLucasJournal(req.body || {}));
+// Gera a chave que o iPhone usa para enviar (a anterior deixa de valer).
+app.post('/api/ideal/sync-key', requireIdeal, h(async (req, res) => {
+  res.json({ key: await newSyncKey() });
 }));
 
 // ---------- Conteúdo da extensão (mensagens, fotos e catálogo) ----------
@@ -1988,9 +1926,9 @@ app.get('/api/hermes/events', h(async (req, res) => {
   res.json(rows);
 }));
 
-// Chaves sensíveis das abas com trava por PIN (Finanças e Lucas) nunca saem
+// Chaves sensíveis das abas com trava por PIN (Finanças e Ideal) nunca saem
 // pela rota geral de configurações.
-const FINANCE_SECRET_KEYS = ['finance_pin_hash', 'pluggy_client_id', 'pluggy_client_secret', 'lucas_pin_hash'];
+const FINANCE_SECRET_KEYS = ['finance_pin_hash', 'pluggy_client_id', 'pluggy_client_secret', 'lucas_pin_hash', 'ideal_sync_key_hash'];
 
 app.get('/api/settings', h(async (req, res) => {
   const all = await getSettings();

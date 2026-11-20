@@ -2,7 +2,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { FileText, Layers, KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, MessagesSquare, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon, ReceiptText, Clock3 } from 'lucide-react';
 import Board from './components/Board';
 import Login from './components/Login';
-import { BatSigil } from './components/BatSigil';
+import { IdealMark } from './ideal/mark';
 import UserPicker from './components/UserPicker';
 import { ToastProvider } from './components/Toast';
 import { getToken, clearToken, AuthError } from './api';
@@ -41,10 +41,10 @@ const LOADERS = {
   finance: () => import('./components/Finance'),
   archived: () => import('./components/Archived'),
   settings: () => import('./components/Settings'),
-  lucas: () => import('./components/Lucas')
+  ideal: () => import('./ideal/Ideal')
 };
 const PAGES = Object.fromEntries(Object.entries(LOADERS).map(([id, load]) => [id, lazy(load)]));
-const Lucas = PAGES.lucas;
+const Ideal = PAGES.ideal;
 
 // Adianta o download de uma aba (ao passar o mouse no menu, ou com o navegador ocioso).
 // Falha de rede aqui não importa: a aba tenta de novo quando for aberta.
@@ -82,8 +82,8 @@ function PageLoading() {
 export default function App() {
   const [authed, setAuthed] = useState(() => Boolean(getToken()));
   const [tab, setTab] = useState('board');
-  // Área pessoal do Lucas: não é uma aba — abre pelo morcego do rodapé e cobre a tela.
-  const [lucasOpen, setLucasOpen] = useState(false);
+  // Ideal (app do iPhone): não é uma aba — abre pelo sinal discreto do rodapé e cobre a tela.
+  const [idealOpen, setIdealOpen] = useState(false);
   const [dark, setDark] = useState(() => isDark());
 
   const handleAuthError = useCallback((err) => {
@@ -101,7 +101,7 @@ export default function App() {
     if (!authed) return undefined;
     let cancelled = false;
     const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1200));
-    const fila = Object.keys(LOADERS).filter((id) => id !== 'lucas');
+    const fila = Object.keys(LOADERS).filter((id) => id !== 'ideal');
     const proxima = () => {
       if (cancelled || !fila.length) return;
       Promise.resolve(preload(fila.shift())).then(() => idle(proxima));
@@ -115,7 +115,7 @@ export default function App() {
   useEffect(() => {
     if (!authed) {
       setTab('board');
-      setLucasOpen(false);
+      setIdealOpen(false);
     }
   }, [authed]);
 
@@ -177,12 +177,13 @@ export default function App() {
                 </button>
                 {/* Entrada discreta para a área pessoal. */}
                 <button
-                  onClick={() => setLucasOpen(true)}
-                  onMouseEnter={() => preload('lucas')}
+                  onClick={() => setIdealOpen(true)}
+                  onMouseEnter={() => preload('ideal')}
                   aria-label="Área pessoal"
                   className="group p-1.5 text-slate-400 hover:text-brand-900 transition-colors"
                 >
-                  <BatSigil
+                  <IdealMark
+                    columns={22}
                     className="w-7 opacity-40 group-hover:opacity-100 group-hover:scale-110 transition-all duration-500"
                     style={{ fill: 'currentColor' }}
                   />
@@ -228,9 +229,9 @@ export default function App() {
         </div>
       </div>
 
-      {lucasOpen && (
+      {idealOpen && (
         <Suspense fallback={null}>
-          <Lucas onAuthError={handleAuthError} onExit={() => setLucasOpen(false)} />
+          <Ideal onAuthError={handleAuthError} onExit={() => setIdealOpen(false)} />
         </Suspense>
       )}
     </ToastProvider>

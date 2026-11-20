@@ -405,145 +405,71 @@ r = await fetch(`${B}/leads`);
 check('leads exige Bearer', r.status === 401);
 
 
-// ---- Área pessoal do Lucas (missões e rotinas com trava por PIN) ----
+// ---- Ideal (app do iPhone, área secreta com senha) ----
 
-r = await fetch(`${B}/lucas/status`, { headers: H });
-let lucas = await r.json();
-check('lucas: começa sem PIN', lucas.has_pin === false);
+r = await fetch(`${B}/ideal/status`, { headers: H });
+check('ideal: começa sem senha', (await r.json()).has_pin === false);
 
-r = await fetch(`${B}/lucas/overview`, { headers: H });
-let lucasBody = await r.json();
-check('lucas: sem PIN a área fica trancada', r.status === 403 && lucasBody.lucas_locked === true);
+r = await fetch(`${B}/ideal/snapshot`, { headers: H });
+check('ideal: sem senha a área fica trancada', r.status === 403 && (await r.json()).ideal_locked === true);
 
-r = await fetch(`${B}/lucas/pin`, { method: 'POST', headers: H, body: JSON.stringify({ pin: '123' }) });
-check('lucas: PIN curto é recusado', r.status === 400);
+r = await fetch(`${B}/ideal/pin`, { method: 'POST', headers: H, body: JSON.stringify({ pin: '123' }) });
+check('ideal: senha curta é recusada', r.status === 400);
 
-r = await fetch(`${B}/lucas/pin`, { method: 'POST', headers: H, body: JSON.stringify({ pin: '4242' }) });
-const lucasToken = (await r.json()).token;
-check('lucas: cria o PIN e devolve token', r.status === 200 && Boolean(lucasToken));
+r = await fetch(`${B}/ideal/pin`, { method: 'POST', headers: H, body: JSON.stringify({ pin: '4242' }) });
+const idealToken = (await r.json()).token;
+check('ideal: cria a senha e devolve token', r.status === 200 && Boolean(idealToken));
 
-r = await fetch(`${B}/lucas/unlock`, { method: 'POST', headers: H, body: JSON.stringify({ pin: '0000' }) });
-check('lucas: PIN errado não destrava', r.status === 403);
+r = await fetch(`${B}/ideal/unlock`, { method: 'POST', headers: H, body: JSON.stringify({ pin: '0000' }) });
+check('ideal: senha errada não destrava', r.status === 403);
+r = await fetch(`${B}/ideal/unlock`, { method: 'POST', headers: H, body: JSON.stringify({ pin: '4242' }) });
+check('ideal: senha certa destrava com o mesmo token', (await r.json()).token === idealToken);
 
-r = await fetch(`${B}/lucas/unlock`, { method: 'POST', headers: H, body: JSON.stringify({ pin: '4242' }) });
-check('lucas: PIN certo destrava com o mesmo token', (await r.json()).token === lucasToken);
+const IH = { ...H, 'X-Ideal-Token': idealToken };
+r = await fetch(`${B}/ideal/snapshot`, { headers: IH });
+let idealBody = await r.json();
+check('ideal: ainda sem dados nem iPhone ligado', r.status === 200 && idealBody.snapshot === null && idealBody.connected === false);
 
-r = await fetch(`${B}/lucas/overview`, { headers: { ...H, 'X-Lucas-Token': 'token-errado' } });
-check('lucas: token inválido continua trancado', r.status === 403);
+const SNAP = {
+  generatedAt: 1795000000, deviceName: 'iPhone de Teste', userName: 'Teste', startDate: 1790000000,
+  goals: { waterML: 3000, kcal: 2500, protein: 160, sleepMin: 480, weightKg: 80, steps: 10000 },
+  days: [{ date: 1794960000, score: 0.85, waterML: 2500, kcal: 2100, protein: 150, sleepMin: 450, focusMin: 60, cardioMin: 20, cardioKcal: 180, mood: 4, workout: true, habitsDone: 4, habitsTotal: 5, steps: 9000 }],
+  sessions: [], weights: [{ date: 1794960000, kg: 82.4, bodyFat: 18, waistCm: 88 }],
+  objectives: [{ title: 'Correr 10 km', area: 'Corpo', progress: 0.4, done: false, why: 'saúde' }],
+  streak: 3, ideas: [{ id: 'a1', date: 1794960000, text: 'ideia boa' }]
+};
+const PUT = (key, body = SNAP) => fetch(`${B}/ideal/snapshot`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Ideal-Key': key }, body: JSON.stringify(body) });
 
-const LH = { ...H, 'X-Lucas-Token': lucasToken };
+r = await PUT('qualquer');
+check('ideal: iPhone sem chave válida é recusado', r.status === 401);
 
-r = await fetch(`${B}/lucas/tasks`, { method: 'POST', headers: LH, body: JSON.stringify({ title: '' }) });
-check('lucas: missão sem nome é recusada', r.status === 400);
+r = await fetch(`${B}/ideal/sync-key`, { method: 'POST', headers: H });
+check('ideal: gerar chave do iPhone exige a senha', r.status === 403);
+r = await fetch(`${B}/ideal/sync-key`, { method: 'POST', headers: IH });
+const syncKey = (await r.json()).key;
+check('ideal: gera chave do iPhone', /^ideal_[\w-]{20,}$/.test(syncKey || ''), syncKey);
 
-r = await fetch(`${B}/lucas/tasks`, {
-  method: 'POST',
-  headers: LH,
-  body: JSON.stringify({ title: 'Fechar orçamento', priority: 'critica', due_date: '2020-01-01' })
-});
-const task = await r.json();
-check('lucas: cria missão', r.status === 201 && task.priority === 'critica' && task.done_at === null);
+r = await PUT(syncKey, { ...SNAP, days: 'x' });
+check('ideal: snapshot quebrado é recusado', r.status === 400);
+r = await PUT(syncKey);
+check('ideal: iPhone envia com a chave (sem o login do sistema)', r.status === 200);
+r = await PUT(syncKey, { ...SNAP, streak: 4, ideas: Array.from({ length: 900 }, (_, i) => ({ id: 'i' + i, date: 1794960000, text: 'x'.repeat(200) })) });
+check('ideal: snapshot grande (>100 KB) também entra', r.status === 200);
 
-await fetch(`${B}/lucas/tasks`, {
-  method: 'POST',
-  headers: LH,
-  body: JSON.stringify({ title: 'Prioridade inventada', priority: 'urgentissima' })
-});
+r = await fetch(`${B}/ideal/snapshot`, { headers: IH });
+idealBody = await r.json();
+check('ideal: painel lê o último snapshot', idealBody.snapshot?.streak === 4 && idealBody.device === 'iPhone de Teste' && idealBody.connected === true && Boolean(idealBody.received_at));
 
-r = await fetch(`${B}/lucas/routines`, {
-  method: 'POST',
-  headers: LH,
-  body: JSON.stringify({ title: 'Treino', time_of_day: '06:30', days: '0123456' })
-});
-const routine = await r.json();
-check('lucas: cria rotina', r.status === 201 && routine.days === '0123456');
-
-r = await fetch(`${B}/lucas/routines/${routine.id}/check`, { method: 'POST', headers: LH, body: JSON.stringify({}) });
-const checked = await r.json();
-check('lucas: marca rotina hoje', checked.ok === true && /^\d{4}-\d{2}-\d{2}$/.test(checked.day));
-// marcar de novo não duplica
-await fetch(`${B}/lucas/routines/${routine.id}/check`, { method: 'POST', headers: LH, body: JSON.stringify({}) });
-
-r = await fetch(`${B}/lucas/overview`, { headers: LH });
-const overview = await r.json();
-check('lucas: prioridade inválida vira média', overview.tasks.some((t) => t.priority === 'media'));
-check(
-  'lucas: rotina cumprida hoje entra na contagem',
-  overview.stats.routines_today === 1 && overview.stats.routines_done === 1,
-  JSON.stringify(overview.stats)
-);
-check('lucas: histórico de 28 dias por rotina', overview.routines[0].history.length === 28 && overview.routines[0].streak === 1);
-check('lucas: missão com prazo velho conta como atrasada', overview.stats.tasks_late === 1);
-
-r = await fetch(`${B}/lucas/tasks/${task.id}`, { method: 'PUT', headers: LH, body: JSON.stringify({ status: 'concluida' }) });
-const doneTask = await r.json();
-check('lucas: concluir missão grava a data', doneTask.status === 'concluida' && Boolean(doneTask.done_at));
-
-r = await fetch(`${B}/lucas/tasks/${task.id}`, { method: 'PUT', headers: LH, body: JSON.stringify({ status: 'aberta' }) });
-check('lucas: reabrir missão limpa a data', (await r.json()).done_at === null);
-
-r = await fetch(`${B}/lucas/routines/${routine.id}/check`, {
-  method: 'POST',
-  headers: LH,
-  body: JSON.stringify({ done: false })
-});
-check('lucas: desmarca rotina', r.status === 200);
-r = await fetch(`${B}/lucas/overview`, { headers: LH });
-check('lucas: contagem volta a zero', (await r.json()).stats.routines_done === 0);
-
-// ---- Ano Um: contagem, juramento, carta lacrada, metas e diário ----
-r = await fetch(`${B}/lucas/year`, { headers: H });
-check('ano um: sem PIN fica trancado', r.status === 403);
-
-await fetch(`${B}/lucas/routines/${routine.id}/check`, { method: 'POST', headers: LH, body: JSON.stringify({}) });
-r = await fetch(`${B}/lucas/year`, { headers: LH });
-let yearData = await r.json();
-check(
-  'ano um: janela de 365 dias até 28/09/2027',
-  yearData.start === '2026-09-28' && yearData.end === '2027-09-28' && yearData.total_days === 365 && yearData.days.length === 365,
-  JSON.stringify({ start: yearData.start, end: yearData.end, total: yearData.total_days })
-);
-check('ano um: mapa marca a rotina cumprida hoje', yearData.days.find((d) => d.day === yearData.today)?.level === 3 || !yearData.started);
-
-r = await fetch(`${B}/lucas/year`, { method: 'PUT', headers: LH, body: JSON.stringify({ vow: 'um ano para mim', letter: 'oi, lucas do futuro' }) });
-check('ano um: grava juramento e carta', r.status === 200);
-r = await fetch(`${B}/lucas/year`, { headers: LH });
-yearData = await r.json();
-check('ano um: carta fica lacrada até o fim', yearData.vow === 'um ano para mim' && yearData.letter_written === true && yearData.letter === null);
-
-r = await fetch(`${B}/lucas/goals`, { method: 'POST', headers: LH, body: JSON.stringify({ title: 'Correr 10 km', area: 'corpo', progress: 140 }) });
-const goal = await r.json();
-check('ano um: meta criada com progresso limitado a 100 e cumprida', r.status === 201 && goal.progress === 100 && Boolean(goal.done_at));
-r = await fetch(`${B}/lucas/goals/${goal.id}`, { method: 'PUT', headers: LH, body: JSON.stringify({ progress: 40 }) });
-const goalBack = await r.json();
-check('ano um: baixar o progresso reabre a meta', goalBack.progress === 40 && goalBack.done_at === null);
-
-r = await fetch(`${B}/lucas/journal`, { method: 'PUT', headers: LH, body: JSON.stringify({ mood: 4, note: 'dia firme' }) });
-const entry = await r.json();
-check('ano um: diário de hoje gravado', entry.mood === 4 && entry.note === 'dia firme');
-r = await fetch(`${B}/lucas/journal`, { method: 'PUT', headers: LH, body: JSON.stringify({ day: '2099-01-01', note: 'x' }) });
-check('ano um: não escreve dia futuro', r.status === 400);
-r = await fetch(`${B}/lucas/year`, { headers: LH });
-yearData = await r.json();
-check(
-  'ano um: números do diário e das metas',
-  yearData.stats.journal_days === (yearData.started ? 1 : 0) && yearData.stats.goals_total === 1 && yearData.stats.goals_avg === 40,
-  JSON.stringify(yearData.stats)
-);
-r = await fetch(`${B}/lucas/journal`, { method: 'PUT', headers: LH, body: JSON.stringify({ mood: null, note: '' }) });
-check('ano um: diário vazio apaga a entrada', (await r.json()).removed === true);
-r = await fetch(`${B}/lucas/goals/${goal.id}`, { method: 'DELETE', headers: LH });
-check('ano um: apaga meta', r.status === 200);
-
-r = await fetch(`${B}/lucas/routines/${routine.id}`, { method: 'DELETE', headers: LH });
-check('lucas: apaga rotina', r.status === 200);
+r = await fetch(`${B}/ideal/sync-key`, { method: 'POST', headers: IH });
+r = await PUT(syncKey);
+check('ideal: chave nova invalida a antiga', r.status === 401);
 
 r = await fetch(`${B}/settings`, { headers: H });
 const settingsAfter = await r.json();
-check('lucas: hash do PIN não vaza nas configurações', settingsAfter.lucas_pin_hash === undefined);
+check('ideal: senha e chave não vazam nas configurações', settingsAfter.lucas_pin_hash === undefined && settingsAfter.ideal_sync_key_hash === undefined);
 
-r = await fetch(`${B}/lucas/overview`, { headers: { 'Content-Type': 'application/json', 'X-Lucas-Token': lucasToken } });
-check('lucas: token do PIN não substitui o login', r.status === 401);
+r = await fetch(`${B}/ideal/snapshot`, { headers: { 'Content-Type': 'application/json', 'X-Ideal-Token': idealToken } });
+check('ideal: token da senha não substitui o login', r.status === 401);
 
 // ---------- Conteúdo da extensão ----------
 

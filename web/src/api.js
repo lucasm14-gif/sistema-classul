@@ -26,8 +26,8 @@ export function setUser(name) {
 export class AuthError extends Error {}
 // Lançado quando o PIN das finanças é exigido/expirou (403 com finance_locked).
 export class FinanceLockError extends Error {}
-// Lançado quando o PIN da área do Lucas é exigido/expirou (403 com lucas_locked).
-export class LucasLockError extends Error {}
+// Lançado quando a senha do Ideal é exigida/expirou (403 com ideal_locked).
+export class IdealLockError extends Error {}
 // Lançado quando o PIN da aba Notas é exigido/expirou (403 com nfe_locked).
 export class NfeLockError extends Error {}
 
@@ -49,13 +49,13 @@ export function setFinanceToken(token) {
   else sessionStorage.removeItem(FINANCE_TOKEN_KEY);
 }
 
-const LUCAS_TOKEN_KEY = 'classul_lucas_token';
-export function getLucasToken() {
-  return sessionStorage.getItem(LUCAS_TOKEN_KEY) || '';
+const IDEAL_TOKEN_KEY = 'classul_ideal_token';
+export function getIdealToken() {
+  return sessionStorage.getItem(IDEAL_TOKEN_KEY) || '';
 }
-export function setLucasToken(token) {
-  if (token) sessionStorage.setItem(LUCAS_TOKEN_KEY, token);
-  else sessionStorage.removeItem(LUCAS_TOKEN_KEY);
+export function setIdealToken(token) {
+  if (token) sessionStorage.setItem(IDEAL_TOKEN_KEY, token);
+  else sessionStorage.removeItem(IDEAL_TOKEN_KEY);
 }
 
 async function request(path, options = {}) {
@@ -72,7 +72,7 @@ async function request(path, options = {}) {
   if (res.status === 401) throw new AuthError('Sessão inválida');
   const data = await res.json().catch(() => ({}));
   if (res.status === 403 && data.finance_locked) throw new FinanceLockError(data.error || 'Finanças bloqueadas');
-  if (res.status === 403 && data.lucas_locked) throw new LucasLockError(data.error || 'Área bloqueada');
+  if (res.status === 403 && data.ideal_locked) throw new IdealLockError(data.error || 'Área bloqueada');
   if (res.status === 403 && data.nfe_locked) throw new NfeLockError(data.error || 'Notas bloqueadas');
   if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
   return data;
@@ -86,11 +86,11 @@ function financeRequest(path, options = {}) {
   });
 }
 
-// Como request(), mas envia o token da área pessoal do Lucas.
-function lucasRequest(path, options = {}) {
+// Como request(), mas envia o token da senha do Ideal.
+function idealRequest(path, options = {}) {
   return request(path, {
     ...options,
-    headers: { 'X-Lucas-Token': getLucasToken(), ...(options.headers || {}) }
+    headers: { 'X-Ideal-Token': getIdealToken(), ...(options.headers || {}) }
   });
 }
 
@@ -300,33 +300,16 @@ export const api = {
     financeRequest(`/api/finance/items/${itemId}`, { method: 'PUT', body: JSON.stringify({ label }) }),
   financeRemoveItem: (itemId) => financeRequest(`/api/finance/items/${itemId}`, { method: 'DELETE' }),
   financeSummary: (days) => financeRequest(`/api/finance/summary${days ? `?days=${days}` : ''}`),
-  // ---- Área pessoal do Lucas ----
-  lucasStatus: () => request('/api/lucas/status'),
-  lucasSetPin: (pin, currentPin) =>
-    request('/api/lucas/pin', { method: 'POST', body: JSON.stringify({ pin, current_pin: currentPin }) }),
-  lucasUnlock: (pin) => request('/api/lucas/unlock', { method: 'POST', body: JSON.stringify({ pin }) }),
-  lucasOverview: () => lucasRequest('/api/lucas/overview'),
-  lucasCreateTask: (data) => lucasRequest('/api/lucas/tasks', { method: 'POST', body: JSON.stringify(data) }),
-  lucasUpdateTask: (id, data) =>
-    lucasRequest(`/api/lucas/tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  lucasDeleteTask: (id) => lucasRequest(`/api/lucas/tasks/${id}`, { method: 'DELETE' }),
-  lucasCreateRoutine: (data) => lucasRequest('/api/lucas/routines', { method: 'POST', body: JSON.stringify(data) }),
-  lucasUpdateRoutine: (id, data) =>
-    lucasRequest(`/api/lucas/routines/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  lucasDeleteRoutine: (id) => lucasRequest(`/api/lucas/routines/${id}`, { method: 'DELETE' }),
-  lucasCheckRoutine: (id, day, done) =>
-    lucasRequest(`/api/lucas/routines/${id}/check`, { method: 'POST', body: JSON.stringify({ day, done }) }),
   quoteProdutos: () => request('/api/quotes/produtos'),
   quoteDefaults: () => request('/api/quotes/defaults'),
   quoteAnalyze: (messages, contact) => request('/api/quotes/analyze', { method: 'POST', body: JSON.stringify({ messages, contact }) }),
   quoteTask: (id) => request(`/api/quotes/task/${encodeURIComponent(id)}`),
   quotePdf: (quote) => request('/api/quotes/pdf', { method: 'POST', body: JSON.stringify({ quote }) }),
-  lucasYear: () => lucasRequest('/api/lucas/year'),
-  lucasUpdateYear: (data) => lucasRequest('/api/lucas/year', { method: 'PUT', body: JSON.stringify(data) }),
-  lucasCreateGoal: (data) => lucasRequest('/api/lucas/goals', { method: 'POST', body: JSON.stringify(data) }),
-  lucasUpdateGoal: (id, data) =>
-    lucasRequest(`/api/lucas/goals/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  lucasDeleteGoal: (id) => lucasRequest(`/api/lucas/goals/${id}`, { method: 'DELETE' }),
-  lucasJournal: (day) => lucasRequest(`/api/lucas/journal/${day}`),
-  lucasSaveJournal: (data) => lucasRequest('/api/lucas/journal', { method: 'PUT', body: JSON.stringify(data) })
+  // ---- Ideal (área secreta, dados do iPhone) ----
+  idealStatus: () => request('/api/ideal/status'),
+  idealSetPin: (pin, currentPin) =>
+    request('/api/ideal/pin', { method: 'POST', body: JSON.stringify({ pin, current_pin: currentPin }) }),
+  idealUnlock: (pin) => request('/api/ideal/unlock', { method: 'POST', body: JSON.stringify({ pin }) }),
+  idealSnapshot: () => idealRequest('/api/ideal/snapshot'),
+  idealSyncKey: () => idealRequest('/api/ideal/sync-key', { method: 'POST' })
 };

@@ -110,16 +110,6 @@ automática da etapa, com o código de retirada).
 **Conversas** — `listar_conversas`, `historico_conversa`, `encerrar_conversa`,
 `reativar_conversa`.
 
-**Área pessoal do Lucas** (missões e rotinas, a tela do morcego) — `lucas_painel`,
-`lucas_criar_missao`, `lucas_atualizar_missao`, `lucas_concluir_missao`, `lucas_apagar_missao`,
-`lucas_criar_rotina`, `lucas_atualizar_rotina`, `lucas_apagar_rotina`, `lucas_marcar_rotina`,
-`lucas_ano` (o Ano Um: dia do ano, metas e diário), `lucas_diario`, `lucas_meta`.
-O Hermes entra sem o PIN (a chave dele basta) e tem controle total de lá. Missão e rotina podem
-ser apontadas pelo `id` (vem no `lucas_painel`) ou por `busca`, um trecho do título; se o
-trecho bater em mais de uma, o erro devolve as opções com id. `dias` da rotina aceita nomes
-(`["segunda","quarta"]`), dígitos (`"135"`, 0 = domingo), `"todos"`, `"dias úteis"` ou
-`"fim de semana"`.
-
 **Finanças** (a aba com PIN) — `financas_resumo`: saldos, cartões, investimentos, gastos e
 entradas do mês, categorias, últimos lançamentos e contas a pagar.
 
@@ -130,7 +120,7 @@ entradas do mês, categorias, últimos lançamentos e contas a pagar.
 **Arquivos** — `arquivos_do_pedido`, `arquivos_recebidos`, `placas_do_site`, `leads_do_site`,
 `enviar_arquivo` (manda por WhatsApp como documento) e `baixar_arquivo` (base64, até 3 MB).
 
-O Hermes entra em Finanças e Notas **sem PIN**: a chave dele basta, como na área do Lucas.
+O Hermes entra em Finanças e Notas **sem PIN**: a chave dele basta.
 
 #### Arquivos: a "ref"
 
@@ -159,16 +149,15 @@ curl -H "Authorization: Bearer $CHAVE" -OJ \
 
 #### Catálogo para o atendimento
 
-`GET /api/hermes/tools?perfil=atendimento` devolve o catálogo **sem** finanças, notas, área do
-Lucas e `baixar_arquivo`. Use esse no laço que conversa com cliente: quem escreve no WhatsApp
+`GET /api/hermes/tools?perfil=atendimento` devolve o catálogo **sem** finanças, notas e
+`baixar_arquivo`. Use esse no laço que conversa com cliente: quem escreve no WhatsApp
 pode tentar convencer o modelo a chamar ferramenta, e o que ele não enxerga ele não chama.
 O catálogo completo fica para as conversas com o Lucas.
 
 A descrição e os campos de cada uma vêm no `/api/hermes/tools` — esta lista é só o resumo.
 
 **Nenhuma ferramenta do Classul apaga nada.** Pedido sai do quadro por `arquivar_pedido`, que
-é reversível. Apagar de verdade continua só na mão, pela tela do sistema. A exceção é a área
-pessoal do Lucas: `lucas_apagar_missao` e `lucas_apagar_rotina` apagam de vez.
+é reversível. Apagar de verdade continua só na mão, pela tela do sistema.
 
 Um pedido criado pelo Hermes já nasce com código de retirada de 4 dígitos, cliente vinculado
 (ou criado) pelo telefone e autoria `Hermes` — exatamente como um pedido criado na tela.
@@ -259,7 +248,7 @@ Não é preciso mexer na Evolution: o webhook dela continua apontando para
   é o que fazer se a VPS for comprometida.
 - Com o interruptor desligado, nenhuma chamada do Hermes passa, mesmo com a chave certa.
 - Toda troca fica registrada (entrada e saída, com erro quando houver) e aparece no painel.
-  As chamadas das áreas com PIN (`lucas_*`, finanças, notas, `baixar_arquivo`) entram no registro só com o nome e se deu certo — sem argumentos,
+  As chamadas das áreas com PIN (finanças, notas, `baixar_arquivo`) entram no registro só com o nome e se deu certo — sem argumentos,
   resultado nem mensagem de erro —, porque o painel do Hermes não pede o PIN da área.
 
 ## 5. Orçamento em PDF (botão da extensão)
