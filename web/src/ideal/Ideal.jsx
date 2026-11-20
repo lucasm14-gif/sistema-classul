@@ -1,9 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Lock, Smartphone, Copy, Check, RefreshCw, LoaderCircle, LayoutGrid, Brain, Target, Play, Square } from 'lucide-react';
+import { X, Lock, Smartphone, Copy, Check, RefreshCw, LoaderCircle, LayoutGrid, Brain, Target, Play, Square, Sun, ListChecks, Dumbbell, SlidersHorizontal, CloudUpload, Undo2, AlertTriangle } from 'lucide-react';
 import { api, setIdealToken, IdealLockError, AuthError } from '../api';
 import { IdealMark } from './mark';
 import { analytics, prepare, GROUPS, fmt, sameDay, startOfDay } from './analytics';
+import { applyPending, describeAction } from './pending';
+import { Panel, Delta } from './ui';
+import Today from './pages/Today';
+import Routine from './pages/Routine';
+import { Workout, Goals, Ideas, Targets } from './pages/More';
 import './ideal.css';
 
 // Ideal na web: o painel do app do Mac, com os dados que o iPhone manda para o
@@ -11,38 +16,16 @@ import './ideal.css';
 
 const POLL_MS = 30000;
 const PAGES = [
+  ['hoje', 'Hoje', Sun],
+  ['rotina', 'Rotina', ListChecks],
+  ['treino', 'Treino', Dumbbell],
   ['painel', 'Painel', LayoutGrid],
+  ['objetivos', 'Objetivos', Target],
   ['ideias', 'Ideias', Brain],
-  ['objetivos', 'Objetivos', Target]
+  ['metas', 'Metas', SlidersHorizontal]
 ];
 
 /* ------------------------------------------------------------------ peças */
-
-function Panel({ title, right, children, className = '' }) {
-  return (
-    <section className={`idl-panel ${className}`}>
-      {(title || right) && (
-        <header className="idl-panel-head">
-          <h3>{title}</h3>
-          {right}
-        </header>
-      )}
-      {children}
-    </section>
-  );
-}
-
-function Delta({ value, suffix = '%', invert = false }) {
-  if (!Number.isFinite(value)) return null;
-  const good = invert ? value <= 0 : value >= 0;
-  const cls = value === 0 ? 'flat' : good ? 'good' : 'bad';
-  return (
-    <span className={`idl-delta ${cls}`}>
-      {value >= 0 ? '▲' : '▼'} {Math.abs(value).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}
-      {suffix}
-    </span>
-  );
-}
 
 const pct = (n) => `${Math.round((Number(n) || 0) * 100)}%`;
 
@@ -513,91 +496,28 @@ function Dashboard({ snap }) {
   );
 }
 
-/* ------------------------------------------------------------------ ideias e objetivos */
-
-function IdeasPage({ snap }) {
-  const groups = useMemo(() => {
-    const map = new Map();
-    for (const idea of snap.ideas) {
-      const k = startOfDay(idea.date).getTime();
-      map.set(k, [...(map.get(k) || []), idea]);
-    }
-    return [...map.entries()].sort((x, y) => y[0] - x[0]);
-  }, [snap.ideas]);
-  if (!groups.length) return <p className="idl-empty center">Registre ideias no iPhone (Mais → Ideias) para acender o megabrain.</p>;
-  return (
-    <div className="idl-ideas">
-      <p className="idl-kicker">{snap.ideas.length} NEURÔNIOS</p>
-      {groups.map(([k, list]) => {
-        const d = new Date(k);
-        return (
-          <section key={k}>
-            <h4>
-              {fmt.weekday(d)} {fmt.dayMonth(d)} <span>{list.length}</span>
-            </h4>
-            {list.map((idea) => (
-              <article key={idea.id} className="idl-idea">
-                <small>{fmt.time(idea.date)}</small>
-                <p>{idea.text}</p>
-              </article>
-            ))}
-          </section>
-        );
-      })}
-    </div>
-  );
-}
-
-function GoalCard({ goal }) {
-  const days = goal.deadline ? Math.ceil((startOfDay(goal.deadline) - startOfDay(new Date())) / 86400000) : null;
-  return (
-    <article className={`idl-goal ${goal.done ? 'done' : ''}`} style={goal.photo ? { '--photo': `url(data:image/jpeg;base64,${goal.photo})` } : undefined}>
-      <div className="idl-goal-top">
-        <span>{String(goal.area || '').toUpperCase()}</span>
-        {goal.done ? <span className="good">CONQUISTADO</span> : days != null && <span className={days < 0 ? 'bad' : ''}>{days >= 0 ? `${days} DIAS` : 'ATRASADO'}</span>}
-      </div>
-      <h4>{goal.title}</h4>
-      {goal.why && (
-        <div className="idl-goal-why">
-          <small>POR QUÊ</small>
-          <p>{goal.why}</p>
-        </div>
-      )}
-      <div className="idl-goal-progress">
-        <div className="idl-meter">
-          <i style={{ width: `${Math.round((goal.done ? 1 : goal.progress || 0) * 100)}%` }} className={goal.done ? 'good' : ''} />
-        </div>
-        <b>{pct(goal.done ? 1 : goal.progress)}</b>
-      </div>
-    </article>
-  );
-}
-
-function GoalsPage({ snap }) {
-  const active = snap.objectives.filter((o) => !o.done);
-  const done = snap.objectives.filter((o) => o.done);
-  if (!snap.objectives.length) return <p className="idl-empty center">Crie objetivos com fotos no iPhone (Mais → Objetivos).</p>;
-  return (
-    <div className="idl-goals-page">
-      <h2>Lembre por que você começou</h2>
-      <p className="idl-mono muted">
-        {active.length} ativos · {done.length} conquistados
-      </p>
-      <div className="idl-goals">
-        {[...active, ...done].map((g, i) => (
-          <GoalCard key={`${g.title}-${i}`} goal={g} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /* ------------------------------------------------------------------ tela */
 
 export default function Ideal({ onAuthError, onExit }) {
   const [unlocked, setUnlocked] = useState(false);
   const [data, setData] = useState(null); // { snapshot, received_at, device, connected }
-  const [page, setPage] = useState('painel');
+  const [page, setPage] = useState(() => {
+    try {
+      return localStorage.getItem('classul_ideal_page') || 'hoje';
+    } catch {
+      return 'hoje';
+    }
+  });
+  const [showQueue, setShowQueue] = useState(false);
+  const [hidden, setHidden] = useState(() => new Set());
+  const go = (id) => {
+    setPage(id);
+    try {
+      localStorage.setItem('classul_ideal_page', id);
+    } catch {
+      /* só conveniência */
+    }
+  };
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showConnect, setShowConnect] = useState(false);
@@ -665,7 +585,33 @@ export default function Ideal({ onAuthError, onExit }) {
     };
   }, [onExit]);
 
-  const snap = useMemo(() => prepare(data?.snapshot), [data]);
+  const actions = data?.actions || [];
+  const raw = useMemo(() => applyPending(data?.snapshot, data?.actions), [data]);
+  const snap = useMemo(() => prepare(raw), [raw]);
+  const pending = actions.filter((a) => !a.applied_at);
+  const failed = actions.filter((a) => a.ok === false && !hidden.has(a.id));
+
+  // Alteração feita aqui: vai para a fila e já aparece na tela.
+  const act = useCallback(
+    async (type, payload) => {
+      try {
+        const a = await api.idealAction(type, payload);
+        setData((d) => (d ? { ...d, actions: [...(d.actions || []), a] } : d));
+      } catch (e) {
+        if (!onLocked(e)) setError(e.message);
+      }
+    },
+    [onLocked]
+  );
+  const undo = async (a) => {
+    try {
+      await api.idealCancelAction(a.id);
+      setData((d) => ({ ...d, actions: d.actions.filter((x) => x.id !== a.id) }));
+    } catch (e) {
+      if (!onLocked(e)) setError(e.message);
+      load(true);
+    }
+  };
   const received = data?.received_at ? new Date(data.received_at) : null;
   const fresh = received && Date.now() - received < 5 * 60000;
 
@@ -691,7 +637,7 @@ export default function Ideal({ onAuthError, onExit }) {
           </div>
           <nav className="idl-pages">
             {PAGES.map(([id, label, Icon]) => (
-              <button key={id} className={page === id ? 'on' : ''} onClick={() => setPage(id)}>
+              <button key={id} className={page === id ? 'on' : ''} onClick={() => go(id)}>
                 <Icon size={13} /> {label}
               </button>
             ))}
@@ -724,9 +670,45 @@ export default function Ideal({ onAuthError, onExit }) {
         <main className="idl-main">
           {error && <p className="idl-error">{error}</p>}
           {(showConnect || (data && !snap)) && <ConnectCard connected={Boolean(data?.connected)} onLocked={onLocked} compact={Boolean(snap)} />}
+          {(pending.length > 0 || failed.length > 0) && (
+            <div className={`idl-queue ${failed.length ? 'has-error' : ''}`}>
+              <button className="idl-queue-head" onClick={() => setShowQueue((v) => !v)}>
+                {failed.length ? <AlertTriangle size={14} /> : <CloudUpload size={14} />}
+                {pending.length > 0 && (
+                  <span>
+                    {pending.length} {pending.length === 1 ? 'alteração esperando' : 'alterações esperando'} o iPhone abrir o Ideal
+                  </span>
+                )}
+                {failed.length > 0 && <span className="bad">{failed.length} não {failed.length === 1 ? 'entrou' : 'entraram'} no iPhone</span>}
+                <small>{showQueue ? 'esconder' : 'ver'}</small>
+              </button>
+              {showQueue && (
+                <ul>
+                  {failed.map((a) => (
+                    <li key={a.id} className="bad">
+                      <span>{describeAction(a, data?.snapshot)} — {a.error}</span>
+                      <button className="idl-link" onClick={() => setHidden((h) => new Set([...h, a.id]))}>ok</button>
+                    </li>
+                  ))}
+                  {pending.map((a) => (
+                    <li key={a.id}>
+                      <span>{describeAction(a, raw)}</span>
+                      <button className="idl-link" onClick={() => undo(a)}>
+                        <Undo2 size={11} /> desfazer
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+          {snap && page === 'hoje' && <Today raw={raw} act={act} />}
+          {snap && page === 'rotina' && <Routine raw={raw} act={act} />}
+          {snap && page === 'treino' && <Workout snap={snap} raw={raw} />}
           {snap && page === 'painel' && <Dashboard snap={snap} />}
-          {snap && page === 'ideias' && <IdeasPage snap={snap} />}
-          {snap && page === 'objetivos' && <GoalsPage snap={snap} />}
+          {snap && page === 'objetivos' && <Goals snap={snap} act={act} />}
+          {snap && page === 'ideias' && <Ideas snap={snap} act={act} />}
+          {snap && page === 'metas' && <Targets raw={raw} act={act} />}
           {!data && !error && (
             <p className="idl-empty center">
               <LoaderCircle size={16} className="idl-spin" /> carregando…

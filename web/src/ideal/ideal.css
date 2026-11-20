@@ -221,3 +221,137 @@
 @media (prefers-reduced-motion: reduce) {
   .idl, .idl-dial-ticks, .idl-spin { animation: none; }
 }
+
+/* ---------- edição (Hoje, Rotina, Treino, Objetivos, Ideias, Metas) ---------- */
+.idl-btn.sm { padding: 6px 12px; font-size: 12px; }
+.idl-btn.danger { border-color: rgba(255, 77, 77, 0.5); color: var(--bad); }
+.idl-btn.danger:hover { background: rgba(255, 77, 77, 0.12); }
+.idl-inline { display: inline-flex; align-items: center; gap: 6px; }
+.idl-note.center { text-align: center; display: flex; gap: 6px; justify-content: center; align-items: center; margin: 18px 0 0; }
+.idl-stack { display: flex; flex-direction: column; gap: 16px; }
+.idl-narrow { max-width: 640px; margin: 0 auto; }
+
+.idl-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; min-width: 0; }
+.idl-field > span { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text2); }
+.idl-field small { font-size: 10px; color: var(--text3); }
+.idl .idl-field .idl-input { padding: 10px 12px; border-radius: 12px; }
+.idl select.idl-input { appearance: none; }
+.idl select.idl-input option { background: #1a1a1d; }
+.idl-row2, .idl-row3, .idl-row4 { display: grid; gap: 10px; }
+.idl-row2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.idl-row3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.idl-row4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.idl-form .idl-btn.primary { margin-top: 2px; }
+.idl-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text2); margin: 4px 0 8px; }
+.idl-toggle input, .idl-range { accent-color: var(--good); }
+.idl-range { width: 100%; }
+
+.idl-modal-bg { position: fixed; inset: 0; z-index: 10; background: rgba(0, 0, 0, 0.75); display: flex; align-items: center; justify-content: center; padding: 16px; animation: idl-in 0.15s ease both; }
+.idl-modal { width: min(520px, 100%); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; border-radius: 22px; border: 1px solid var(--line2); background: #141416; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); }
+.idl-modal header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 6px 20px; }
+.idl-modal header h3 { font-size: 15px; font-weight: 600; }
+.idl-modal-body { padding: 8px 20px; overflow-y: auto; }
+.idl-modal footer { display: flex; gap: 8px; padding: 12px 20px 18px; border-top: 1px solid var(--line); }
+
+.idl-days { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.idl-days button { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line2); font-size: 12px; font-weight: 600; color: var(--text2); }
+.idl-days button.on { background: var(--text); color: #000; border-color: var(--text); }
+.idl-days .idl-days-all { width: auto; border: 0; font-size: 11px; color: var(--text3); text-decoration: underline; padding: 0 6px; }
+
+.idl-today-head { margin-bottom: 18px; }
+.idl-today-head h2 { font-size: 28px; font-weight: 300; margin: 4px 0; }
+.idl-today-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; margin-bottom: 16px; }
+
+.idl-checks { display: flex; flex-direction: column; }
+.idl-check { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
+.idl-check:first-child { border-top: 0; }
+.idl-checkbox { width: 26px; height: 26px; flex: none; border-radius: 9px; border: 1.5px solid var(--line2); display: inline-flex; align-items: center; justify-content: center; color: #000; transition: background 0.15s, border-color 0.15s; }
+.idl-checkbox:hover { border-color: var(--silver); }
+.idl-check.done .idl-checkbox { background: var(--good); border-color: var(--good); }
+.idl-check-text { flex: 1; min-width: 0; }
+.idl-check-text p { font-size: 14px; }
+.idl-check.done .idl-check-text p { color: var(--text2); text-decoration: line-through; text-decoration-color: var(--text3); }
+.idl-check-text small { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+.idl-now { font-family: var(--mono); font-size: 9px; letter-spacing: 0.15em; color: #000; background: var(--text); border-radius: 999px; padding: 2px 8px; }
+
+.idl-goalbar { margin-bottom: 12px; }
+.idl-goalbar-top { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
+.idl-goalbar-top span { color: var(--text2); }
+.idl-goalbar-top b { font-weight: 500; font-family: var(--mono); font-size: 11px; }
+.idl-water { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 4px; }
+.idl-water form { flex: 1; min-width: 110px; }
+.idl .idl-water .idl-input { padding: 8px 12px; border-radius: 999px; font-size: 13px; }
+.idl-moods { display: flex; justify-content: space-between; gap: 6px; }
+.idl-moods button { flex: 1; font-size: 24px; padding: 8px 0; border-radius: 14px; border: 1px solid var(--line); filter: grayscale(0.7); opacity: 0.6; transition: all 0.15s; }
+.idl-moods button:hover, .idl-moods button.on { filter: none; opacity: 1; background: rgba(255, 255, 255, 0.06); }
+.idl-moods button.on { border-color: var(--silver); }
+
+.idl-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.idl-list li:first-child { border-top: 0; }
+.idl-list p { font-size: 13px; }
+.idl-list small { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+
+.idl-routine { display: flex; flex-direction: column; gap: 16px; }
+.idl-weekbar { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+.idl-weekday { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; border-radius: 14px; border: 1px solid var(--line); }
+.idl-weekday small { font-family: var(--mono); font-size: 9px; color: var(--text3); }
+.idl-weekday b { font-size: 17px; font-weight: 400; }
+.idl-weekday i { font-style: normal; font-family: var(--mono); font-size: 9px; color: var(--text2); }
+.idl-weekday.today { border-color: var(--line2); }
+.idl-weekday.today b { color: var(--good); }
+.idl-weekday.on { background: var(--text); border-color: var(--text); }
+.idl-weekday.on * { color: #000 !important; }
+
+.idl-habits { display: flex; flex-direction: column; gap: 4px; overflow-x: auto; }
+.idl-habit-row { display: grid; grid-template-columns: minmax(150px, 280px) repeat(14, 22px) 64px; gap: 6px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); min-width: 560px; }
+.idl-habit-row.head { border-top: 0; padding: 0; }
+.idl-habit-row.head small { font-family: var(--mono); font-size: 9px; color: var(--text3); text-align: center; }
+.idl-habit-row.archived { opacity: 0.45; }
+.idl-habit-name p { font-size: 13px; }
+.idl-habit-name small { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+.idl-dot-btn { width: 22px; height: 22px; border-radius: 7px; border: 1px solid var(--line2); }
+.idl-dot-btn.off { border-style: dashed; opacity: 0.4; }
+.idl-dot-btn.done { background: var(--good); border-color: var(--good); opacity: 1; }
+.idl-dot-btn:hover { border-color: var(--silver); }
+
+.idl-plans { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.idl-plan { padding: 14px; border-radius: 16px; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.2); }
+.idl-plan h4 { font-size: 14px; font-weight: 600; }
+.idl-plan header small { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+.idl-plan table { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: 12px; }
+.idl-plan td { padding: 5px 0; border-top: 1px solid var(--line); }
+.idl-plan td + td { text-align: right; padding-left: 8px; white-space: nowrap; }
+.idl-sessions li { padding: 10px 0; border-top: 1px solid var(--line); }
+.idl-sessions li:first-child { border-top: 0; }
+.idl-session-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.idl-session-head b { font-weight: 600; font-size: 13px; }
+.idl-session-head small { font-family: var(--mono); font-size: 10px; color: var(--text2); }
+.idl-sessions p { margin-top: 4px; font-size: 12px; color: var(--text2); }
+.idl-tags { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+.idl-tags span { font-size: 10px; padding: 2px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); color: var(--text2); }
+
+.idl-page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.idl .idl-goal { text-align: left; color: var(--text); cursor: pointer; transition: transform 0.15s, border-color 0.15s; }
+.idl .idl-goal:hover { transform: translateY(-2px); border-color: var(--silver); }
+.idl .idl-goal.pending, .idl-idea.pending { outline: 1px dashed var(--silver); outline-offset: -1px; }
+.idl-idea-new { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.idl-idea-new textarea { resize: vertical; }
+.idl-idea-top { display: flex; justify-content: space-between; align-items: center; }
+
+.idl-queue { margin: 0 auto 16px; max-width: 760px; border-radius: 16px; border: 1px dashed var(--line2); background: rgba(255, 255, 255, 0.03); }
+.idl-queue.has-error { border-color: rgba(255, 77, 77, 0.5); }
+.idl-queue-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 14px; font-size: 12px; color: var(--text2); text-align: left; flex-wrap: wrap; }
+.idl-queue-head small { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--text3); }
+.idl-queue ul { padding: 0 14px 10px; }
+.idl-queue li { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 12px; }
+.idl-queue li .idl-link { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+
+@media (max-width: 1150px) {
+  .idl-today-grid { grid-template-columns: 1fr 1fr; }
+  .idl-today-grid > :first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 720px) {
+  .idl-today-grid { grid-template-columns: 1fr; }
+  .idl-row3, .idl-row4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .idl-pages { overflow-x: auto; }
+}

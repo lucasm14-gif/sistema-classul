@@ -460,6 +460,35 @@ r = await fetch(`${B}/ideal/snapshot`, { headers: IH });
 idealBody = await r.json();
 check('ideal: painel lê o último snapshot', idealBody.snapshot?.streak === 4 && idealBody.device === 'iPhone de Teste' && idealBody.connected === true && Boolean(idealBody.received_at));
 
+// alterações feitas na web → fila → iPhone aplica e confirma
+const ACT = (type, payload) => fetch(`${B}/ideal/actions`, { method: 'POST', headers: IH, body: JSON.stringify({ type, payload }) });
+const PHONE = { 'Content-Type': 'application/json', 'X-Ideal-Key': syncKey };
+r = await ACT('apagar.tudo', {});
+check('ideal: tipo de alteração desconhecido é recusado', r.status === 400);
+r = await fetch(`${B}/ideal/actions`, { method: 'POST', headers: H, body: JSON.stringify({ type: 'water.add', payload: { ml: 250 } }) });
+check('ideal: alteração exige a senha', r.status === 403);
+const a1 = await (await ACT('goal.save', { title: 'Meta nova', progress: 0.2 })).json();
+const a2 = await (await ACT('goal.save', { id: `pending:${a1.id}`, title: 'Meta nova editada', progress: 0.5 })).json();
+const a3 = await (await ACT('water.add', { ml: 500 })).json();
+check('ideal: web enfileira alterações', a1.id && a2.id && a3.id);
+idealBody = await (await fetch(`${B}/ideal/snapshot`, { headers: IH })).json();
+check('ideal: painel recebe as pendentes junto', idealBody.actions.filter((x) => !x.applied_at).length === 3);
+r = await fetch(`${B}/ideal/actions/${a3.id}`, { method: 'DELETE', headers: IH });
+check('ideal: dá para desfazer a pendente', r.status === 200);
+r = await fetch(`${B}/ideal/actions/pending`, { headers: { 'X-Ideal-Key': 'errada' } });
+check('ideal: fila do iPhone exige a chave', r.status === 401);
+let pend = await (await fetch(`${B}/ideal/actions/pending`, { headers: PHONE })).json();
+check('ideal: iPhone recebe as pendentes em ordem', pend.map((x) => x.id).join() === `${a1.id},${a2.id}` && pend[1].payload.id === `pending:${a1.id}`);
+r = await fetch(`${B}/ideal/actions/ack`, { method: 'POST', headers: PHONE, body: JSON.stringify({ results: [{ id: a1.id, ok: true, result: 'REAL123' }] }) });
+check('ideal: iPhone confirma', r.status === 200);
+pend = await (await fetch(`${B}/ideal/actions/pending`, { headers: PHONE })).json();
+check('ideal: item criado ganha o id real nas pendentes seguintes', pend.length === 1 && pend[0].payload.id === 'REAL123');
+await fetch(`${B}/ideal/actions/ack`, { method: 'POST', headers: PHONE, body: JSON.stringify({ results: [{ id: a2.id, ok: false, error: 'Objetivo não encontrado' }] }) });
+idealBody = await (await fetch(`${B}/ideal/snapshot`, { headers: IH })).json();
+check('ideal: falha volta para a web com o motivo', idealBody.actions.some((x) => x.id === a2.id && x.ok === false && /não encontrado/.test(x.error)) && !idealBody.actions.some((x) => !x.applied_at));
+r = await fetch(`${B}/ideal/actions/${a1.id}`, { method: 'DELETE', headers: IH });
+check('ideal: aplicada não dá mais para desfazer', r.status === 409);
+
 r = await fetch(`${B}/ideal/sync-key`, { method: 'POST', headers: IH });
 r = await PUT(syncKey);
 check('ideal: chave nova invalida a antiga', r.status === 401);

@@ -311,5 +311,7 @@ export const api = {
     request('/api/ideal/pin', { method: 'POST', body: JSON.stringify({ pin, current_pin: currentPin }) }),
   idealUnlock: (pin) => request('/api/ideal/unlock', { method: 'POST', body: JSON.stringify({ pin }) }),
   idealSnapshot: () => idealRequest('/api/ideal/snapshot'),
-  idealSyncKey: () => idealRequest('/api/ideal/sync-key', { method: 'POST' })
+  idealSyncKey: () => idealRequest('/api/ideal/sync-key', { method: 'POST' }),
+  idealAction: (type, payload) => idealRequest('/api/ideal/actions', { method: 'POST', body: JSON.stringify({ type, payload }) }),
+  idealCancelAction: (id) => idealRequest(`/api/ideal/actions/${id}`, { method: 'DELETE' })
 };

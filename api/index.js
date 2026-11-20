@@ -42,7 +42,7 @@ import {
 } from '../lib/orders.js';
 import { TOOLS, toolsFor, runTool, isPrivateTool, forwardIncomingToHermes } from '../lib/hermes.js';
 import { resolverArquivo } from '../lib/hermes-acesso.js';
-import { saveSnapshot, readSnapshot, checkSyncKey, newSyncKey, IdealError } from '../lib/ideal.js';
+import { saveSnapshot, readSnapshot, checkSyncKey, newSyncKey, IdealError, addAction, cancelAction, pendingForPhone, ackActions } from '../lib/ideal.js';
 import { notifyHermes, logHermes } from '../lib/hermes-events.js';
 import { handleIncoming, gerarResposta, fotosDaResposta } from '../lib/bot.js';
 import { handleWatchedMessage } from '../lib/watcher.js';
@@ -343,18 +343,21 @@ app.get('/api/photos/:id', async (req, res) => {
   }
 });
 
-// O iPhone (app Ideal) envia o snapshot com a chave própria, sem o login do sistema.
-app.put('/api/ideal/snapshot', async (req, res) => {
+// O iPhone (app Ideal) fala com a chave própria, sem o login do sistema: envia o
+// snapshot, busca o que foi feito na web e confirma o que aplicou.
+const idealPhone = (fn) => async (req, res) => {
   try {
-    const key = String(req.headers['x-ideal-key'] || '');
-    if (!(await checkSyncKey(key))) return res.status(401).json({ error: 'Chave do Ideal inválida.' });
-    res.json(await saveSnapshot(req.body));
+    if (!(await checkSyncKey(String(req.headers['x-ideal-key'] || '')))) return res.status(401).json({ error: 'Chave do Ideal inválida.' });
+    res.json(await fn(req));
   } catch (err) {
     if (err instanceof IdealError) return res.status(err.status).json({ error: err.message });
     console.error('ideal:', err);
     res.status(500).json({ error: err.message });
   }
-});
+};
+app.put('/api/ideal/snapshot', idealPhone((req) => saveSnapshot(req.body)));
+app.get('/api/ideal/actions/pending', idealPhone(() => pendingForPhone()));
+app.post('/api/ideal/actions/ack', idealPhone((req) => ackActions(req.body?.results)));
 
 app.use('/api', async (req, res, next) => {
   const header = req.headers.authorization || '';
@@ -1322,6 +1325,22 @@ app.post('/api/ideal/unlock', h(async (req, res) => {
 
 app.get('/api/ideal/snapshot', requireIdeal, h(async (req, res) => {
   res.json(await readSnapshot());
+}));
+
+// Alteração feita na web; o iPhone aplica quando o Ideal estiver aberto.
+const hi = (fn) => h(async (req, res) => {
+  try {
+    await fn(req, res);
+  } catch (err) {
+    if (err instanceof IdealError) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
+});
+app.post('/api/ideal/actions', requireIdeal, hi(async (req, res) => {
+  res.status(201).json(await addAction(String(req.body?.type || ''), req.body?.payload));
+}));
+app.delete('/api/ideal/actions/:id', requireIdeal, hi(async (req, res) => {
+  res.json(await cancelAction(req.params.id));
 }));
 
 // Gera a chave que o iPhone usa para enviar (a anterior deixa de valer).
