@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Lock, Smartphone, Copy, Check, RefreshCw, LoaderCircle, LayoutGrid, Brain, Target, Play, Square, Sun, ListChecks, Dumbbell, SlidersHorizontal, CloudUpload, Undo2, AlertTriangle } from 'lucide-react';
+import { X, Lock, Smartphone, Copy, Check, RefreshCw, LoaderCircle, LayoutGrid, Brain, Target, Play, Square, Sun, ListChecks, Dumbbell, SlidersHorizontal, CloudUpload, Undo2, AlertTriangle, GraduationCap } from 'lucide-react';
 import { api, setIdealToken, IdealLockError, AuthError } from '../api';
 import { IdealMark } from './mark';
 import { analytics, prepare, GROUPS, fmt, sameDay, startOfDay } from './analytics';
@@ -9,6 +9,7 @@ import { Panel, Delta } from './ui';
 import Today from './pages/Today';
 import Routine from './pages/Routine';
 import { Workout, Goals, Ideas, Targets } from './pages/More';
+import Study from './pages/Study';
 import './ideal.css';
 
 // Ideal na web: o painel do app do Mac, com os dados que o iPhone manda para o
@@ -22,6 +23,7 @@ const PAGES = [
   ['painel', 'Painel', LayoutGrid],
   ['objetivos', 'Objetivos', Target],
   ['ideias', 'Ideias', Brain],
+  ['estudos', 'Estudos', GraduationCap],
   ['metas', 'Metas', SlidersHorizontal]
 ];
 
@@ -709,6 +711,7 @@ export default function Ideal({ onAuthError, onExit }) {
           {snap && page === 'objetivos' && <Goals snap={snap} act={act} />}
           {snap && page === 'ideias' && <Ideas snap={snap} act={act} />}
           {snap && page === 'metas' && <Targets raw={raw} act={act} />}
+          {snap && page === 'estudos' && <Study raw={raw} />}
           {!data && !error && (
             <p className="idl-empty center">
               <LoaderCircle size={16} className="idl-spin" /> carregando…
