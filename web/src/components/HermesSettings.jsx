@@ -196,7 +196,7 @@ export default function HermesSettings({ onAuthError }) {
         </div>
 
         <div className="sm:col-span-2">
-          <label className={label}>Orçamento em PDF (botão da extensão) — rota de texto do Hermes</label>
+          <label className={label}>Rota de texto do Hermes — orçamento em PDF e Estudos do Ideal</label>
           <div className="grid sm:grid-cols-2 gap-2">
             <input
               className={input}
