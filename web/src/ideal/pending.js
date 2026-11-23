@@ -64,7 +64,8 @@ export function applyPending(raw, actions) {
             duration: p.duration ?? o.duration,
             weekdays: p.weekdays ?? o.weekdays,
             note: p.note ?? o.note,
-            notify: p.notify ?? o.notify
+            notify: p.notify ?? o.notify,
+            fallbackMinutes: p.fallbackMinutes === undefined ? o.fallbackMinutes : p.fallbackMinutes
           })
         );
         s.routine.sort((x, y) => x.minutes - y.minutes);

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Pencil, ChevronLeft, ChevronRight, Archive, ArchiveRestore } from 'lucide-react';
-import { Panel, Modal, Field, WeekdayPicker, describeDays, minToTime, timeToMin, weekdayOf } from '../ui';
+import { Panel, Modal, Field, WeekdayPicker, describeDays, minToTime, timeToMin, weekdayOf, slotOf } from '../ui';
 import { dayKey, fromKey } from '../pending';
 import { fmt } from '../analytics';
 import { CheckRow } from './Today';
@@ -14,7 +14,9 @@ function RoutineEditor({ item, onSave, onDelete, onClose }) {
     duration: item?.duration ?? 30,
     weekdays: item?.weekdays || [1, 2, 3, 4, 5, 6, 7],
     note: item?.note || '',
-    notify: item?.notify ?? true
+    notify: item?.notify ?? true,
+    hasFallback: (item?.fallbackMinutes ?? -1) >= 0,
+    fallback: minToTime((item?.fallbackMinutes ?? -1) >= 0 ? item.fallbackMinutes : 20 * 60 + 40)
   }));
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
   const ok = f.title.trim() && f.weekdays.length;
@@ -34,7 +36,7 @@ function RoutineEditor({ item, onSave, onDelete, onClose }) {
           <button
             className="idl-btn primary"
             disabled={!ok}
-            onClick={() => onSave({ title: f.title.trim(), minutes: timeToMin(f.time), duration: Math.max(5, Number(f.duration) || 30), weekdays: f.weekdays, note: f.note.trim(), notify: f.notify })}
+            onClick={() => onSave({ title: f.title.trim(), minutes: timeToMin(f.time), duration: Math.max(5, Number(f.duration) || 30), weekdays: f.weekdays, note: f.note.trim(), notify: f.notify, fallbackMinutes: f.hasFallback ? timeToMin(f.fallback) : null })}
           >
             Salvar
           </button>
@@ -48,6 +50,10 @@ function RoutineEditor({ item, onSave, onDelete, onClose }) {
       </div>
       <Field label="Dias"><WeekdayPicker value={f.weekdays} onChange={(weekdays) => setF((x) => ({ ...x, weekdays }))} /></Field>
       <Field label="Nota (opcional)"><input className="idl-input" value={f.note} onChange={set('note')} /></Field>
+      <label className="idl-toggle">
+        <input type="checkbox" checked={f.hasFallback} onChange={set('hasFallback')} /> Plano B: se não marcar até o fim do horário, passa para
+        <input className="idl-input idl-time-inline" type="time" value={f.fallback} onChange={set('fallback')} disabled={!f.hasFallback} />
+      </label>
       <label className="idl-toggle">
         <input type="checkbox" checked={f.notify} onChange={set('notify')} /> Avisar no iPhone na hora
       </label>
@@ -92,7 +98,9 @@ export default function Routine({ raw, act }) {
   const week = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
   const wd = weekdayOf(selDate);
   const routine = raw.routine || [];
-  const ofDay = routine.filter((r) => r.weekdays.includes(wd)).sort((a, b) => a.minutes - b.minutes);
+  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+  const slot = (r) => slotOf(r, sel, todayKey, nowMin);
+  const ofDay = routine.filter((r) => r.weekdays.includes(wd)).sort((a, b) => slot(a) - slot(b));
   const habits = (raw.habits || []).filter((h) => showArchived || !h.archived);
   const last14 = Array.from({ length: 14 }, (_, i) => addDays(today, i - 13));
   const future = sel > todayKey;
@@ -134,7 +142,7 @@ export default function Routine({ raw, act }) {
                 key={r.id}
                 done={done}
                 title={r.title}
-                sub={`${minToTime(r.minutes)}–${minToTime(r.minutes + r.duration)} · ${describeDays(r.weekdays)}${r.note ? ` · ${r.note}` : ''}`}
+                sub={`${minToTime(slot(r))}–${minToTime(slot(r) + r.duration)}${slot(r) !== r.minutes ? ` · plano B (era ${minToTime(r.minutes)})` : r.fallbackMinutes >= 0 ? ` · plano B ${minToTime(r.fallbackMinutes)}` : ''} · ${describeDays(r.weekdays)}${r.note ? ` · ${r.note}` : ''}`}
                 onToggle={() => !future && act('routine.check', { id: r.id, day: sel, done: !done })}
                 right={
                   <button className="idl-icon sm" title="Editar" onClick={() => setEditing({ kind: 'routine', item: r })}>

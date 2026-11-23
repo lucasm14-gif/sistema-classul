@@ -355,3 +355,6 @@
   .idl-row3, .idl-row4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .idl-pages { overflow-x: auto; }
 }
+
+.idl .idl-toggle .idl-time-inline { width: auto; padding: 4px 8px; border-radius: 8px; font-size: 12px; }
+.idl-toggle { flex-wrap: wrap; }

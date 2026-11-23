@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Check, Droplet, Trash2, Plus } from 'lucide-react';
-import { Panel, Field, minToTime, weekdayOf, num } from '../ui';
+import { Panel, Field, minToTime, weekdayOf, num, slotOf } from '../ui';
 import { dayKey, fromKey } from '../pending';
 import { fmt } from '../analytics';
 
@@ -172,11 +172,13 @@ export default function Today({ raw, act }) {
   const wd = weekdayOf(today);
   const day = raw.days.find((d) => dayKey(new Date(d.date * 1000)) === todayKey) || {};
   const g = raw.goals || {};
-  const routine = (raw.routine || []).filter((r) => r.weekdays.includes(wd)).sort((a, b) => a.minutes - b.minutes);
+
   const habits = (raw.habits || []).filter((h) => !h.archived && h.weekdays.includes(wd));
   const meals = (raw.meals || []).filter((m) => dayKey(new Date(m.date * 1000)) === todayKey);
   const [ml, setMl] = useState('');
   const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+  const slot = (r) => slotOf(r, todayKey, todayKey, nowMin);
+  const routine = (raw.routine || []).filter((r) => r.weekdays.includes(wd)).sort((a, b) => slot(a) - slot(b));
   const rDone = routine.filter((r) => r.doneDays.includes(todayKey)).length;
   const hDone = habits.filter((h) => h.doneDays.includes(todayKey)).length;
 
@@ -196,13 +198,15 @@ export default function Today({ raw, act }) {
           <ul className="idl-checks">
             {routine.map((r) => {
               const done = r.doneDays.includes(todayKey);
-              const now = !done && nowMin >= r.minutes && nowMin < r.minutes + r.duration;
+              const start = slot(r);
+              const planB = start !== r.minutes;
+              const now = !done && nowMin >= start && nowMin < start + r.duration;
               return (
                 <CheckRow
                   key={r.id}
                   done={done}
                   title={r.title}
-                  sub={`${minToTime(r.minutes)} · ${r.duration} min${r.note ? ` · ${r.note}` : ''}`}
+                  sub={`${minToTime(start)} · ${r.duration} min${planB ? ` · plano B (era ${minToTime(r.minutes)})` : r.fallbackMinutes >= 0 && !done ? ` · se não marcar: ${minToTime(r.fallbackMinutes)}` : ''}${r.note ? ` · ${r.note}` : ''}`}
                   onToggle={() => act('routine.check', { id: r.id, day: todayKey, done: !done })}
                   right={now ? <span className="idl-now">agora</span> : null}
                 />

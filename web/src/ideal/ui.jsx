@@ -111,6 +111,14 @@ export const timeToMin = (t) => {
   const [h, m] = String(t || '0:0').split(':').map(Number);
   return (h || 0) * 60 + (m || 0);
 };
+// Horário que vale no dia (igual ao app): plano B se o principal passou sem marcar.
+export function slotOf(r, day, today, nowMin) {
+  const fb = r.fallbackMinutes;
+  if (fb == null || fb < 0 || (r.doneDays || []).includes(day)) return r.minutes;
+  const missed = day < today || (day === today && nowMin >= r.minutes + Math.max(r.duration || 0, 1));
+  return missed ? fb : r.minutes;
+}
+
 export const num = (v) => {
   const n = Number(String(v ?? '').replace(',', '.'));
   return Number.isFinite(n) ? n : 0;
