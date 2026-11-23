@@ -51,6 +51,7 @@ import { PLATE_TOKEN, PlateError, savePlate, getPlateByToken, getPlateById, list
 import { CASE_COLORS, PLATE_SIZES, PRODUCT_TYPES } from '../lib/default-content.js';
 import { registerNfeRoutes } from '../lib/nfe/routes.js';
 import { ensureNfeSchema, listarProdutos } from '../lib/nfe/service.js';
+import { study } from '../lib/study.js';
 import { analyzeConversation, checkTask, renderQuotePdf, normalizeQuote, quoteFileName, QuoteError, QUOTE_DEFAULTS } from '../lib/quotes.js';
 
 const app = express();
@@ -350,7 +351,7 @@ const idealPhone = (fn) => async (req, res) => {
     if (!(await checkSyncKey(String(req.headers['x-ideal-key'] || '')))) return res.status(401).json({ error: 'Chave do Ideal inválida.' });
     res.json(await fn(req));
   } catch (err) {
-    if (err instanceof IdealError) return res.status(err.status).json({ error: err.message });
+    if (err instanceof IdealError || err instanceof QuoteError) return res.status(err.status).json({ error: err.message });
     console.error('ideal:', err);
     res.status(500).json({ error: err.message });
   }
@@ -358,6 +359,8 @@ const idealPhone = (fn) => async (req, res) => {
 app.put('/api/ideal/snapshot', idealPhone((req) => saveSnapshot(req.body)));
 app.get('/api/ideal/actions/pending', idealPhone(() => pendingForPhone()));
 app.post('/api/ideal/actions/ack', idealPhone((req) => ackActions(req.body?.results)));
+// Aulas, questões e dúvidas da área Estudos do app (escritas pelo Hermes).
+app.post('/api/ideal/study', idealPhone((req) => study(req.body)));
 
 app.use('/api', async (req, res, next) => {
   const header = req.headers.authorization || '';
