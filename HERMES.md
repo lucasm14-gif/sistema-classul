@@ -120,7 +120,15 @@ entradas do mês, categorias, últimos lançamentos e contas a pagar.
 **Arquivos** — `arquivos_do_pedido`, `arquivos_recebidos`, `placas_do_site`, `leads_do_site`,
 `enviar_arquivo` (manda por WhatsApp como documento) e `baixar_arquivo` (base64, até 3 MB).
 
-O Hermes entra em Finanças e Notas **sem PIN**: a chave dele basta.
+**Atendente** — `roteiro_atendimento` e `calcular_placa_sem_estojo` (preço da placa sem estojo
+pela conta da Classul; nunca calcule de cabeça).
+
+**Agentes** (seção 6) — `agentes_listar`, `agente_criar`, `agente_postar`, `agente_mensagens`,
+`agente_respostas`, `subir_arquivo`, `anexar_arquivo_pedido`, `gerar_orcamento`, `nf_rascunho`
+e `nf_rascunhos`. `enviar_arquivo` ganhou `como_imagem: true` para mandar arte como foto.
+
+O Hermes entra em Finanças e Notas **sem PIN**: a chave dele basta. A exceção é **emitir nota**:
+não existe ferramenta para isso; o Hermes monta o rascunho e o Lucas aprova na tela, com o PIN.
 
 #### Arquivos: a "ref"
 
@@ -195,6 +203,11 @@ if (esperado !== req.headers['x-classul-signature']) return res.sendStatus(401);
 | `lead.novo` | alguém clicou no WhatsApp do site | `{ pagina, botao, origem, campanha }` |
 | `mensagem.recebida` | cliente mandou mensagem (só com o Hermes no comando) | `{ telefone, de_mim, nome, texto, tipo, wa_message_id, atender, motivo }` |
 | `teste` | botão Testar do painel | `{ mensagem }` |
+| `agente.resposta` | o Lucas decidiu numa mensagem de agente (aprovou, pediu correção, respondeu dúvida) | `{ agente, mensagem_id, codigo, tipo, decisao, resposta, referencia, texto_original, por }` |
+| `agente.mensagem` | o Lucas escreveu livre no chat de um agente | `{ agente, mensagem_id, texto, por }` |
+| `nf.emitida` | o Lucas aprovou o rascunho e a SEFAZ autorizou | `{ rascunho_id, nota_id, numero, situacao, ref_pdf, telefone_cliente, pedido }` |
+| `nf.problema` | a nota aprovada foi rejeitada ou deu erro | `{ rascunho_id, nota_id?, erro? motivo?, telefone_cliente, pedido }` |
+| `atendente.fase` | o Lucas ligou/desligou "Arte direto ao cliente" | `{ arte_automatica }` |
 
 O sistema espera até 6s pela resposta da VPS. Se o Hermes estiver fora do ar, **nada
 quebra**: o pedido acontece normalmente e a falha fica registrada em "Últimas trocas com
@@ -266,8 +279,44 @@ consulta `GET /claude/tarefa/ID` a cada 4 s.
   ("criar a arte com o logo"). O sistema troca esses termos por neutros antes de mandar, mas o
   certo é a VPS respeitar `"modo": "texto"` e nunca gerar imagem nesse caso.
 
+## 6. Agentes (aba Agentes do sistema)
+
+Cada agente é um chat no estilo WhatsApp entre o Hermes e o Lucas, dentro do sistema. Vêm
+seis prontos — `artes`, `notas`, `duvidas`, `pendencias`, `orcamentos`, `descontos` — e o Hermes cria
+outros com `agente_criar` quando precisar.
+
+- `agente_postar` com `tipo`:
+  - `info`: só avisa;
+  - `aprovacao`: botões Aprovar e Corrigir (arte, estojo colorido);
+  - `pergunta`: o Lucas escreve a resposta (dúvida de cliente).
+
+  As que esperam ganham um código (`ART12`, `DUV7`…).
+- A decisão chega no evento `agente.resposta`. Se o webhook falhar, `agente_respostas` devolve o
+  que ainda não foi entregue, uma vez só.
+- **Arquivos:** suba com `subir_arquivo` (base64, até 3 MB, cai na pasta "Classul - Agentes" do
+  Drive) e passe as refs em `anexos`. A tela mostra imagem e PDF.
+- **Pedido fechado:**
+  1. `criar_pedido`, com a quantidade na descrição e o valor total em `value`;
+  2. `anexar_arquivo_pedido` com a arte aprovada e o vetor (categoria `arte`).
+- **Orçamento:** `gerar_orcamento` faz o PDF da Classul, guarda, avisa no agente Orçamentos e,
+  com `enviar_para`, manda ao cliente.
+- **Nota fiscal:**
+  1. `nf_rascunho` confere os dados sem gastar número e posta no agente Notas fiscais;
+  2. o Lucas clica em **Aprovar e emitir** e digita o PIN das Notas;
+  3. o próprio sistema emite e manda `nf.emitida` com `ref_pdf`;
+  4. o Hermes manda ao cliente com `enviar_arquivo`.
+
+  Se o Lucas pedir correção, chega `agente.resposta` com `decisao: "corrigir"`: monte um
+  rascunho novo.
+- A fase do atendente fica em `agentes_listar().arte_automatica`. Com `false`, toda arte passa
+  pelo agente Artes antes do cliente.
+
+O roteiro completo do atendente (quem faz o quê, regras da Classul, aprovações) está em
+`output/hermes-skill/ATENDENTE-CLASSUL.md`.
+
 ---
 
 Testes: `node smoke-test-hermes.mjs` (70 verificações, banco em memória, nada sai para a
 internet — a Evolution é mockada e o "Hermes" é um servidor local).
 Orçamento: `node smoke-test-quotes.mjs` (24 verificações, Hermes falso local).
+Agentes: `node smoke-test-agentes.mjs` (48 verificações: Drive, Evolution e SEFAZ falsos).

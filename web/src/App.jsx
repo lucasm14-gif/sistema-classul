@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { FileText, Layers, KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, MessagesSquare, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon, ReceiptText, Clock3 } from 'lucide-react';
+import { FileText, Layers, KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, MessagesSquare, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon, ReceiptText, Clock3, Sparkles } from 'lucide-react';
 import Board from './components/Board';
 import Login from './components/Login';
 import { IdealMark } from './ideal/mark';
@@ -10,6 +10,7 @@ import { isDark, toggleTheme } from './theme';
 
 const TABS = [
   { id: 'board', label: 'Pedidos', icon: KanbanSquare },
+  { id: 'agentes', label: 'Agentes', icon: Sparkles },
   { id: 'clients', label: 'Clientes', icon: Users },
   { id: 'dashboard', label: 'Faturamento', icon: ChartColumn },
   { id: 'quotes', label: 'Orçamento', icon: FileText },
@@ -28,6 +29,7 @@ const TABS = [
 // Só o quadro de pedidos (a tela inicial) vem no pacote principal. As outras abas
 // são baixadas à parte: quem abre o sistema não espera por Notas, Finanças etc.
 const LOADERS = {
+  agentes: () => import('./components/Agentes'),
   clients: () => import('./components/Clients'),
   dashboard: () => import('./components/Faturamento'),
   quotes: () => import('./components/Quotes'),

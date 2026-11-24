@@ -315,3 +315,25 @@ export const api = {
   idealAction: (type, payload) => idealRequest('/api/ideal/actions', { method: 'POST', body: JSON.stringify({ type, payload }) }),
   idealCancelAction: (id) => idealRequest(`/api/ideal/actions/${id}`, { method: 'DELETE' })
 };
+
+// ---- Agentes (chats do Hermes com o Lucas) ----
+async function agenteBlob(ref) {
+  const res = await fetch(`/api/agentes/arquivo?ref=${encodeURIComponent(ref)}`, {
+    headers: { Authorization: `Bearer ${getToken()}` }
+  });
+  if (res.status === 401) throw new AuthError('Sessão inválida');
+  if (!res.ok) throw new Error('Não consegui abrir o arquivo.');
+  return res.blob();
+}
+
+export const agentesApi = {
+  listar: () => request('/api/agentes'),
+  mensagens: (slug) => request(`/api/agentes/${encodeURIComponent(slug)}/mensagens`),
+  escrever: (slug, texto) => request(`/api/agentes/${encodeURIComponent(slug)}/mensagens`, { method: 'POST', body: json({ texto }) }),
+  decidir: (id, decisao, resposta) => request(`/api/agentes/mensagens/${id}/decidir`, { method: 'POST', body: json({ decisao, resposta }) }),
+  aprovarNf: (id) => nfeRequest(`/api/agentes/mensagens/${id}/aprovar-nf`, { method: 'POST', body: '{}' }),
+  arteAutomatica: (ligado) => request('/api/agentes/arte-automatica', { method: 'PUT', body: json({ ligado }) }),
+  arquivo: agenteBlob,
+  // A DANFE (nfe:...) abre pela rota das Notas, que já exige o PIN.
+  danfe: (notaId) => nfeBlob(`/api/nfe/notas/${notaId}/danfe`)
+};

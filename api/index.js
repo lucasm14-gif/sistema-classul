@@ -49,7 +49,8 @@ import { handleWatchedMessage } from '../lib/watcher.js';
 import { analyzeChat, STAGES } from '../lib/analyst.js';
 import { PLATE_TOKEN, PlateError, savePlate, getPlateByToken, getPlateById, listPlates, savePlatePhoto, handlePlateMessage, platePage } from '../lib/plates.js';
 import { CASE_COLORS, PLATE_SIZES, PRODUCT_TYPES } from '../lib/default-content.js';
-import { registerNfeRoutes } from '../lib/nfe/routes.js';
+import { registerNfeRoutes, requireNfe } from '../lib/nfe/routes.js';
+import * as agentes from '../lib/agentes.js';
 import { ensureNfeSchema, listarProdutos } from '../lib/nfe/service.js';
 import { study } from '../lib/study.js';
 import { analyzeConversation, checkTask, renderQuotePdf, normalizeQuote, quoteFileName, QuoteError, QUOTE_DEFAULTS } from '../lib/quotes.js';
@@ -72,6 +73,8 @@ app.use((req, res, next) => (req.method === 'POST' && /^\/api\/plates\/\d+\/foto
 // Aba Notas: o certificado (.pfx) e os lotes de importação do C&K passam do limite geral.
 app.use((req, res, next) => (req.method === 'POST' && /^\/api\/nfe\/(certificado|importar|logo)$/.test(req.path) ? express.json({ limit: '4mb' })(req, res, next) : next()));
 app.use((req, res, next) => (req.method === 'PUT' && req.path === '/api/ideal/snapshot' ? express.json({ limit: '4mb' })(req, res, next) : next()));
+// Arte, vetor e foto chegam em base64 pelas ferramentas do Hermes (subir_arquivo, anexar_arquivo_pedido).
+app.use((req, res, next) => (req.method === 'POST' && req.path === '/api/hermes/call' ? express.json({ limit: '4500kb' })(req, res, next) : next()));
 app.use(express.json());
 // navigator.sendBeacon do site envia os leads como application/x-www-form-urlencoded.
 app.use(express.urlencoded({ extended: false }));
@@ -1060,6 +1063,41 @@ app.post('/api/bot/conversations/:phone/reactivate', h(async (req, res) => {
 
 // ---------- Notas fiscais (NF-e emitida direto na SEFAZ RS) ----------
 registerNfeRoutes(app);
+
+// ---------- Agentes (chats do Hermes com o Lucas) ----------
+// Aprovar NOTA exige o PIN das Notas (requireNfe): é o único jeito de uma nota sair.
+const ha = (fn) => h(async (req, res) => {
+  try {
+    await fn(req, res);
+  } catch (err) {
+    if (err instanceof QuoteError || err.constructor?.name === 'NfeError' || err.constructor?.name === 'NfeDataError') {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+    throw err;
+  }
+});
+app.get('/api/agentes', ha(async (req, res) => res.json(await agentes.listarAgentes())));
+app.get('/api/agentes/arquivo', ha(async (req, res) => {
+  const ref = String(req.query.ref || '');
+  if (!/^drive:[\w-]+$/.test(ref)) return res.status(400).json({ error: 'Arquivo inválido.' });
+  const f = await resolverArquivo(ref);
+  res.setHeader('Content-Type', f.mime);
+  res.setHeader('Content-Disposition', `inline; filename="${f.nome.replace(/[^\w.\- ]/g, '_')}"`);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  res.send(f.buffer);
+}));
+app.put('/api/agentes/arte-automatica', ha(async (req, res) => res.json(await agentes.setArteAutomatica(Boolean(req.body?.ligado)))));
+app.get('/api/agentes/:slug/mensagens', ha(async (req, res) => res.json(await agentes.mensagensDoAgente(req.params.slug))));
+app.post('/api/agentes/:slug/mensagens', ha(async (req, res) => {
+  res.status(201).json(await agentes.lucasEscreve(req.params.slug, req.body?.texto, currentUser(req) || 'Lucas'));
+}));
+app.post('/api/agentes/mensagens/:id/decidir', ha(async (req, res) => {
+  res.json(await agentes.decidir(req.params.id, req.body || {}, currentUser(req) || 'Lucas'));
+}));
+app.post('/api/agentes/mensagens/:id/aprovar-nf', requireNfe, ha(async (req, res) => {
+  res.json(await agentes.aprovarNf(req.params.id, currentUser(req) || 'Lucas'));
+}));
 
 // ---------- Orçamento em PDF (botão da extensão no WhatsApp) ----------
 // A extensão manda as últimas mensagens da conversa; o Hermes lê e devolve itens
