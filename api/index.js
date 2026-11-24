@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
-import { q, STATUSES, getSettings, setSettings, ensureSchema, DEFAULT_BOT_PROMPT } from '../lib/db.js';
+import { q, STATUSES, getSettings, setSettings, ensureSchema } from '../lib/db.js';
 import {
   pluggyAuth,
   createConnectToken,
@@ -44,7 +44,7 @@ import { TOOLS, toolsFor, runTool, isPrivateTool, forwardIncomingToHermes } from
 import { resolverArquivo } from '../lib/hermes-acesso.js';
 import { saveSnapshot, readSnapshot, checkSyncKey, newSyncKey, IdealError, addAction, cancelAction, pendingForPhone, ackActions } from '../lib/ideal.js';
 import { notifyHermes, logHermes } from '../lib/hermes-events.js';
-import { handleIncoming, gerarResposta, fotosDaResposta } from '../lib/bot.js';
+import * as testes from '../lib/testes.js';
 import { handleWatchedMessage } from '../lib/watcher.js';
 import { analyzeChat, STAGES } from '../lib/analyst.js';
 import { PLATE_TOKEN, PlateError, savePlate, getPlateByToken, getPlateById, listPlates, savePlatePhoto, handlePlateMessage, platePage } from '../lib/plates.js';
@@ -74,7 +74,7 @@ app.use((req, res, next) => (req.method === 'POST' && /^\/api\/plates\/\d+\/foto
 app.use((req, res, next) => (req.method === 'POST' && /^\/api\/nfe\/(certificado|importar|logo)$/.test(req.path) ? express.json({ limit: '4mb' })(req, res, next) : next()));
 app.use((req, res, next) => (req.method === 'PUT' && req.path === '/api/ideal/snapshot' ? express.json({ limit: '4mb' })(req, res, next) : next()));
 // Arte, vetor e foto chegam em base64 pelas ferramentas do Hermes (subir_arquivo, anexar_arquivo_pedido).
-app.use((req, res, next) => (req.method === 'POST' && req.path === '/api/hermes/call' ? express.json({ limit: '4500kb' })(req, res, next) : next()));
+app.use((req, res, next) => (req.method === 'POST' && (req.path === '/api/hermes/call' || /^\/api\/testes\/\d+\/mensagens$/.test(req.path)) ? express.json({ limit: '4500kb' })(req, res, next) : next()));
 app.use(express.json());
 // navigator.sendBeacon do site envia os leads como application/x-www-form-urlencoded.
 app.use(express.urlencoded({ extended: false }));
@@ -136,14 +136,12 @@ app.all('/api/bot/webhook', async (req, res) => {
     if (req.method !== 'POST' || !event.includes('messages.upsert')) {
       return res.status(200).json({ ignored: 'evento ignorado', event });
     }
-    // Quem faz o pré-atendimento: o bot de IA daqui, o Hermes na VPS, ou ninguém.
-    const engine = settings.bot_engine || 'interno';
+    // Quem atende: o atendente novo (Hermes na VPS) ou ninguém. O bot antigo deste
+    // sistema foi removido em 24/11/2026; 'interno' gravado no banco vale como desligado.
     const atendimento =
-      engine === 'hermes'
+      settings.bot_engine === 'hermes'
         ? forwardIncomingToHermes(req.body)
-        : engine === 'off'
-          ? Promise.resolve({ ignored: 'pré-atendimento desligado' })
-          : handleIncoming(req.body, baseUrl(req));
+        : Promise.resolve({ ignored: 'pré-atendimento desligado' });
 
     // Observador e atendimento são independentes: um só escuta, o outro responde.
     // Um erro em qualquer um deles não pode derrubar o webhook.
@@ -188,7 +186,7 @@ app.get('/api/hermes/ping', async (req, res) => {
   try {
     const settings = await requireHermes(req, res);
     if (!settings) return;
-    res.json({ ok: true, sistema: 'Classul', ferramentas: TOOLS.length, pre_atendimento: settings.bot_engine || 'interno' });
+    res.json({ ok: true, sistema: 'Classul', ferramentas: TOOLS.length, pre_atendimento: settings.bot_engine === 'hermes' ? 'hermes' : 'off' });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -952,43 +950,15 @@ app.delete('/api/chats/:phone', h(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// ---------- Bot de pré-atendimento ----------
+// ---------- Atendente no WhatsApp (conexão com a Evolution) ----------
 
 app.get('/api/bot/status', h(async (req, res) => {
   const s = await getSettings();
   res.json({
-    enabled: s.bot_enabled === '1',
-    has_key: Boolean(s.openai_api_key),
-    model: s.openai_model,
+    engine: s.bot_engine === 'hermes' ? 'hermes' : 'off',
     test_number: s.bot_test_number || '',
     webhook_url: `${baseUrl(req)}/api/bot/webhook?secret=${s.bot_webhook_secret}`
   });
-}));
-
-// Roteiro padrão de atendimento (para o botão "Usar o roteiro padrão" das Configurações).
-app.get('/api/bot/default-prompt', h(async (req, res) => res.json({ prompt: DEFAULT_BOT_PROMPT })));
-
-// Chat de teste (aba "Testar bot"): mesma inteligência do WhatsApp, mas nada é enviado nem
-// guardado. A conversa vem inteira do navegador — limpar a memória é só apagar lá.
-app.post('/api/bot/test-chat', h(async (req, res) => {
-  const settings = await getSettings();
-  if (!settings.openai_api_key) {
-    return res.status(400).json({ error: 'Preencha a chave da OpenAI em Configurações → Bot para testar.' });
-  }
-  const messages = (Array.isArray(req.body?.messages) ? req.body.messages : [])
-    .filter((m) => (m?.role === 'user' || m?.role === 'assistant') && String(m.content || '').trim())
-    .slice(-24)
-    .map((m) => ({ role: m.role, content: String(m.content).slice(0, 2000) }));
-  if (!messages.length || messages.at(-1).role !== 'user') {
-    return res.status(400).json({ error: 'Envie uma mensagem para o bot responder.' });
-  }
-  const usados = req.body?.roteiro === 'padrao' ? { ...settings, bot_system_prompt: DEFAULT_BOT_PROMPT } : settings;
-  try {
-    const r = await gerarResposta(usados, messages);
-    res.json({ texto: r.texto, fotos: fotosDaResposta(r.fotos, baseUrl(req)), silencio: r.silencio, done: r.done });
-  } catch (err) {
-    res.status(502).json({ error: err.message });
-  }
 }));
 
 // Configura o webhook na Evolution API apontando para o nosso endpoint do bot.
@@ -1023,43 +993,7 @@ app.post('/api/bot/setup-webhook', h(async (req, res) => {
   res.json({ ok: true, url });
 }));
 
-app.get('/api/bot/conversations', h(async (req, res) => {
-  const { rows } = await q('SELECT * FROM bot_conversations ORDER BY updated_at DESC, id DESC LIMIT 200');
-  const { rows: lastMsgs } = await q(
-    `SELECT DISTINCT ON (phone) phone, content, role, created_at
-     FROM bot_messages ORDER BY phone, id DESC`
-  );
-  const lastMap = new Map(lastMsgs.map((m) => [m.phone, m]));
-  res.json(
-    rows.map((c) => ({
-      ...c,
-      last_message: lastMap.get(c.phone)?.content || null,
-      last_role: lastMap.get(c.phone)?.role || null
-    }))
-  );
-}));
 
-app.get('/api/bot/conversations/:phone', h(async (req, res) => {
-  const phone = String(req.params.phone).replace(/\D/g, '');
-  const { rows } = await q('SELECT * FROM bot_conversations WHERE phone = $1', [phone]);
-  if (!rows.length) return res.status(404).json({ error: 'Conversa não encontrada.' });
-  const { rows: messages } = await q(
-    'SELECT id, role, content, created_at FROM bot_messages WHERE phone = $1 ORDER BY id ASC',
-    [phone]
-  );
-  res.json({ ...rows[0], messages });
-}));
-
-// Reativa o bot para uma conversa já encerrada (ele volta a responder aquele número).
-app.post('/api/bot/conversations/:phone/reactivate', h(async (req, res) => {
-  const phone = String(req.params.phone).replace(/\D/g, '');
-  const { rowCount } = await q(
-    "UPDATE bot_conversations SET status = 'active', handled_reason = NULL, handled_at = NULL, updated_at = now() WHERE phone = $1",
-    [phone]
-  );
-  if (!rowCount) return res.status(404).json({ error: 'Conversa não encontrada.' });
-  res.json({ ok: true });
-}));
 
 // ---------- Notas fiscais (NF-e emitida direto na SEFAZ RS) ----------
 registerNfeRoutes(app);
@@ -1079,7 +1013,7 @@ const ha = (fn) => h(async (req, res) => {
 app.get('/api/agentes', ha(async (req, res) => res.json(await agentes.listarAgentes())));
 app.get('/api/agentes/arquivo', ha(async (req, res) => {
   const ref = String(req.query.ref || '');
-  if (!/^drive:[\w-]+$/.test(ref)) return res.status(400).json({ error: 'Arquivo inválido.' });
+  if (!/^(drive:[\w-]+|teste:\d+)$/.test(ref)) return res.status(400).json({ error: 'Arquivo inválido.' });
   const f = await resolverArquivo(ref);
   res.setHeader('Content-Type', f.mime);
   res.setHeader('Content-Disposition', `inline; filename="${f.nome.replace(/[^\w.\- ]/g, '_')}"`);
@@ -1095,6 +1029,28 @@ app.post('/api/agentes/:slug/mensagens', ha(async (req, res) => {
 app.post('/api/agentes/mensagens/:id/decidir', ha(async (req, res) => {
   res.json(await agentes.decidir(req.params.id, req.body || {}, currentUser(req) || 'Lucas'));
 }));
+// ---------- Testar atendente (conversas falsas com o Hermes) ----------
+const ht = (fn) => ha(async (req, res) => {
+  try {
+    await fn(req, res);
+  } catch (err) {
+    if (err instanceof testes.TesteError) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
+});
+app.get('/api/testes', ht(async (req, res) => res.json(await testes.listarConversas())));
+app.post('/api/testes', ht(async (req, res) => res.status(201).json(await testes.criarConversa(req.body?.nome))));
+app.get('/api/testes/arquivo/:id', ht(async (req, res) => {
+  const f = await testes.arquivo(req.params.id);
+  res.setHeader('Content-Type', f.mime);
+  res.setHeader('Content-Disposition', `inline; filename="${f.nome.replace(/[^\w.\- ]/g, '_')}"`);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.send(f.buffer);
+}));
+app.get('/api/testes/:telefone', ht(async (req, res) => res.json(await testes.mensagens(req.params.telefone))));
+app.post('/api/testes/:telefone/mensagens', ht(async (req, res) => res.status(201).json(await testes.clienteEscreve(req.params.telefone, req.body || {}))));
+app.delete('/api/testes/:telefone', ht(async (req, res) => res.json(await testes.apagarConversa(req.params.telefone))));
+
 app.post('/api/agentes/mensagens/:id/aprovar-nf', requireNfe, ha(async (req, res) => {
   res.json(await agentes.aprovarNf(req.params.id, currentUser(req) || 'Lucas'));
 }));
@@ -1936,7 +1892,7 @@ app.get('/api/hermes/config', h(async (req, res) => {
     webhook_url: s.hermes_webhook_url || '',
     ai_url: s.hermes_ai_url || '',
     ai_key_set: Boolean(s.hermes_ai_key || process.env.HERMES_AI_KEY || process.env.HERMES_CLAUDE_KEY),
-    engine: s.bot_engine || 'interno',
+    engine: s.bot_engine === 'hermes' ? 'hermes' : 'off',
     base_url: baseUrl(req),
     endpoints: {
       ping: `${baseUrl(req)}/api/hermes/ping`,
@@ -1956,8 +1912,8 @@ app.put('/api/hermes/config', h(async (req, res) => {
   if ('ai_url' in body) patch.hermes_ai_url = String(body.ai_url || '').trim();
   if ('ai_key' in body) patch.hermes_ai_key = String(body.ai_key || '').trim();
   if ('engine' in body) {
-    if (!['interno', 'hermes', 'off'].includes(body.engine)) {
-      return res.status(400).json({ error: 'Pré-atendimento inválido. Use: interno, hermes ou off.' });
+    if (!['hermes', 'off'].includes(body.engine)) {
+      return res.status(400).json({ error: 'Pré-atendimento inválido. Use: hermes ou off.' });
     }
     patch.bot_engine = body.engine;
   }

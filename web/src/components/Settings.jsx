@@ -94,7 +94,7 @@ export default function Settings({ onAuthError }) {
       await api.saveSettings(form);
       await api.botSetupWebhook();
       setBotStatus(await api.botStatus());
-      toast('Bot conectado ao WhatsApp! A Evolution vai enviar as mensagens para o bot.', 'success');
+      toast('Conectado: a Evolution vai mandar as mensagens do WhatsApp para o sistema.', 'success');
     } catch (err) {
       if (!onAuthError(err)) toast(err.message, 'error', 8000);
     } finally {
@@ -251,49 +251,27 @@ export default function Settings({ onAuthError }) {
         </div>
       </section>
 
-      {/* Bot de pré-atendimento */}
+      {/* Atendente no WhatsApp */}
       <section className="bg-white rounded-3xl shadow-sm border border-black/5 p-6 sm:p-7">
         <h3 className="font-extrabold tracking-tight text-brand-950 mb-1 flex items-center gap-2">
           <span className="w-8 h-8 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center">
             <Bot size={15} />
           </span>
-          Bot de pré-atendimento (IA)
-          <button
-            onClick={toggle('bot_enabled')}
-            className={`ml-auto w-11 h-6 rounded-full transition-colors relative ${
-              form.bot_enabled === '1' ? 'bg-brand-500' : 'bg-slate-300'
-            }`}
-            title={form.bot_enabled === '1' ? 'Ativado' : 'Desativado'}
-          >
-            <span
-              className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${
-                form.bot_enabled === '1' ? 'left-[22px]' : 'left-0.5'
-              }`}
-            />
-          </button>
+          Atendente no WhatsApp
         </h3>
         <p className="text-xs font-medium text-slate-400 mb-5">
-          Faz o primeiro contato no WhatsApp, entende o que o cliente quer e encerra — deixando o atendimento
-          humano assumir. Se você responder manualmente, o bot silencia naquela conversa.
+          Quem responde os clientes é o atendente novo (Hermes). Ligue ou desligue em "Quem faz o pré-atendimento",
+          logo abaixo. Para testar sem cliente, use a aba Testar atendente.
+          {botStatus && (
+            <span className="block mt-1 font-bold text-slate-500">
+              Agora: {botStatus.engine === 'hermes' ? 'atendente novo ligado' : 'desligado (só atendimento humano)'}.
+            </span>
+          )}
         </p>
 
         <div className="grid sm:grid-cols-2 gap-4">
-          <div>
-            <label className={label}>Chave da OpenAI</label>
-            <input
-              className={input}
-              type="password"
-              value={form.openai_api_key || ''}
-              onChange={set('openai_api_key')}
-              placeholder="sk-..."
-            />
-          </div>
-          <div>
-            <label className={label}>Modelo</label>
-            <input className={input} value={form.openai_model || ''} onChange={set('openai_model')} placeholder="gpt-4o-mini" />
-          </div>
           <div className="sm:col-span-2">
-            <label className={label}>Número de teste (deixe vazio para responder a todos)</label>
+            <label className={label}>Número de teste (deixe vazio para atender todos os clientes)</label>
             <input
               className={input}
               value={form.bot_test_number || ''}
@@ -301,7 +279,7 @@ export default function Settings({ onAuthError }) {
               placeholder="5551999999999"
             />
             <p className="text-[11px] font-medium text-slate-400 mt-1.5">
-              Enquanto testa, o bot só responde a este número. Apague para liberar para todos os clientes.
+              Enquanto estiver preenchido, o atendente só responde este número no WhatsApp. Apague quando for liberar.
             </p>
           </div>
           <div className="sm:col-span-2">
@@ -313,47 +291,7 @@ export default function Settings({ onAuthError }) {
               placeholder={'5551999999999\n5551888888888'}
             />
             <p className="text-[11px] font-medium text-slate-400 mt-1.5">
-              Um número por linha, com DDI e DDD. O bot só responde clientes: nunca fala com estes números e só
-              entra numa conversa nova quando a pessoa fala de placa, orçamento ou outro produto.
-            </p>
-          </div>
-          <div className="sm:col-span-2">
-            <label className={label}>Produtos que produzimos</label>
-            <textarea
-              className={`${input} h-32 resize-none font-mono text-xs`}
-              value={form.bot_products || ''}
-              onChange={set('bot_products')}
-            />
-            <p className="text-[11px] font-medium text-slate-400 mt-1.5">
-              O bot só oferece o que estiver aqui. Qualquer outro pedido, ele diz que não produzimos no momento.
-            </p>
-          </div>
-          <div className="sm:col-span-2">
-            <div className="flex items-center justify-between gap-3">
-              <label className={label}>Instruções do bot (personalidade e regras)</label>
-              <button
-                type="button"
-                className="text-[11px] font-bold text-brand-700 hover:underline mb-1.5"
-                onClick={async () => {
-                  try {
-                    const { prompt } = await api.botDefaultPrompt();
-                    setForm((f) => ({ ...f, bot_system_prompt: prompt }));
-                  } catch (err) {
-                    alert(err.message);
-                  }
-                }}
-              >
-                Usar o roteiro padrão
-              </button>
-            </div>
-            <textarea
-              className={`${input} h-44 resize-none text-xs`}
-              value={form.bot_system_prompt || ''}
-              onChange={set('bot_system_prompt')}
-            />
-            <p className="text-[11px] font-medium text-slate-400 mt-1.5">
-              Use {'{PRODUTOS}'} onde a lista de produtos deve entrar. O bot encerra ao escrever [[ATENDIDO]] —
-              não remova essa regra.
+              Um número por linha, com DDI e DDD. O atendente nunca fala com estes números.
             </p>
           </div>
         </div>
@@ -365,11 +303,10 @@ export default function Settings({ onAuthError }) {
             className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-extrabold px-5 py-2.5 rounded-full shadow-lg shadow-brand-600/25 transition-all hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0"
           >
             {connectingBot ? <LoaderCircle size={15} className="animate-spin" /> : <Link2 size={15} />}
-            Conectar bot ao WhatsApp
+            Salvar e conectar ao WhatsApp
           </button>
           <p className="text-[11px] font-medium text-slate-400 flex-1 min-w-[200px]">
-            Salva as configurações e faz a Evolution mandar as mensagens recebidas para o bot. Rode de novo se
-            trocar de instância.
+            Salva e faz a Evolution mandar as mensagens recebidas para o sistema. Rode de novo se trocar de instância.
           </p>
         </div>
       </section>

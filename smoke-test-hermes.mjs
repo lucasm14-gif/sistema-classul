@@ -200,7 +200,7 @@ const upsert = (texto) => ({
 });
 
 r = await fetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: ADMIN, body: JSON.stringify(upsert('oi, quero uma placa')) });
-check('com o bot interno, o Hermes não recebe a mensagem', (await r.json()).bot.ignored === 'bot desativado');
+check('com o atendente desligado (ou o antigo "interno" no banco), o Hermes não recebe a mensagem', (await r.json()).bot.ignored === 'pré-atendimento desligado');
 
 await fetch(`${B}/hermes/config`, { method: 'PUT', headers: ADMIN, body: JSON.stringify({ engine: 'hermes' }) });
 r = await fetch(`${B}/bot/webhook?secret=segredo123`, { method: 'POST', headers: ADMIN, body: JSON.stringify(upsert('oi, quero uma placa')) });

@@ -217,40 +217,55 @@ o Hermes", no painel.
 
 ## 3. O Hermes assumindo o pré-atendimento
 
-No painel, em **Quem faz o pré-atendimento no WhatsApp**:
+O bot antigo deste sistema foi removido em 24/11/2026. O único atendente agora é o Hermes.
+No painel, em **Quem faz o pré-atendimento no WhatsApp**, há duas opções:
 
-- **Bot deste sistema** — a IA configurada aqui (comportamento de sempre).
-- **Hermes (VPS)** — o webhook da Evolution passa a mandar as mensagens dos clientes para o
-  Hermes, via evento `mensagem.recebida`. O bot interno não responde nada.
-- **Ninguém** — só atendimento humano.
+- **Atendente novo (Hermes)**: o webhook da Evolution manda as mensagens dos clientes para o
+  Hermes, pelo evento `mensagem.recebida`.
+- **Ninguém**: só atendimento humano. É o padrão, e um `interno` antigo gravado no banco também
+  vale como desligado.
 
-### Só clientes
+### Quem atender
 
-O Hermes lê todas as conversas e avalia se é para responder, como o roteiro manda: responde
-cliente; conversa pessoal, fornecedor e propaganda ficam sem resposta. A única trava fixa do
-sistema é a lista de Configurações → "Não responder estes números": mensagem desses números
-chega com `atender: false` (e `motivo`) e não entra no histórico da aba Bot. Nas demais vem
-`atender: true`.
+O Hermes lê as conversas e avalia se é para responder, como o roteiro manda.
 
-O atendimento é enxuto: saudação conforme o horário, orçamento da placa de homenagem (tabela),
-endereço de retirada, avisar que não estamos fazendo troféus e medalhas, e parar quando um
-humano responder (a mensagem chega com `de_mim: true`). O resto passa para o atendente com
-`encerrar_conversa`.
+- **Não responder estes números:** os números dessa lista nas Configurações chegam com
+  `atender: false` e `motivo`.
+- **Número de teste:** com ele preenchido nas Configurações, só ele chega com `atender: true`.
+  Os demais vêm com `atender: false` e `motivo: "fase de teste: só o número de teste é atendido"`.
+  Respeite sempre o `atender`.
+- **Humano respondeu:** a mensagem chega com `de_mim: true`. Pare de responder naquela conversa.
 
-Antes de responder, chame a ferramenta **`roteiro_atendimento`**: ela devolve o roteiro
-completo (etapas, tom, regras), as respostas padrão, a tabela de preços da placa de homenagem
-e as fotos com URL pronta para `enviar_foto`. O texto mora em `lib/atendimento.js`, o mesmo
-que o bot interno usa.
+Antes de responder, chame **`roteiro_atendimento`**. Ela devolve as respostas padrão, a tabela,
+as fotos, o pagamento, o endereço, o limite de urgentes e a regra de desconto. As regras
+completas estão em `output/hermes-skill/ATENDENTE-CLASSUL.md`.
 
-Com o Hermes no comando, ele responde chamando a ferramenta `enviar_mensagem` e encerra a
-conversa com `encerrar_conversa`. As mensagens continuam sendo gravadas aqui, então a aba
-**Bot** do sistema segue mostrando o histórico de cada conversa.
+Responda com `enviar_mensagem`, `enviar_foto` e `enviar_arquivo`. Tudo fica gravado, e
+`historico_conversa` devolve a conversa.
 
-O **observador de conversas** (aba Recebidos, arquivos e sugestões de pedido) continua
-funcionando do mesmo jeito nos três modos — ele só escuta, nunca responde.
+O **observador de conversas** (aba Recebidos) continua igual: ele só escuta e nunca responde.
+O webhook da Evolution continua apontando para `/api/bot/webhook`.
 
-Não é preciso mexer na Evolution: o webhook dela continua apontando para
-`/api/bot/webhook`, e é o sistema que decide quem atende.
+### Conversas de teste (aba Testar atendente)
+
+O Lucas finge ser cliente numa conversa falsa.
+
+- **Telefone:** cada conversa tem um telefone de teste no formato `5500000` + 6 dígitos (DDD 00
+  não existe).
+- **Mensagem do cliente:** chega como `mensagem.recebida` igual à do WhatsApp, com
+  `teste: true`, `atender: true` e o nome do cliente de teste. Se ele mandar logo ou arquivo,
+  vem em `arquivo: { ref: "teste:ID", nome, tipo }`, que você baixa com `baixar_arquivo` ou
+  usa em `enviar_arquivo`.
+- **Sua resposta:** use as mesmas ferramentas de sempre (`enviar_mensagem`, `enviar_foto`,
+  `enviar_arquivo`) com o telefone de teste. O sistema desvia tudo para a tela de teste, e nada
+  sai pela Evolution.
+- **Agentes:** funcionam igual. Passe `referencia` com o telefone de teste, porque quando o
+  Lucas apaga a conversa os avisos dela somem dos agentes.
+- **Nota:** em `nf_rascunho`, passe `telefone_cliente` com o telefone de teste. Aprovar não emite
+  nada: chega `nf.emitida` com `teste: true` e `ref_pdf: null`. Diga ao cliente de teste que a
+  nota foi emitida.
+- **Pedido:** criar pedido no teste funciona. Ao apagar a conversa, o pedido vai para Arquivados.
+- **Conversa apagada:** mandar para ela dá erro. Esqueça esse telefone.
 
 ---
 

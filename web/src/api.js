@@ -232,13 +232,7 @@ export const api = {
     request(`/api/orders/${orderId}/comments`, { method: 'POST', body: JSON.stringify({ body }) }),
   deleteComment: (id) => request(`/api/comments/${id}`, { method: 'DELETE' }),
   botStatus: () => request('/api/bot/status'),
-  botDefaultPrompt: () => request('/api/bot/default-prompt'),
-  botTestChat: (messages, roteiro) =>
-    request('/api/bot/test-chat', { method: 'POST', body: JSON.stringify({ messages, roteiro }) }),
   botSetupWebhook: () => request('/api/bot/setup-webhook', { method: 'POST' }),
-  botConversations: () => request('/api/bot/conversations'),
-  botConversation: (phone) => request(`/api/bot/conversations/${phone}`),
-  botReactivate: (phone) => request(`/api/bot/conversations/${phone}/reactivate`, { method: 'POST' }),
   // ---- Hermes (bot na VPS) ----
   hermesConfig: () => request('/api/hermes/config'),
   hermesSaveConfig: (data) => request('/api/hermes/config', { method: 'PUT', body: JSON.stringify(data) }),
@@ -336,4 +330,19 @@ export const agentesApi = {
   arquivo: agenteBlob,
   // A DANFE (nfe:...) abre pela rota das Notas, que já exige o PIN.
   danfe: (notaId) => nfeBlob(`/api/nfe/notas/${notaId}/danfe`)
+};
+
+// ---- Testar atendente (conversas falsas com o Hermes) ----
+export const testesApi = {
+  listar: () => request('/api/testes'),
+  criar: (nome) => request('/api/testes', { method: 'POST', body: json({ nome }) }),
+  mensagens: (tel) => request(`/api/testes/${tel}`),
+  escrever: (tel, body) => request(`/api/testes/${tel}/mensagens`, { method: 'POST', body: json(body) }),
+  apagar: (tel) => request(`/api/testes/${tel}`, { method: 'DELETE' }),
+  arquivo: async (id) => {
+    const res = await fetch(`/api/testes/arquivo/${id}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+    if (res.status === 401) throw new AuthError('Sessão inválida');
+    if (!res.ok) throw new Error('Não consegui abrir o arquivo.');
+    return res.blob();
+  }
 };

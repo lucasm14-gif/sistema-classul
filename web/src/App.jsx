@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
-import { FileText, Layers, KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, Bot, MousePointerClick, MessagesSquare, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon, ReceiptText, Clock3, Sparkles } from 'lucide-react';
+import { FileText, Layers, KanbanSquare, Settings as SettingsIcon, LogOut, Archive, Users, ChartColumn, MousePointerClick, MessagesSquare, Wallet, Sun, Moon, Puzzle, Inbox as InboxIcon, ReceiptText, Clock3, Sparkles } from 'lucide-react';
 import Board from './components/Board';
 import Login from './components/Login';
 import { IdealMark } from './ideal/mark';
@@ -11,13 +11,12 @@ import { isDark, toggleTheme } from './theme';
 const TABS = [
   { id: 'board', label: 'Pedidos', icon: KanbanSquare },
   { id: 'agentes', label: 'Agentes', icon: Sparkles },
+  { id: 'testes', label: 'Testar atendente', icon: MessagesSquare },
   { id: 'clients', label: 'Clientes', icon: Users },
   { id: 'dashboard', label: 'Faturamento', icon: ChartColumn },
   { id: 'quotes', label: 'Orçamento', icon: FileText },
   { id: 'notas', label: 'Notas fiscais', icon: ReceiptText },
   { id: 'leads', label: 'Leads', icon: MousePointerClick },
-  { id: 'bot', label: 'Bot', icon: Bot },
-  { id: 'bot-test', label: 'Testar bot', icon: MessagesSquare },
   { id: 'inbox', label: 'Recebidos', icon: InboxIcon },
   { id: 'site-plates', label: 'Placas do site', icon: Layers },
   { id: 'extension', label: 'Extensão', icon: Puzzle },
@@ -30,13 +29,12 @@ const TABS = [
 // são baixadas à parte: quem abre o sistema não espera por Notas, Finanças etc.
 const LOADERS = {
   agentes: () => import('./components/Agentes'),
+  testes: () => import('./components/TestarAtendente'),
   clients: () => import('./components/Clients'),
   dashboard: () => import('./components/Faturamento'),
   quotes: () => import('./components/Quotes'),
   notas: () => import('./components/Notas'),
   leads: () => import('./components/Leads'),
-  bot: () => import('./components/BotChats'),
-  'bot-test': () => import('./components/BotTest'),
   inbox: () => import('./components/Inbox'),
   'site-plates': () => import('./components/SitePlates'),
   extension: () => import('./components/Extension'),

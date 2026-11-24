@@ -304,6 +304,76 @@ try {
   check('Lucas pede correção da nota', t.status === 200 && t.body.estado === 'corrigir');
   r = await call('nf_rascunhos', { estado: 'corrigir' });
   check('rascunho marcado para corrigir', r.ok && r.result.length === 1);
+
+  // ---------------------------------------------------------------- testar atendente
+  const evolutionAntes = midias.length;
+  t = await api('POST', '/testes', { nome: 'Maria (escola)' });
+  const tel = t.body.telefone;
+  check('cria cliente de teste com telefone falso', t.status === 201 && /^5500000\d{6}$/.test(tel));
+  t = await api('POST', `/testes/${tel}/mensagens`, { texto: 'Boa tarde, quero uma placa de homenagem' });
+  check('mensagem do teste chega ao Hermes', t.status === 201 && t.body.entregue_ao_hermes === true, JSON.stringify(t.body));
+  ev = eventos.filter((e) => e.event === 'mensagem.recebida').at(-1);
+  check('evento vem marcado como teste, igual ao do WhatsApp', ev?.data?.teste === true && ev.data.telefone === tel && ev.data.atender === true);
+
+  r = await call('enviar_mensagem', { telefone: tel, texto: 'Boa tarde, segue a tabela.' });
+  check('Hermes responde o cliente de teste com a ferramenta de sempre', r.ok, r.error);
+  r = await call('enviar_foto', { telefone: tel, url: 'https://sistema-classul.vercel.app/bot-fotos/tabela-homenagem.jpg' });
+  r = await call('enviar_arquivo', { telefone: tel, ref: refArte, como_imagem: true, legenda: 'Arte para aprovar' });
+  check('arte vai para o teste como foto', r.ok && r.result.como === 'imagem', r.error);
+  check('nada saiu pela Evolution', midias.length === evolutionAntes);
+  t = await api('GET', `/testes/${tel}`);
+  const tipos = t.body.mensagens.map((m) => `${m.de}:${m.tipo}`);
+  check('conversa de teste mostra tudo em ordem', JSON.stringify(tipos) === JSON.stringify(['cliente:texto', 'atendente:texto', 'atendente:imagem', 'atendente:imagem']), tipos.join(','));
+  const fotoArte = t.body.mensagens.at(-1).arquivo;
+  t = await api('GET', `/testes/arquivo/${fotoArte.ref.split(':')[1]}`);
+  check('tela abre a arte mandada no teste', t.status === 200 && t.body.equals(jpg));
+  r = await call('historico_conversa', { telefone: tel });
+  check('historico_conversa funciona no teste', r.ok && r.result.mensagens.length === 2 && r.result.mensagens[0].role === 'user');
+
+  const logo = Buffer.from('89504e470d0a1a0a', 'hex');
+  t = await api('POST', `/testes/${tel}/mensagens`, { texto: 'segue a logo', imagem_base64: logo.toString('base64'), arquivo_nome: 'logo.png', arquivo_mime: 'image/png' });
+  ev = eventos.filter((e) => e.event === 'mensagem.recebida').at(-1);
+  check('logo do cliente de teste vai com ref', /^teste:\d+$/.test(ev?.data?.arquivo?.ref || ''));
+  r = await call('baixar_arquivo', { ref: ev.data.arquivo.ref });
+  check('Hermes baixa a logo do teste', r.ok && Buffer.from(r.result.base64, 'base64').equals(logo), r.error);
+
+  r = await call('agente_postar', { agente: 'artes', tipo: 'aprovacao', texto: 'Teste: arte da Maria', referencia: tel, anexos: [{ ref: refArte }] });
+  r = await call('criar_pedido', { customer_name: 'Maria (escola)', phone: tel, product: 'Placa de homenagem' });
+  const pedidoTeste = r.result?.id;
+  r = await call('nf_rascunho', { cliente, itens: [{ produto_id: produto.id, quantidade: 1, valor_unitario: 378 }], telefone_cliente: tel });
+  check('rascunho de teste avisa que não emite', r.ok && /CONVERSA DE TESTE/.test(r.result.resumo), r.error);
+  t = await api('GET', '/agentes/notas/mensagens');
+  const msgNfTeste = t.body.mensagens.filter((m) => m.tipo === 'nf').at(-1);
+  const notasAntes = (await call('notas_listar', {})).result;
+  t = await api('POST', `/agentes/mensagens/${msgNfTeste.id}/aprovar-nf`, {}, NH);
+  const notasDepois = (await call('notas_listar', {})).result;
+  check('aprovar nota de teste não emite nada', t.status === 200 && JSON.stringify(notasAntes) === JSON.stringify(notasDepois), JSON.stringify(t.body).slice(0, 150));
+  ev = eventos.filter((e) => e.event === 'nf.emitida').at(-1);
+  check('Hermes recebe nf.emitida marcado como teste', ev?.data?.teste === true && ev.data.ref_pdf === null);
+
+  t = await api('DELETE', `/testes/${tel}`);
+  check('apaga a conversa de teste', t.status === 200 && t.body.pedidos_arquivados === 1, JSON.stringify(t.body));
+  t = await api('GET', '/testes');
+  check('conversa some da lista', !t.body.some((c) => c.telefone === tel));
+  t = await api('GET', '/agentes/artes/mensagens');
+  check('avisos do teste somem dos agentes', !t.body.mensagens.some((m) => m.referencia === tel));
+  r = await call('buscar_pedido', { id: pedidoTeste });
+  check('pedido do teste foi arquivado, não apagado', r.ok && Number(r.result.archived) === 1, JSON.stringify(r.result || r.error).slice(0, 100));
+  r = await call('enviar_mensagem', { telefone: tel, texto: 'oi' });
+  check('mandar para conversa apagada dá erro', !r.ok);
+
+  // ---------------------------------------------------------------- só o atendente novo
+  await setSettings({ bot_webhook_secret: 'seg', bot_engine: 'interno' });
+  const upsert = (num, texto) => ({ event: 'messages.upsert', data: { key: { remoteJid: `${num}@s.whatsapp.net`, fromMe: false, id: 'X' + Math.random() }, pushName: 'Cliente', message: { conversation: texto } } });
+  let w = await (await fetch(`${B}/bot/webhook?secret=seg`, { method: 'POST', headers: ADMIN, body: JSON.stringify(upsert('5551977776666', 'oi')) })).json();
+  check('"interno" antigo no banco vale como desligado', w.bot?.ignored === 'pré-atendimento desligado');
+  await setSettings({ bot_engine: 'hermes', bot_test_number: '5551900001111' });
+  w = await (await fetch(`${B}/bot/webhook?secret=seg`, { method: 'POST', headers: ADMIN, body: JSON.stringify(upsert('5551977776666', 'oi')) })).json();
+  check('com número de teste, cliente real vai como não atender', w.bot?.atender === false && /fase de teste/.test(w.bot?.motivo));
+  w = await (await fetch(`${B}/bot/webhook?secret=seg`, { method: 'POST', headers: ADMIN, body: JSON.stringify(upsert('5551900001111', 'oi')) })).json();
+  check('o número de teste é atendido', w.bot?.atender === true);
+  t = await api('PUT', '/hermes/config', { engine: 'interno' });
+  check('não dá mais para escolher o bot antigo', t.status === 400);
 } catch (err) {
   console.error(err);
   falhas++;

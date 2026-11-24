@@ -19,9 +19,8 @@ const input =
   'w-full border-2 border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-medium outline-none transition-colors focus:border-brand-500 bg-white';
 
 const MOTORES = [
-  { id: 'interno', titulo: 'Bot deste sistema', ajuda: 'A IA de pré-atendimento configurada aqui em cima.' },
-  { id: 'hermes', titulo: 'Hermes (VPS)', ajuda: 'As mensagens vão para o Hermes, que responde pelas ferramentas.' },
-  { id: 'off', titulo: 'Ninguém', ajuda: 'Nenhum bot responde — só atendimento humano.' }
+  { id: 'hermes', titulo: 'Atendente novo (Hermes)', ajuda: 'As mensagens vão para o Hermes, que responde e chama você pela aba Agentes.' },
+  { id: 'off', titulo: 'Ninguém', ajuda: 'Nenhum bot responde. Só atendimento humano.' }
 ];
 
 export default function HermesSettings({ onAuthError }) {
@@ -225,7 +224,7 @@ export default function HermesSettings({ onAuthError }) {
       {/* Quem responde o WhatsApp */}
       <div className="mt-5 pt-5 border-t border-black/5">
         <label className={label}>Quem faz o pré-atendimento no WhatsApp</label>
-        <div className="grid sm:grid-cols-3 gap-2">
+        <div className="grid sm:grid-cols-2 gap-2">
           {MOTORES.map((m) => (
             <button
               key={m.id}

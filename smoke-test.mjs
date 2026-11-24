@@ -631,7 +631,7 @@ r = await upsert('5551911112222', { conversation: 'preciso de 3 placas 14x20' })
 hook = await r.json();
 check(
   'mensagem capturada mesmo com o bot desligado',
-  hook.watcher?.watched === true && /desativado/.test(hook.bot?.ignored || ''),
+  hook.watcher?.watched === true && /desligado/.test(hook.bot?.ignored || ''),
   JSON.stringify(hook)
 );
 
