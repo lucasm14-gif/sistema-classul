@@ -233,6 +233,51 @@ try {
   r = await call('agentes_listar');
   check('Lucas libera arte automática e o Hermes vê', t.body.arte_automatica === true && r.result.arte_automatica === true);
 
+  // ---------------------------------------------------------------- arte pelo Mac (fichas)
+  r = await call('ficha_placa', { telefone: '5551988887777', cliente: 'ABINEE', tamanho: '16x25', estojo: 'preto', texto_placa: 'RECONHECIMENTO\nRegis' });
+  check('ficha recusada com arte pelo Mac desligada', !r.ok && /desligada/.test(r.error));
+  eventos.length = 0;
+  t = await api('PUT', '/agentes/arte-pelo-mac', { ligado: true });
+  ev = await esperaEvento('atendente.fase');
+  r = await call('agentes_listar');
+  check('Lucas liga arte pelo Mac e o Hermes vê', t.body.arte_pelo_mac === true && r.result.arte_pelo_mac === true && ev?.data?.arte_pelo_mac === true);
+  r = await call('ficha_placa', { telefone: '(51) 98888-7777', cliente: 'ABINEE', tamanho: '16x25', estojo: 'preto', quantidade: 1, texto_placa: 'RECONHECIMENTO\nRegis Sell Haubert', anexos: [{ ref: refArte, nome: 'logo.jpg' }] });
+  const fichaCod = r.result?.codigo;
+  check('Hermes posta a ficha com código', r.ok && r.result.tipo === 'ficha' && r.result.estado === 'pendente' && /^ART\d+$/.test(fichaCod) && r.result.referencia === '5551988887777', r.error);
+  r = await call('ficha_placa', { etapa: 'ajuste', telefone: '5551988887777', pedido_do_cliente: 'muda a data' });
+  check('ajuste sem a arte anterior é recusado', !r.ok && /ajuste_de/.test(r.error));
+  t = await api('GET', '/agentes/fichas');
+  check('Mac lista a ficha pendente', t.status === 200 && t.body.some((f) => f.codigo === fichaCod && f.dados.tamanho === '16x25'));
+  t = await api('GET', `/agentes/fichas/${fichaCod.toLowerCase()}`);
+  check('Mac lê a ficha com o texto e a logo', t.status === 200 && /Regis Sell Haubert/.test(t.body.texto) && t.body.anexos[0].ref === refArte);
+  t = await api('POST', `/agentes/fichas/${fichaCod}/entregar`, { arquivos: [] });
+  check('entregar sem arquivo dá erro', t.status === 400);
+  t = await api('POST', `/agentes/fichas/${fichaCod}/entregar`, {
+    texto: 'Arte da ABINEE, menor letra 13,5 pt.',
+    arquivos: [
+      { base64: Buffer.from('jpg arte').toString('base64'), nome: 'arte-abinee.jpg' },
+      { base64: Buffer.from('jpg foto').toString('base64'), nome: 'foto-abinee.jpg' }
+    ]
+  });
+  const arteMac = t.body;
+  check('Mac entrega a arte como aprovação', t.status === 201 && arteMac.tipo === 'aprovacao' && arteMac.autor === 'claude-mac' && arteMac.anexos.length === 2 && arteMac.dados.ficha === fichaCod, JSON.stringify(t.body).slice(0, 200));
+  t = await api('GET', `/agentes/fichas/${fichaCod}`);
+  check('ficha fica como arte feita', t.body.estado === 'feita' && t.body.resposta.includes(arteMac.codigo));
+  t = await api('POST', `/agentes/fichas/${fichaCod}/entregar`, { arquivos: [{ base64: 'eA==', nome: 'x.jpg' }] });
+  check('não entrega duas vezes a mesma ficha', t.status === 400);
+  eventos.length = 0;
+  t = await api('POST', `/agentes/mensagens/${arteMac.id}/decidir`, { decisao: 'aprovado' });
+  ev = await esperaEvento('agente.resposta');
+  check('aprovou: Hermes recebe a arte do Mac com os anexos', ev?.data?.feita_no_mac === true && ev.data.anexos.length === 2 && ev.data.dados.ficha === fichaCod && ev.data.referencia === '5551988887777');
+  r = await call('ficha_placa', { telefone: '5551988887777', cliente: 'Outro', texto_placa: 'Teste' });
+  t = await api('POST', `/agentes/mensagens/${r.result.id}/decidir`, { decisao: 'aprovado' });
+  check('ficha não se aprova pelo botão', t.status === 400);
+  eventos.length = 0;
+  t = await api('POST', `/agentes/mensagens/${r.result.id}/decidir`, { decisao: 'devolvida' });
+  ev = await esperaEvento('agente.resposta');
+  check('Lucas devolve a ficha ao Hermes', t.status === 200 && t.body.estado === 'devolvida' && ev?.data?.decisao === 'devolvida' && ev.data.tipo === 'ficha');
+  await api('PUT', '/agentes/arte-pelo-mac', { ligado: false });
+
   // ---------------------------------------------------------------- pedido + anexo
   r = await call('criar_pedido', { customer_name: 'Maria Souza', phone: '5551999990000', product: 'Placa de homenagem', size: '16x25', case_color: 'preto', description: 'Quantidade: 1', value: '378,00' });
   const pedido = r.result?.order_number || r.result?.numero || String(r.result?.id || '');

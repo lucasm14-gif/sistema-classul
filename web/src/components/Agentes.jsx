@@ -22,7 +22,9 @@ const ESTADO = {
   recusado: { txt: 'Recusado', cls: 'bg-slate-200 text-slate-700' },
   emitindo: { txt: 'Emitindo…', cls: 'bg-sky-100 text-sky-800' },
   emitida: { txt: 'Nota emitida', cls: 'bg-brand-100 text-brand-800' },
-  erro: { txt: 'Deu erro', cls: 'bg-red-100 text-red-800' }
+  erro: { txt: 'Deu erro', cls: 'bg-red-100 text-red-800' },
+  feita: { txt: 'Arte feita', cls: 'bg-brand-100 text-brand-800' },
+  devolvida: { txt: 'Com o Hermes', cls: 'bg-slate-200 text-slate-700' }
 };
 
 function Avatar({ agente, size = 44 }) {
@@ -167,6 +169,24 @@ function Acoes({ m, onFeito, onAuthError }) {
   const emitir = () => rodar(() => agentesApi.aprovarNf(m.id), 'Nota enviada para a SEFAZ.');
 
   if (m.estado !== 'pendente') return null;
+  if (m.tipo === 'ficha') {
+    return (
+      <div className="mt-3 border-t border-black/5 pt-3">
+        <p className="text-xs text-slate-500 mb-2">
+          Faça a arte no Mac: abra o Claude e peça <span className="font-extrabold text-slate-700">faz a placa da ficha {m.codigo}</span>. Ela volta aqui para você aprovar.
+        </p>
+        <button
+          disabled={busy}
+          onClick={() => {
+            if (window.confirm('Devolver esta ficha ao Hermes? O Claude da VPS faz a arte.')) rodar(() => agentesApi.decidir(m.id, 'devolvida'), 'Ficha devolvida ao Hermes.');
+          }}
+          className="w-full rounded-full bg-white border border-black/10 text-slate-700 text-xs font-extrabold py-2 disabled:opacity-50"
+        >
+          Não vou fazer agora: devolver ao Hermes
+        </button>
+      </div>
+    );
+  }
   const ehNf = m.tipo === 'nf';
   const ehPergunta = m.tipo === 'pergunta';
 
@@ -263,6 +283,7 @@ function Mensagem({ m, onFeito, onAuthError }) {
         {(m.codigo || est) && (
           <div className="flex items-center gap-2 mb-1">
             {m.codigo && <span className="text-[10px] font-extrabold tracking-wide text-slate-400">{m.codigo}</span>}
+            {m.autor === 'claude-mac' && <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-violet-100 text-violet-800">Feita no Mac</span>}
             {est && <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${est.cls}`}>{est.txt}</span>}
           </div>
         )}
@@ -400,6 +421,20 @@ export default function Agentes({ onAuthError }) {
     }
   }, [aberto, agentes]);
 
+  const trocarMac = async () => {
+    const novo = !dados.arte_pelo_mac;
+    setMudandoFase(true);
+    try {
+      await agentesApi.artePeloMac(novo);
+      await load();
+      toast(novo ? 'O Hermes vai mandar fichas: a arte é feita aqui no Mac.' : 'O Hermes volta a fazer a arte com o Claude dele.', 'success');
+    } catch (err) {
+      if (!onAuthError(err)) toast(err.message, 'error');
+    } finally {
+      setMudandoFase(false);
+    }
+  };
+
   const trocarFase = async () => {
     const novo = !dados.arte_automatica;
     if (novo && !window.confirm('A partir de agora a arte vai DIRETO ao cliente, sem passar por você. A nota fiscal continua passando. Liberar?')) return;
@@ -439,6 +474,21 @@ export default function Agentes({ onAuthError }) {
               <span className="text-xs leading-tight">
                 <span className="font-extrabold text-slate-700 block">Arte direto ao cliente</span>
                 <span className="text-slate-400">{dados.arte_automatica ? 'Ligado: não passa por você' : 'Desligado: você aprova antes'}</span>
+              </span>
+            </button>
+          )}
+          {dados && (
+            <button
+              onClick={trocarMac}
+              disabled={mudandoFase}
+              className="mt-2 w-full flex items-center gap-3 rounded-2xl bg-black/[0.03] hover:bg-black/[0.06] px-3 py-2 text-left"
+            >
+              <span className={`relative w-9 h-5 rounded-full shrink-0 transition-colors ${dados.arte_pelo_mac ? 'bg-brand-600' : 'bg-slate-300'}`}>
+                <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${dados.arte_pelo_mac ? 'left-[18px]' : 'left-0.5'}`} />
+              </span>
+              <span className="text-xs leading-tight">
+                <span className="font-extrabold text-slate-700 block">Arte pelo Mac</span>
+                <span className="text-slate-400">{dados.arte_pelo_mac ? 'Ligado: o Hermes manda a ficha, você faz aqui' : 'Desligado: o Claude do Hermes faz'}</span>
               </span>
             </button>
           )}

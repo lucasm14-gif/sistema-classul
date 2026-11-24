@@ -24,7 +24,7 @@ Autenticação: `Authorization: Bearer <CHAVE_DO_HERMES>` (ou o header `X-Hermes
 ```bash
 curl -H "Authorization: Bearer $CHAVE" \
   https://sistema-classul.vercel.app/api/hermes/ping
-# {"ok":true,"sistema":"Classul","ferramentas":48,"pre_atendimento":"hermes"}
+# {"ok":true,"sistema":"Classul","ferramentas":49,"pre_atendimento":"hermes"}
 ```
 
 ### Pegar o catálogo de ferramentas
@@ -92,7 +92,7 @@ async function conversar(mensagens) {
 }
 ```
 
-### As 48 ferramentas
+### As 49 ferramentas
 
 **Pedidos** — `listar_pedidos`, `buscar_pedido` (por número, id, código de retirada de 4
 dígitos ou telefone), `criar_pedido`, `atualizar_pedido`, `mover_pedido`, `arquivar_pedido`,
@@ -124,7 +124,7 @@ entradas do mês, categorias, últimos lançamentos e contas a pagar.
 pela conta da Classul; nunca calcule de cabeça).
 
 **Agentes** (seção 6) — `agentes_listar`, `agente_criar`, `agente_postar`, `agente_mensagens`,
-`agente_respostas`, `subir_arquivo`, `anexar_arquivo_pedido`, `gerar_orcamento`, `nf_rascunho`
+`agente_respostas`, `ficha_placa`, `subir_arquivo`, `anexar_arquivo_pedido`, `gerar_orcamento`, `nf_rascunho`
 e `nf_rascunhos`. `enviar_arquivo` ganhou `como_imagem: true` para mandar arte como foto.
 
 O Hermes entra em Finanças e Notas **sem PIN**: a chave dele basta. A exceção é **emitir nota**:
@@ -203,11 +203,11 @@ if (esperado !== req.headers['x-classul-signature']) return res.sendStatus(401);
 | `lead.novo` | alguém clicou no WhatsApp do site | `{ pagina, botao, origem, campanha }` |
 | `mensagem.recebida` | cliente mandou mensagem (só com o Hermes no comando) | `{ telefone, de_mim, nome, texto, tipo, wa_message_id, atender, motivo }` |
 | `teste` | botão Testar do painel | `{ mensagem }` |
-| `agente.resposta` | o Lucas decidiu numa mensagem de agente (aprovou, pediu correção, respondeu dúvida) | `{ agente, mensagem_id, codigo, tipo, decisao, resposta, referencia, texto_original, por }` |
+| `agente.resposta` | o Lucas decidiu numa mensagem de agente (aprovou, pediu correção, respondeu dúvida, devolveu ficha) | `{ agente, mensagem_id, codigo, tipo, decisao, resposta, referencia, texto_original, anexos, dados, feita_no_mac, por }` |
 | `agente.mensagem` | o Lucas escreveu livre no chat de um agente | `{ agente, mensagem_id, texto, por }` |
 | `nf.emitida` | o Lucas aprovou o rascunho e a SEFAZ autorizou | `{ rascunho_id, nota_id, numero, situacao, ref_pdf, telefone_cliente, pedido }` |
 | `nf.problema` | a nota aprovada foi rejeitada ou deu erro | `{ rascunho_id, nota_id?, erro? motivo?, telefone_cliente, pedido }` |
-| `atendente.fase` | o Lucas ligou/desligou "Arte direto ao cliente" | `{ arte_automatica }` |
+| `atendente.fase` | o Lucas ligou/desligou "Arte direto ao cliente" ou "Arte pelo Mac" | `{ arte_automatica, arte_pelo_mac }` |
 
 O sistema espera até 6s pela resposta da VPS. Se o Hermes estiver fora do ar, **nada
 quebra**: o pedido acontece normalmente e a falha fica registrada em "Últimas trocas com
@@ -325,6 +325,12 @@ outros com `agente_criar` quando precisar.
   rascunho novo.
 - A fase do atendente fica em `agentes_listar().arte_automatica`. Com `false`, toda arte passa
   pelo agente Artes antes do cliente.
+- **Arte pelo Mac** (`agentes_listar().arte_pelo_mac`): o Hermes não chama o Claude da VPS para
+  arte. Ele posta a ficha com `ficha_placa` (etapas `arte`, `ajuste`, `vetor`); o Lucas faz no Mac
+  com `node tools/fichas.mjs listar | baixar ART21 | entregar ART21 arte.jpg foto.jpg`, que usa as
+  rotas `GET /api/agentes/fichas[/:codigo]` e `POST /api/agentes/fichas/:codigo/entregar` (login do
+  sistema). A arte volta como `aprovacao` de autor `claude-mac`; aprovada, o `agente.resposta` leva
+  os `anexos`. Na tela, "devolver ao Hermes" manda `decisao: "devolvida"` e o Claude da VPS faz.
 
 O roteiro completo do atendente (quem faz o quê, regras da Classul, aprovações) está em
 `output/hermes-skill/ATENDENTE-CLASSUL.md`.
@@ -334,4 +340,4 @@ O roteiro completo do atendente (quem faz o quê, regras da Classul, aprovaçõe
 Testes: `node smoke-test-hermes.mjs` (70 verificações, banco em memória, nada sai para a
 internet — a Evolution é mockada e o "Hermes" é um servidor local).
 Orçamento: `node smoke-test-quotes.mjs` (24 verificações, Hermes falso local).
-Agentes: `node smoke-test-agentes.mjs` (48 verificações: Drive, Evolution e SEFAZ falsos).
+Agentes: `node smoke-test-agentes.mjs` (84 verificações: Drive, Evolution e SEFAZ falsos).

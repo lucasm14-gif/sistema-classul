@@ -74,7 +74,7 @@ app.use((req, res, next) => (req.method === 'POST' && /^\/api\/plates\/\d+\/foto
 app.use((req, res, next) => (req.method === 'POST' && /^\/api\/nfe\/(certificado|importar|logo)$/.test(req.path) ? express.json({ limit: '4mb' })(req, res, next) : next()));
 app.use((req, res, next) => (req.method === 'PUT' && req.path === '/api/ideal/snapshot' ? express.json({ limit: '4mb' })(req, res, next) : next()));
 // Arte, vetor e foto chegam em base64 pelas ferramentas do Hermes (subir_arquivo, anexar_arquivo_pedido).
-app.use((req, res, next) => (req.method === 'POST' && (req.path === '/api/hermes/call' || /^\/api\/testes\/\d+\/mensagens$/.test(req.path)) ? express.json({ limit: '4500kb' })(req, res, next) : next()));
+app.use((req, res, next) => (req.method === 'POST' && (req.path === '/api/hermes/call' || /^\/api\/testes\/\d+\/mensagens$/.test(req.path) || /^\/api\/agentes\/fichas\/[\w-]+\/entregar$/.test(req.path)) ? express.json({ limit: '4500kb' })(req, res, next) : next()));
 app.use(express.json());
 // navigator.sendBeacon do site envia os leads como application/x-www-form-urlencoded.
 app.use(express.urlencoded({ extended: false }));
@@ -1013,7 +1013,7 @@ const ha = (fn) => h(async (req, res) => {
 app.get('/api/agentes', ha(async (req, res) => res.json(await agentes.listarAgentes())));
 app.get('/api/agentes/arquivo', ha(async (req, res) => {
   const ref = String(req.query.ref || '');
-  if (!/^(drive:[\w-]+|teste:\d+)$/.test(ref)) return res.status(400).json({ error: 'Arquivo inválido.' });
+  if (!/^(drive:[\w-]+|teste:\d+|placa:\d+:\w+)$/.test(ref)) return res.status(400).json({ error: 'Arquivo inválido.' });
   const f = await resolverArquivo(ref);
   res.setHeader('Content-Type', f.mime);
   res.setHeader('Content-Disposition', `inline; filename="${f.nome.replace(/[^\w.\- ]/g, '_')}"`);
@@ -1022,6 +1022,13 @@ app.get('/api/agentes/arquivo', ha(async (req, res) => {
   res.send(f.buffer);
 }));
 app.put('/api/agentes/arte-automatica', ha(async (req, res) => res.json(await agentes.setArteAutomatica(Boolean(req.body?.ligado)))));
+app.put('/api/agentes/arte-pelo-mac', ha(async (req, res) => res.json(await agentes.setArtePeloMac(Boolean(req.body?.ligado)))));
+// Fichas da placa: o Claude do Mac (tools/fichas.mjs) lê e devolve a arte por aqui.
+app.get('/api/agentes/fichas', ha(async (req, res) => res.json(await agentes.fichas({ todas: req.query.todas === '1' }))));
+app.get('/api/agentes/fichas/:codigo', ha(async (req, res) => res.json(await agentes.ficha(req.params.codigo))));
+app.post('/api/agentes/fichas/:codigo/entregar', ha(async (req, res) => {
+  res.status(201).json(await agentes.entregarFicha(req.params.codigo, req.body || {}, currentUser(req) || 'Lucas'));
+}));
 app.get('/api/agentes/:slug/mensagens', ha(async (req, res) => res.json(await agentes.mensagensDoAgente(req.params.slug))));
 app.post('/api/agentes/:slug/mensagens', ha(async (req, res) => {
   res.status(201).json(await agentes.lucasEscreve(req.params.slug, req.body?.texto, currentUser(req) || 'Lucas'));

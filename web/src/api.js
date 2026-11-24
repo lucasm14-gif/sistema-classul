@@ -327,6 +327,7 @@ export const agentesApi = {
   decidir: (id, decisao, resposta) => request(`/api/agentes/mensagens/${id}/decidir`, { method: 'POST', body: json({ decisao, resposta }) }),
   aprovarNf: (id) => nfeRequest(`/api/agentes/mensagens/${id}/aprovar-nf`, { method: 'POST', body: '{}' }),
   arteAutomatica: (ligado) => request('/api/agentes/arte-automatica', { method: 'PUT', body: json({ ligado }) }),
+  artePeloMac: (ligado) => request('/api/agentes/arte-pelo-mac', { method: 'PUT', body: json({ ligado }) }),
   arquivo: agenteBlob,
   // A DANFE (nfe:...) abre pela rota das Notas, que já exige o PIN.
   danfe: (notaId) => nfeBlob(`/api/nfe/notas/${notaId}/danfe`)
