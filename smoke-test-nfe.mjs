@@ -140,6 +140,11 @@ try {
   check('busca com palavras fora de ordem', r.body.length === 1);
   r = await call('GET', '/nfe/clientes?q=89488316');
   check('busca por parte do CNPJ', r.body.length === 1);
+  r = await call('PUT', `/nfe/clientes/${cli.id}`, { ...clienteRS, nome_fantasia: 'Ferragens Portão' });
+  check('cliente guarda o nome fantasia', r.status === 200 && r.body.nome_fantasia === 'FERRAGENS PORTÃO', JSON.stringify(r.body));
+  r = await call('GET', '/nfe/clientes?q=ferragens');
+  check('busca cliente pelo nome fantasia', r.body.length === 1 && r.body[0].id === cli.id);
+  r = await call('PUT', `/nfe/clientes/${cli.id}`, clienteRS);
 
   // ---- Emissão autorizada
   const itens = [{ produto_id: placa.id, codigo: placa.codigo, descricao: placa.descricao, ncm: placa.ncm, cfop_dentro: '5101', cfop_fora: '6101', unidade: 'UND', quantidade: 2, valor_unitario: 199.5, aliq_tributos: 13.45 }];

@@ -143,7 +143,7 @@ function PinScreen({ mode, onDone, toast }) {
 /* ------------------------------------------------------------------ Cliente */
 
 const clienteVazio = {
-  documento: '', nome: '', ie: '', contribuinte: 0, email: '', telefone: '', cep: '', logradouro: '', numero: '',
+  documento: '', nome: '', nome_fantasia: '', ie: '', contribuinte: 0, email: '', telefone: '', cep: '', logradouro: '', numero: '',
   complemento: '', bairro: '', municipio: '', cod_municipio: '', uf: ''
 };
 
@@ -276,6 +276,7 @@ function ClienteForm({ cliente, onSaved, onCancel, onError }) {
         const ies = (e.inscricoes_estaduais || []).filter((i) => i.ativo && i.estado?.sigla === e.estado?.sigla);
         dados = {
           nome: ws.razao_social,
+          fantasia: e.nome_fantasia,
           situacao: e.situacao_cadastral,
           logradouro: [e.tipo_logradouro, e.logradouro].filter(Boolean).join(' '),
           numero: e.numero,
@@ -295,6 +296,7 @@ function ClienteForm({ cliente, onSaved, onCancel, onError }) {
         if (!r) throw new Error('Não achei este CNPJ na Receita. Confira os números ou preencha à mão.');
         dados = {
           nome: r.razao_social,
+          fantasia: r.nome_fantasia,
           situacao: r.descricao_situacao_cadastral,
           logradouro: [r.descricao_tipo_de_logradouro, r.logradouro].filter(Boolean).join(' '),
           numero: r.numero,
@@ -315,6 +317,7 @@ function ClienteForm({ cliente, onSaved, onCancel, onError }) {
       setF((p) => ({
         ...p,
         nome: p.nome || dados.nome || '',
+        nome_fantasia: p.nome_fantasia || dados.fantasia || '',
         logradouro: p.logradouro || dados.logradouro || '',
         numero: p.numero || dados.numero || '',
         complemento: p.complemento || dados.complemento || '',
@@ -338,6 +341,25 @@ function ClienteForm({ cliente, onSaved, onCancel, onError }) {
       onError(err.message);
     } finally {
       setBusy((b) => (b === 'cnpj' ? '' : b));
+    }
+  };
+
+  // Cliente antigo (C&K) sem nome fantasia: busca só ele, sem mexer no resto do cadastro.
+  const buscarFantasia = async () => {
+    const d = digits(f.documento);
+    if (d.length !== 14) return;
+    setBusy('fantasia');
+    try {
+      const ws = await fetch(`https://publica.cnpj.ws/cnpj/${d}`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+      let nome = ws?.estabelecimento?.nome_fantasia;
+      if (!ws) {
+        const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${d}`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+        nome = r?.nome_fantasia;
+      }
+      if (nome) setF((p) => ({ ...p, nome_fantasia: p.nome_fantasia || nome }));
+      else setAviso(ws ? 'Esta empresa não tem nome fantasia na Receita.' : 'Não consegui consultar a Receita agora. Tente de novo ou digite à mão.');
+    } finally {
+      setBusy((b) => (b === 'fantasia' ? '' : b));
     }
   };
 
@@ -407,6 +429,19 @@ function ClienteForm({ cliente, onSaved, onCancel, onError }) {
         <label className={label}>{pj ? 'Razão social' : 'Nome completo'} *</label>
         <input className={input} value={f.nome} onChange={set('nome')} />
       </div>
+      {pj && (
+        <div className="col-span-6">
+          <label className={label}>Nome fantasia</label>
+          <div className="flex gap-2">
+            <input className={input} value={f.nome_fantasia || ''} onChange={set('nome_fantasia')} placeholder="Como a empresa é conhecida (ajuda a achar na busca)" />
+            {digits(f.documento).length === 14 && !f.nome_fantasia && (
+              <button type="button" tabIndex={-1} className={btnGhost} title="Buscar o nome fantasia na Receita" onClick={buscarFantasia} disabled={busy === 'fantasia'}>
+                {busy === 'fantasia' ? <LoaderCircle size={14} className="animate-spin" /> : <Search size={14} />} Receita
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {pj && (
         <>
@@ -536,6 +571,7 @@ function ClientePicker({ value, onChange, onError }) {
       <div className="flex items-start justify-between gap-3 rounded-2xl border-2 border-brand-200 bg-brand-50/50 px-4 py-3">
         <div className="min-w-0">
           <div className="font-extrabold text-brand-950 truncate">{value.nome}</div>
+          {value.nome_fantasia && <div className="text-xs font-bold text-brand-700 truncate">{value.nome_fantasia}</div>}
           <div className="text-xs font-semibold text-slate-500">
             {fmtDoc(value.documento)} · {value.municipio} - {value.uf}
             {Number(value.contribuinte) === 1 ? ` · IE ${value.ie}` : Number(value.contribuinte) === 2 ? ' · isento de IE' : ''}
@@ -554,7 +590,7 @@ function ClientePicker({ value, onChange, onError }) {
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             className={`${input} pl-9`}
-            placeholder="Digite o nome, CPF ou CNPJ do cliente"
+            placeholder="Digite o nome, nome fantasia, CPF ou CNPJ do cliente"
             value={busca}
             autoFocus
             onFocus={() => setAberto(true)}
@@ -591,6 +627,7 @@ function ClientePicker({ value, onChange, onError }) {
               className={`w-full text-left px-4 py-2.5 border-b border-black/5 last:border-0 ${i === nav.ativo ? 'bg-brand-50' : ''}`}
             >
               <div className="font-bold text-sm text-brand-950 truncate"><Realce texto={c.nome} termos={busca} /></div>
+              {c.nome_fantasia && <div className="text-xs font-semibold text-brand-700 truncate"><Realce texto={c.nome_fantasia} termos={busca} /></div>}
               <div className="text-xs text-slate-500">{fmtDoc(c.documento)} · {c.municipio} - {c.uf}</div>
             </button>
           ))}
